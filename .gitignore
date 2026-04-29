@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# training outputs
+training/runs/
+
+# dataset
+training/data/raw/
+training/data/labeled/
+
+# models
+*.pt
+
+# OS
+.DS_Store
+Thumbs.db
