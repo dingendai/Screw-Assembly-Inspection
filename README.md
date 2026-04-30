@@ -124,6 +124,31 @@ docs/：規格與文件
 
 ---
 
+## Git 協作規範
+
+本專案採用簡化 Git Flow 進行多人協作開發。
+
+詳細規範請參考：
+
+```text
+docs/git_workflow.md
+```
+
+Commit 規則（摘要）
+
+feat: 新功能
+fix: 修 bug
+docs: 文件
+chore: 雜項（結構 / gitignore）
+refactor: 重構（不改功能）
+
+
+基本開發流程
+開分支 → 開發 → commit → PR → merge
+
+
+---
+
 ##  未來擴充
 
 * OCR / 條碼辨識
