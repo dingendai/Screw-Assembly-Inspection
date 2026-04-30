@@ -1,0 +1,119 @@
+# 基於影像識別技術之多緯度螺絲裝配檢測
+
+## 專案簡介
+
+本專題透過影像識別技術（YOLOv8），對產品四面影像進行檢測，判斷螺絲裝配狀態與相關元件是否正確安裝。
+
+本系統目標包含：
+
+* 螺絲是否在位
+* 螺絲是否鎖固到位
+* 濾網是否存在
+* 標籤是否存在（後續可擴充 OCR / 條碼辨識）
+
+---
+
+## 專案結構
+
+screw_assembly_inspection/
+├─ app/                # 主程式（推論 / UI / API）
+├─ training/           # 資料處理與模型訓練
+│  ├─ data/
+│  ├─ scripts/
+│  ├─ runs/
+│  └─ requirements.txt
+├─ models/             # 模型權重（不納入版本控制）
+├─ docs/               # 規格與文件（標註規則 / dataset / 訓練計畫）
+├─ .gitignore
+└─ README.md
+
+---
+
+## 開發環境
+
+Python 3.11
+YOLOv8 (Ultralytics)
+PyTorch (CUDA)
+
+---
+
+## 安裝與執行（Training）
+
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r training/requirements.txt
+
+測試 YOLO：
+
+yolo predict model=yolov8n.pt source=bus.jpg
+
+
+---
+
+## 資料集規範
+
+* 原始資料：`training/data/raw/`
+* 標註資料：`training/data/labeled/`
+* 訓練格式（YOLO）：`training/data/yolo_dataset/`
+
+影像來源為四面：
+
+* front
+* back
+* left
+* right
+
+---
+
+## 標註類別（初版）
+
+screw_ok
+screw_missing
+screw_not_locked
+filter_ok
+filter_missing
+label_ok
+label_missing
+
+
+詳細標註規則請見：
+docs/annotation_spec.md
+
+---
+
+## 注意事項
+
+以下內容不納入 Git 版本控制：
+
+- dataset（影像與標註）
+- 模型權重（*.pt）
+- training/runs（訓練輸出）
+
+---
+
+## 開發狀態
+
+目前進行中：
+
+* 專案架構建立
+* 環境建置（GPU / YOLO）
+* 標註規則設計（進行中）
+
+---
+
+## 分工建議
+
+training/：模型訓練與資料處理
+app/：推論與主程式
+docs/：規格與文件
+
+---
+
+## 未來擴充
+
+* OCR / 條碼辨識
+* 多模型融合（檢測 + 分類）
+* 即時檢測系統（camera stream）
+
+```
+```
