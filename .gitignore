@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 env/
 
+#runs
+runs/
+
 # training outputs
 training/runs/
 
