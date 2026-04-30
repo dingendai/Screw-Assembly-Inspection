@@ -4,22 +4,27 @@ __pycache__/
 .venv/
 env/
 
-#runs
+# YOLO runs
 runs/
-
-# training outputs
 training/runs/
 
-# dataset
-training/data/raw/
-training/data/labeled/
-training/data/yolo_dataset/images/
-training/data/yolo_dataset/labels/
+# Dataset（忽略內容，但保留資料夾）
+training/data/raw/*
+training/data/labeled/*
+training/data/yolo_dataset/images/*
+training/data/yolo_dataset/labels/*
+
+# 保留資料夾結構
+!training/data/raw/.gitkeep
+!training/data/labeled/.gitkeep
+!training/data/yolo_dataset/.gitkeep
+!training/data/yolo_dataset/images/.gitkeep
+!training/data/yolo_dataset/labels/.gitkeep
 
 # models
 *.pt
 
-# OS
+# OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
