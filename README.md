@@ -136,16 +136,19 @@ docs/git_workflow.md
 
 Commit 規則（摘要）
 
+```text
 feat: 新功能
 fix: 修 bug
 docs: 文件
 chore: 雜項（結構 / gitignore）
 refactor: 重構（不改功能）
-
+```
 
 基本開發流程
-開分支 → 開發 → commit → PR → merge
 
+```text
+開分支 → 開發 → commit → PR → merge
+```
 
 ---
 
