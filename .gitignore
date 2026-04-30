@@ -13,6 +13,8 @@ training/runs/
 # dataset
 training/data/raw/
 training/data/labeled/
+training/data/yolo_dataset/images/
+training/data/yolo_dataset/labels/
 
 # models
 *.pt
@@ -20,3 +22,4 @@ training/data/labeled/
 # OS
 .DS_Store
 Thumbs.db
+.vscode/
