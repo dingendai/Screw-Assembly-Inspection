@@ -15,6 +15,7 @@
 
 ## 專案結構
 
+```text
 screw_assembly_inspection/
 ├─ app/                # 主程式（推論 / UI / API）
 ├─ training/           # 資料處理與模型訓練
@@ -26,27 +27,33 @@ screw_assembly_inspection/
 ├─ docs/               # 規格與文件（標註規則 / dataset / 訓練計畫）
 ├─ .gitignore
 └─ README.md
+```
 
 ---
 
 ## 開發環境
 
+```text
 Python 3.11
 YOLOv8 (Ultralytics)
 PyTorch (CUDA)
+```
 
 ---
 
 ## 安裝與執行（Training）
 
+```bash
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r training/requirements.txt
+```
 
 測試 YOLO：
 
+```bash
 yolo predict model=yolov8n.pt source=bus.jpg
-
+```
 
 ---
 
@@ -67,6 +74,7 @@ yolo predict model=yolov8n.pt source=bus.jpg
 
 ## 標註類別（初版）
 
+```text
 screw_ok
 screw_missing
 screw_not_locked
@@ -74,10 +82,13 @@ filter_ok
 filter_missing
 label_ok
 label_missing
-
+```
 
 詳細標註規則請見：
+
+```text
 docs/annotation_spec.md
+```
 
 ---
 
@@ -85,9 +96,11 @@ docs/annotation_spec.md
 
 以下內容不納入 Git 版本控制：
 
+```text
 - dataset（影像與標註）
 - 模型權重（*.pt）
 - training/runs（訓練輸出）
+```
 
 ---
 
@@ -103,17 +116,16 @@ docs/annotation_spec.md
 
 ## 分工建議
 
+```text
 training/：模型訓練與資料處理
 app/：推論與主程式
 docs/：規格與文件
+```
 
 ---
 
-## 未來擴充
+##  未來擴充
 
 * OCR / 條碼辨識
 * 多模型融合（檢測 + 分類）
 * 即時檢測系統（camera stream）
-
-```
-```
