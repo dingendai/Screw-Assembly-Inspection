@@ -12,6 +12,10 @@ training/data/raw/*
 training/data/labeled/*
 training/data/yolo_dataset/images/*/*
 training/data/yolo_dataset/labels/*/*
+training/data/baseline_raw/
+training/data/baseline_raw_v2/
+!training/data/baseline_raw/.gitkeep
+!training/data/baseline_raw_v2/.gitkeep
 
 # 保留資料夾結構
 !training/data/raw/.gitkeep
