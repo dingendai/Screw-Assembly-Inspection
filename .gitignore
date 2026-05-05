@@ -34,3 +34,6 @@ training/data/baseline_raw_v2/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Dataset / generated data
+training/data/
