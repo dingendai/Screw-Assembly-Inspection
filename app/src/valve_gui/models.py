@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from valve_gui.permissions import default_role_passwords
+
 
 @dataclass
 class CameraConfig:
@@ -65,5 +67,6 @@ class AppState:
     operator_camera_index: int = 4
     use_simulation: bool = True
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    role_passwords: dict[str, str] = field(default_factory=default_role_passwords)
     records: list[InspectionRecord] = field(default_factory=list)
     sessions: list[OperatorSession] = field(default_factory=list)

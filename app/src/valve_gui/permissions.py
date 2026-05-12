@@ -14,6 +14,12 @@ ROLE_OPTIONS = [
     (ROLE_DEVELOPER, ROLE_LABELS[ROLE_DEVELOPER]),
 ]
 
+DEFAULT_ROLE_PASSWORDS = {
+    ROLE_DEVELOPER: "0000",
+    ROLE_MANAGER: "1234",
+    ROLE_OPERATOR: "",
+}
+
 PERMISSION_OPEN_SETTINGS = "open_settings"
 PERMISSION_MANAGE_MODELS = "manage_models"
 PERMISSION_EXPORT_RECORDS = "export_records"
@@ -47,3 +53,7 @@ def role_label(role):
 
 def has_permission(role, permission):
     return permission in ROLE_PERMISSIONS.get(role, set())
+
+
+def default_role_passwords():
+    return dict(DEFAULT_ROLE_PASSWORDS)

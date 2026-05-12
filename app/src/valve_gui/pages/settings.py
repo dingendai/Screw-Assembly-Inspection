@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -26,7 +27,11 @@ from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_SETTINGS,
     PERMISSION_USE_SIMULATION,
+    ROLE_DEVELOPER,
+    ROLE_MANAGER,
+    ROLE_OPTIONS,
     has_permission,
+    role_label,
 )
 from valve_gui.widgets import CameraView
 
@@ -74,6 +79,7 @@ class SettingsPage(QWidget):
         left.addWidget(self.build_display_group())
         left.addWidget(self.build_camera_group())
         left.addWidget(self.build_model_group())
+        left.addWidget(self.build_access_group())
         left.addStretch()
         right.addWidget(self.build_preview_group(), 1)
         content.addLayout(left, 0)
@@ -204,6 +210,29 @@ class SettingsPage(QWidget):
         layout.addLayout(actions)
         return group
 
+    def build_access_group(self):
+        self.access_group = QGroupBox("登入密鑰管理")
+        layout = QGridLayout(self.access_group)
+        self.password_inputs = {}
+
+        for row, (role, label) in enumerate(ROLE_OPTIONS):
+            input_box = QLineEdit()
+            input_box.setEchoMode(QLineEdit.EchoMode.Password)
+            input_box.setPlaceholderText(f"{label}登入密鑰")
+            self.password_inputs[role] = input_box
+            layout.addWidget(QLabel(label), row, 0)
+            layout.addWidget(input_box, row, 1)
+
+        hint = QLabel("開發者可管理所有角色密鑰；操作員密鑰可留空，代表不需要密鑰。")
+        hint.setObjectName("mutedText")
+        save_button = QPushButton("保存登入密鑰")
+        save_button.setObjectName("primaryButton")
+        save_button.clicked.connect(self.save_access_passwords)
+
+        layout.addWidget(hint, len(ROLE_OPTIONS), 0, 1, 2)
+        layout.addWidget(save_button, len(ROLE_OPTIONS) + 1, 0, 1, 2)
+        return self.access_group
+
     def build_preview_group(self):
         group = QGroupBox("相機設定即時預覽")
         layout = QVBoxLayout(group)
@@ -283,6 +312,7 @@ class SettingsPage(QWidget):
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
         self.load_model_table()
+        self.load_access_controls()
         self.apply_role_permissions()
         self.restart_preview()
 
@@ -300,6 +330,31 @@ class SettingsPage(QWidget):
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
         self.simulation_box.setEnabled(can_use_simulation)
+        self.access_group.setVisible(self.state.operator_role == ROLE_DEVELOPER)
+
+    def load_access_controls(self):
+        if not hasattr(self, "password_inputs"):
+            return
+        for role, input_box in self.password_inputs.items():
+            input_box.setText(self.state.role_passwords.get(role, ""))
+
+    def save_access_passwords(self):
+        if self.state.operator_role != ROLE_DEVELOPER:
+            QMessageBox.warning(self, "權限不足", "只有開發者可以管理登入密鑰。")
+            return
+
+        updated = {
+            role: input_box.text()
+            for role, input_box in self.password_inputs.items()
+        }
+        for role in (ROLE_DEVELOPER, ROLE_MANAGER):
+            if not updated.get(role):
+                QMessageBox.warning(self, "密鑰不可空白", f"{role_label(role)}密鑰不可空白。")
+                return
+
+        self.state.role_passwords.update(updated)
+        save_app_config(self.state)
+        QMessageBox.information(self, "保存完成", "登入密鑰已更新。")
 
     def load_display_controls(self):
         if not hasattr(self, "display_mode"):

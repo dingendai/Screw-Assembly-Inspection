@@ -3,6 +3,7 @@ from dataclasses import asdict
 
 from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig
 from valve_gui.paths import APP_CONFIG_PATH
+from valve_gui.permissions import DEFAULT_ROLE_PASSWORDS
 
 
 def load_app_config(state):
@@ -13,6 +14,14 @@ def load_app_config(state):
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
+    role_passwords = data.get("role_passwords", {})
+    if isinstance(role_passwords, dict):
+        merged_passwords = dict(DEFAULT_ROLE_PASSWORDS)
+        for role, password in role_passwords.items():
+            if role in merged_passwords:
+                merged_passwords[role] = str(password)
+        state.role_passwords = merged_passwords
+
     display = data.get("display", {})
     if display:
         mode = str(display.get("mode", state.display.mode))
@@ -59,6 +68,7 @@ def save_app_config(state):
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": state.use_simulation,
         "display": asdict(state.display),
+        "role_passwords": state.role_passwords,
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }

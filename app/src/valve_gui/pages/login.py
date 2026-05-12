@@ -22,7 +22,7 @@ from valve_gui.camera import VideoSource, detect_camera_indexes
 from valve_gui.config_store import save_app_config
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
-from valve_gui.permissions import ROLE_OPERATOR, ROLE_OPTIONS
+from valve_gui.permissions import ROLE_DEVELOPER, ROLE_OPERATOR, ROLE_OPTIONS, role_label
 from valve_gui.widgets import CameraView
 
 
@@ -51,6 +51,10 @@ class LoginPage(QWidget):
         self.role_input = QComboBox()
         for role, label in ROLE_OPTIONS:
             self.role_input.addItem(label, role)
+        self.role_input.currentIndexChanged.connect(self.update_login_requirements)
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("輸入登入密鑰")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.camera_index = QComboBox()
         self.populate_camera_indexes(state.operator_camera_index)
         self.simulation_box = QCheckBox("使用模擬影像")
@@ -73,6 +77,7 @@ class LoginPage(QWidget):
         form = QFormLayout()
         form.addRow("操作者姓名", self.name_input)
         form.addRow("登入角色", self.role_input)
+        form.addRow("登入密鑰", self.password_input)
         form.addRow("登入拍照相機", self.camera_index)
         form.addRow("", self.simulation_box)
 
@@ -96,6 +101,7 @@ class LoginPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(panel, 0)
         layout.addWidget(preview_group, 1)
+        self.update_login_requirements()
 
     def build_display_group(self):
         group = QGroupBox("GUI 顯示設定")
@@ -226,7 +232,47 @@ class LoginPage(QWidget):
         self.state.operator_photo_path = str(path)
         self.photo_status.setText(f"已拍照：{path.name}")
 
+    def selected_role(self):
+        return self.role_input.currentData() or ROLE_OPERATOR
+
+    def update_login_requirements(self):
+        is_developer = self.selected_role() == ROLE_DEVELOPER
+        self.name_input.setEnabled(not is_developer)
+        self.camera_index.setEnabled(not is_developer)
+        self.simulation_box.setEnabled(not is_developer)
+        self.photo_status.setText("開發者登入不需要拍照" if is_developer else "尚未拍照")
+
+    def validate_password(self, role):
+        expected = self.state.role_passwords.get(role, "")
+        if expected and self.password_input.text() != expected:
+            QMessageBox.warning(self, "登入密鑰錯誤", f"{role_label(role)}密鑰不正確。")
+            return False
+        return True
+
     def submit(self):
+        role = self.selected_role()
+        if not self.validate_password(role):
+            return
+        if role == ROLE_DEVELOPER:
+            self.state.operator_name = self.name_input.text().strip() or "Developer"
+            self.state.operator_role = role
+            self.state.operator_photo_path = ""
+            self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+            self.state.is_logged_in = True
+            self.state.settings_applied = False
+            self.state.sessions.insert(
+                0,
+                OperatorSession(
+                    operator_name=self.state.operator_name,
+                    operator_role=role,
+                    login_time=self.state.login_time,
+                    photo_path="",
+                ),
+            )
+            self.password_input.clear()
+            self.on_login()
+            return
+
         name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "缺少資料", "請輸入操作者姓名。")
@@ -235,7 +281,7 @@ class LoginPage(QWidget):
             QMessageBox.warning(self, "缺少照片", "請先拍攝操作者照片後才能登入。")
             return
         self.state.operator_name = name
-        self.state.operator_role = self.role_input.currentData() or ROLE_OPERATOR
+        self.state.operator_role = role
         self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
         self.state.is_logged_in = True
         self.state.settings_applied = False
@@ -248,13 +294,15 @@ class LoginPage(QWidget):
                 photo_path=self.state.operator_photo_path,
             ),
         )
+        self.password_input.clear()
         self.on_login()
 
     def reset(self):
         self.name_input.clear()
+        self.password_input.clear()
         self.role_input.setCurrentIndex(0)
         self.state.operator_photo_path = ""
-        self.photo_status.setText("尚未拍照")
+        self.update_login_requirements()
 
     def stop(self):
         self.timer.stop()
