@@ -12,6 +12,11 @@ from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.settings import SettingsPage
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
+from valve_gui.permissions import (
+    PERMISSION_OPEN_SETTINGS,
+    ROLE_OPERATOR,
+    has_permission,
+)
 from valve_gui.storage import write_sessions_csv
 
 
@@ -113,7 +118,9 @@ class MainWindow(QMainWindow):
         logged_in = self.state.is_logged_in
         settings_ready = self.state.settings_applied
         self.actions["login"].setVisible(not logged_in)
-        self.actions["settings"].setVisible(logged_in)
+        self.actions["settings"].setVisible(
+            logged_in and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS)
+        )
         self.actions["monitor"].setVisible(logged_in and settings_ready)
         self.actions["history"].setVisible(logged_in and settings_ready)
         self.actions["logout"].setVisible(logged_in)
@@ -135,11 +142,21 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         if not self.require_login():
             return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入相機設定。")
+            self.show_monitor()
+            return
         self.release_inspection_hardware()
         self.settings_page.refresh()
         self.stack.setCurrentWidget(self.settings_page)
 
     def after_login(self):
+        if self.state.operator_role == ROLE_OPERATOR:
+            self.state.settings_applied = True
+            self.update_navigation()
+            self.monitor_page.start()
+            self.stack.setCurrentWidget(self.monitor_page)
+            return
         self.update_navigation()
         self.release_inspection_hardware()
         self.settings_page.refresh()
@@ -202,6 +219,7 @@ class MainWindow(QMainWindow):
 
         self.release_all_hardware()
         self.state.operator_name = ""
+        self.state.operator_role = ROLE_OPERATOR
         self.state.login_time = ""
         self.state.is_logged_in = False
         self.state.settings_applied = False

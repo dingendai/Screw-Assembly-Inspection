@@ -31,6 +31,7 @@ class DisplayConfig:
 class InspectionRecord:
     timestamp: str
     operator_name: str
+    operator_role: str
     result: str
     part_id: str
     active_cameras: str
@@ -41,6 +42,7 @@ class InspectionRecord:
 @dataclass
 class OperatorSession:
     operator_name: str
+    operator_role: str
     login_time: str
     logout_time: str = ""
     photo_path: str = ""
@@ -49,6 +51,7 @@ class OperatorSession:
 @dataclass
 class AppState:
     operator_name: str = ""
+    operator_role: str = "operator"
     operator_photo_path: str = ""
     login_time: str = ""
     is_logged_in: bool = False

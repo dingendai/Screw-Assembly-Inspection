@@ -22,6 +22,7 @@ from valve_gui.camera import VideoSource, detect_camera_indexes
 from valve_gui.config_store import save_app_config
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
+from valve_gui.permissions import ROLE_OPERATOR, ROLE_OPTIONS
 from valve_gui.widgets import CameraView
 
 
@@ -47,6 +48,9 @@ class LoginPage(QWidget):
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("輸入操作者姓名")
+        self.role_input = QComboBox()
+        for role, label in ROLE_OPTIONS:
+            self.role_input.addItem(label, role)
         self.camera_index = QComboBox()
         self.populate_camera_indexes(state.operator_camera_index)
         self.simulation_box = QCheckBox("使用模擬影像")
@@ -68,6 +72,7 @@ class LoginPage(QWidget):
 
         form = QFormLayout()
         form.addRow("操作者姓名", self.name_input)
+        form.addRow("登入角色", self.role_input)
         form.addRow("登入拍照相機", self.camera_index)
         form.addRow("", self.simulation_box)
 
@@ -230,6 +235,7 @@ class LoginPage(QWidget):
             QMessageBox.warning(self, "缺少照片", "請先拍攝操作者照片後才能登入。")
             return
         self.state.operator_name = name
+        self.state.operator_role = self.role_input.currentData() or ROLE_OPERATOR
         self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
         self.state.is_logged_in = True
         self.state.settings_applied = False
@@ -237,6 +243,7 @@ class LoginPage(QWidget):
             0,
             OperatorSession(
                 operator_name=name,
+                operator_role=self.state.operator_role,
                 login_time=self.state.login_time,
                 photo_path=self.state.operator_photo_path,
             ),
@@ -245,6 +252,7 @@ class LoginPage(QWidget):
 
     def reset(self):
         self.name_input.clear()
+        self.role_input.setCurrentIndex(0)
         self.state.operator_photo_path = ""
         self.photo_status.setText("尚未拍照")
 

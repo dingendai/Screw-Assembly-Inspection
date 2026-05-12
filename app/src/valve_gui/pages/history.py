@@ -17,6 +17,13 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.models import AppState
 from valve_gui.paths import DATA_DIR
+from valve_gui.permissions import (
+    PERMISSION_EXPORT_RECORDS,
+    PERMISSION_VIEW_ALL_RECORDS,
+    PERMISSION_VIEW_SESSIONS,
+    has_permission,
+    role_label,
+)
 from valve_gui.storage import write_sessions_csv
 
 
@@ -24,41 +31,50 @@ class HistoryPage(QWidget):
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["時間", "操作者", "結果", "工件", "相機", "信心度", "備註"])
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["時間", "操作者", "角色", "結果", "工件", "相機", "信心度", "備註"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
 
-        self.session_table = QTableWidget(0, 4)
-        self.session_table.setHorizontalHeaderLabels(["操作者", "登入時間", "登出時間", "照片"])
+        self.session_title = QLabel("操作者登入 / 登出紀錄")
+        self.session_table = QTableWidget(0, 5)
+        self.session_table.setHorizontalHeaderLabels(["操作者", "角色", "登入時間", "登出時間", "照片"])
         self.session_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.session_table.setAlternatingRowColors(True)
 
-        export_button = QPushButton("匯出檢測 CSV")
-        export_button.setObjectName("primaryButton")
-        export_button.clicked.connect(self.export_csv)
-        export_session_button = QPushButton("匯出登入紀錄 CSV")
-        export_session_button.clicked.connect(self.export_sessions_csv)
+        self.export_button = QPushButton("匯出檢測 CSV")
+        self.export_button.setObjectName("primaryButton")
+        self.export_button.clicked.connect(self.export_csv)
+        self.export_session_button = QPushButton("匯出登入紀錄 CSV")
+        self.export_session_button.clicked.connect(self.export_sessions_csv)
 
         actions = QHBoxLayout()
         actions.addStretch()
-        actions.addWidget(export_session_button)
-        actions.addWidget(export_button)
+        actions.addWidget(self.export_session_button)
+        actions.addWidget(self.export_button)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(QLabel("檢測歷史紀錄"))
         layout.addWidget(self.table, 2)
-        layout.addWidget(QLabel("操作者登入 / 登出紀錄"))
+        layout.addWidget(self.session_title)
         layout.addWidget(self.session_table, 1)
         layout.addLayout(actions)
 
     def refresh(self):
-        self.table.setRowCount(len(self.state.records))
-        for row, record in enumerate(self.state.records):
+        can_view_all = has_permission(self.state.operator_role, PERMISSION_VIEW_ALL_RECORDS)
+        can_view_sessions = has_permission(self.state.operator_role, PERMISSION_VIEW_SESSIONS)
+        can_export = has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS)
+
+        records = self.state.records if can_view_all else [
+            record for record in self.state.records if record.operator_name == self.state.operator_name
+        ]
+        self.table.setRowCount(len(records))
+        for row, record in enumerate(records):
             values = [
                 record.timestamp,
                 record.operator_name,
+                role_label(record.operator_role),
                 record.result,
                 record.part_id,
                 record.active_cameras,
@@ -67,17 +83,34 @@ class HistoryPage(QWidget):
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                if column == 2:
+                if column == 3:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, column, item)
 
+        self.session_title.setVisible(can_view_sessions)
+        self.session_table.setVisible(can_view_sessions)
+        self.export_session_button.setVisible(can_view_sessions and can_export)
+        self.export_button.setVisible(can_export)
+        if not can_view_sessions:
+            self.session_table.setRowCount(0)
+            return
+
         self.session_table.setRowCount(len(self.state.sessions))
         for row, session in enumerate(self.state.sessions):
-            values = [session.operator_name, session.login_time, session.logout_time, session.photo_path]
+            values = [
+                session.operator_name,
+                role_label(session.operator_role),
+                session.login_time,
+                session.logout_time,
+                session.photo_path,
+            ]
             for column, value in enumerate(values):
                 self.session_table.setItem(row, column, QTableWidgetItem(value))
 
     def export_csv(self):
+        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS):
+            QMessageBox.warning(self, "權限不足", "目前角色不能匯出檢測紀錄。")
+            return
         if not self.state.records:
             QMessageBox.information(self, "匯出 CSV", "目前沒有檢測紀錄可匯出。")
             return
@@ -88,11 +121,23 @@ class HistoryPage(QWidget):
             return
         with open(path, "w", newline="", encoding="utf-8-sig") as file:
             writer = csv.writer(file)
-            writer.writerow(["timestamp", "operator_name", "result", "part_id", "active_cameras", "confidence", "note"])
+            writer.writerow([
+                "timestamp",
+                "operator_name",
+                "operator_role",
+                "role_label",
+                "result",
+                "part_id",
+                "active_cameras",
+                "confidence",
+                "note",
+            ])
             for record in self.state.records:
                 writer.writerow([
                     record.timestamp,
                     record.operator_name,
+                    record.operator_role,
+                    role_label(record.operator_role),
                     record.result,
                     record.part_id,
                     record.active_cameras,
@@ -102,6 +147,9 @@ class HistoryPage(QWidget):
         QMessageBox.information(self, "匯出完成", f"已匯出：{path}")
 
     def export_sessions_csv(self):
+        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS):
+            QMessageBox.warning(self, "權限不足", "目前角色不能匯出登入紀錄。")
+            return
         if not self.state.sessions:
             QMessageBox.information(self, "匯出 CSV", "目前沒有登入紀錄可匯出。")
             return
@@ -111,4 +159,3 @@ class HistoryPage(QWidget):
         if path:
             write_sessions_csv(path, self.state.sessions)
             QMessageBox.information(self, "匯出完成", f"已匯出：{path}")
-

@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.inference_router import InferenceRouter
 from valve_gui.models import AppState, InspectionRecord
+from valve_gui.permissions import role_label
 from valve_gui.widgets import CameraView
 
 
@@ -90,7 +91,11 @@ class MonitorPage(QWidget):
         layout.addWidget(side, 0)
 
     def refresh(self):
-        self.operator_label.setText(f"操作者：{self.state.operator_name or '--'} / 登入：{self.state.login_time or '--'}")
+        self.operator_label.setText(
+            f"操作者：{self.state.operator_name or '--'}"
+            f" / 角色：{role_label(self.state.operator_role)}"
+            f" / 登入：{self.state.login_time or '--'}"
+        )
         routes = [
             f"C{camera.slot}->{camera.assigned_model_name or '--'}"
             for camera in self.state.inspection_cameras
@@ -199,6 +204,7 @@ class MonitorPage(QWidget):
         record = InspectionRecord(
             timestamp=f"{datetime.now():%Y-%m-%d %H:%M:%S}",
             operator_name=self.state.operator_name,
+            operator_role=self.state.operator_role,
             result=inference.result,
             part_id=self.part_id.text().strip() or f"PART-{datetime.now():%H%M%S}",
             active_cameras=active,
