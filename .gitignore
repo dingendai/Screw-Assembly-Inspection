@@ -27,6 +27,16 @@ training/data/baseline_raw_v2/
 !training/data/yolo_dataset/labels/val/
 !training/data/yolo_dataset/labels/test/
 
+# app/src (只忽略檔案，不忽略資料夾)
+app/src/inspection_data/*
+app/src/inspection_data/operator_photos/*
+
+# 保留資料夾結構
+!app/src/inspection_data/.gitkeep
+!app/src/inspection_data/operator_photos/
+!app/src/inspection_data/operator_photos/.gitkeep
+
+
 # models
 *.pt
 
