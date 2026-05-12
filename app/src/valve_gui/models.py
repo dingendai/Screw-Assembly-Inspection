@@ -21,6 +21,13 @@ class ModelConfig:
 
 
 @dataclass
+class DisplayConfig:
+    mode: str = "auto"
+    width: int = 1440
+    height: int = 900
+
+
+@dataclass
 class InspectionRecord:
     timestamp: str
     operator_name: str
@@ -54,5 +61,6 @@ class AppState:
     )
     operator_camera_index: int = 4
     use_simulation: bool = True
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     records: list[InspectionRecord] = field(default_factory=list)
     sessions: list[OperatorSession] = field(default_factory=list)

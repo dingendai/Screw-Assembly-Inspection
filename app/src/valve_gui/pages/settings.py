@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,6 +26,11 @@ from valve_gui.widgets import CameraView
 
 MODEL_MODALITIES = ["vision", "text", "multimodal", "ocr", "classifier"]
 ROTATION_OPTIONS = ["0", "90", "180", "270"]
+DISPLAY_MODE_OPTIONS = [
+    ("auto", "自動適應目前螢幕"),
+    ("custom", "指定 GUI 畫面大小"),
+    ("fullscreen", "全螢幕"),
+]
 
 
 class SettingsPage(QWidget):
@@ -58,6 +64,7 @@ class SettingsPage(QWidget):
         content = QHBoxLayout()
         left = QVBoxLayout()
         right = QVBoxLayout()
+        left.addWidget(self.build_display_group())
         left.addWidget(self.build_camera_group())
         left.addWidget(self.build_model_group())
         left.addStretch()
@@ -75,6 +82,38 @@ class SettingsPage(QWidget):
         layout.addLayout(header)
         layout.addLayout(content, 1)
         layout.addLayout(action_row)
+
+    def build_display_group(self):
+        group = QGroupBox("GUI 顯示設定")
+        form = QGridLayout(group)
+
+        self.display_mode = QComboBox()
+        for mode, label in DISPLAY_MODE_OPTIONS:
+            self.display_mode.addItem(label, mode)
+        self.display_mode.currentIndexChanged.connect(self.update_display_size_controls)
+
+        self.display_width = QSpinBox()
+        self.display_width.setRange(640, 7680)
+        self.display_width.setSingleStep(20)
+        self.display_width.setSuffix(" px")
+
+        self.display_height = QSpinBox()
+        self.display_height.setRange(480, 4320)
+        self.display_height.setSingleStep(20)
+        self.display_height.setSuffix(" px")
+
+        hint = QLabel("全螢幕會自動使用目前螢幕；非全螢幕可自動最大化或指定寬高。")
+        hint.setObjectName("mutedText")
+
+        form.addWidget(QLabel("顯示模式"), 0, 0)
+        form.addWidget(self.display_mode, 0, 1, 1, 2)
+        form.addWidget(QLabel("寬度"), 1, 0)
+        form.addWidget(self.display_width, 1, 1)
+        form.addWidget(QLabel("高度"), 1, 2)
+        form.addWidget(self.display_height, 1, 3)
+        form.addWidget(hint, 2, 0, 1, 4)
+        self.load_display_controls()
+        return group
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
@@ -223,6 +262,7 @@ class SettingsPage(QWidget):
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.load_display_controls()
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
@@ -235,6 +275,22 @@ class SettingsPage(QWidget):
             rotation.setCurrentText(str(config.rotation_degrees))
         self.load_model_table()
         self.restart_preview()
+
+    def load_display_controls(self):
+        if not hasattr(self, "display_mode"):
+            return
+        self.display_mode.blockSignals(True)
+        match = self.display_mode.findData(self.state.display.mode)
+        self.display_mode.setCurrentIndex(match if match >= 0 else 0)
+        self.display_mode.blockSignals(False)
+        self.display_width.setValue(self.state.display.width)
+        self.display_height.setValue(self.state.display.height)
+        self.update_display_size_controls()
+
+    def update_display_size_controls(self):
+        custom = self.display_mode.currentData() == "custom"
+        self.display_width.setEnabled(custom)
+        self.display_height.setEnabled(custom)
 
     def load_model_table(self):
         self.model_table.setRowCount(0)
@@ -421,6 +477,9 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()
+        self.state.display.mode = self.display_mode.currentData()
+        self.state.display.width = self.display_width.value()
+        self.state.display.height = self.display_height.value()
         first_enabled = next((model for model in self.state.model_configs if model.enabled), None)
         self.state.yolo_model_path = first_enabled.file_path if first_enabled else ""
         self.state.settings_applied = True

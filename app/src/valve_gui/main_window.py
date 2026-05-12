@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QStackedWidget
 
 from valve_gui.config_store import load_app_config
@@ -21,10 +22,15 @@ class MainWindow(QMainWindow):
         load_app_config(self.state)
         ensure_model_configs(self.state)
         self.setWindowTitle("Gas Valve Vision Inspection System")
-        self.resize(1440, 900)
+        self.setMinimumSize(640, 480)
 
         self.stack = QStackedWidget()
-        self.login_page = LoginPage(self.state, self.after_login, self.exit_application)
+        self.login_page = LoginPage(
+            self.state,
+            self.after_login,
+            on_display_change=self.apply_display_config,
+            on_exit=self.exit_application,
+        )
         self.monitor_page = MonitorPage(self.state, self.add_record, self.logout)
         self.settings_page = SettingsPage(
             self.state,
@@ -43,6 +49,45 @@ class MainWindow(QMainWindow):
         self.create_toolbar()
         self.update_navigation()
         self.start_all_cameras_on_boot()
+
+    def show_with_display_config(self):
+        self.apply_display_config(show_window=True)
+
+    def apply_display_config(self, show_window=False):
+        mode = self.state.display.mode
+        if mode == "fullscreen":
+            self.showFullScreen()
+            return
+
+        self.showNormal()
+        screen = self.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        if mode == "custom":
+            width = self.state.display.width
+            height = self.state.display.height
+            min_width = 640
+            min_height = 480
+            if available:
+                min_width = min(min_width, available.width())
+                min_height = min(min_height, available.height())
+                width = min(width, available.width())
+                height = min(height, available.height())
+            self.resize(QSize(max(min_width, width), max(min_height, height)))
+            self.center_on_screen(available)
+            if show_window:
+                self.show()
+            return
+
+        if show_window:
+            self.show()
+        self.showMaximized()
+
+    def center_on_screen(self, available):
+        if not available:
+            return
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     def start_all_cameras_on_boot(self):
         self.login_page.start_preview()
@@ -84,6 +129,7 @@ class MainWindow(QMainWindow):
         if self.state.is_logged_in:
             return
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
+        self.login_page.load_display_controls()
         self.stack.setCurrentWidget(self.login_page)
 
     def show_settings(self):
@@ -101,6 +147,7 @@ class MainWindow(QMainWindow):
 
     def after_settings(self):
         self.settings_page.stop_preview()
+        self.apply_display_config()
         self.update_navigation()
         self.monitor_page.start()
         self.stack.setCurrentWidget(self.monitor_page)
@@ -160,6 +207,7 @@ class MainWindow(QMainWindow):
         self.state.settings_applied = False
         self.login_page.reset()
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
+        self.login_page.load_display_controls()
         self.update_navigation()
         self.stack.setCurrentWidget(self.login_page)
 

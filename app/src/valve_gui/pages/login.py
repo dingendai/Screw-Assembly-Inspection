@@ -13,21 +13,31 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from valve_gui.camera import VideoSource, detect_camera_indexes
+from valve_gui.config_store import save_app_config
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
 from valve_gui.widgets import CameraView
 
 
+DISPLAY_MODE_OPTIONS = [
+    ("auto", "自動適應目前螢幕"),
+    ("custom", "指定 GUI 畫面大小"),
+    ("fullscreen", "全螢幕"),
+]
+
+
 class LoginPage(QWidget):
-    def __init__(self, state: AppState, on_login, on_exit=None):
+    def __init__(self, state: AppState, on_login, on_display_change=None, on_exit=None):
         super().__init__()
         self.state = state
         self.on_login = on_login
+        self.on_display_change = on_display_change
         self.on_exit = on_exit
         self.sources = {}
         self.views = {}
@@ -64,6 +74,7 @@ class LoginPage(QWidget):
         panel = QGroupBox("登入與操作者照片")
         panel_layout = QVBoxLayout(panel)
         panel_layout.addLayout(form)
+        panel_layout.addWidget(self.build_display_group())
         panel_layout.addWidget(scan_button)
         panel_layout.addWidget(start_button)
         panel_layout.addWidget(capture_button)
@@ -80,6 +91,62 @@ class LoginPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(panel, 0)
         layout.addWidget(preview_group, 1)
+
+    def build_display_group(self):
+        group = QGroupBox("GUI 顯示設定")
+        layout = QGridLayout(group)
+
+        self.display_mode = QComboBox()
+        for mode, label in DISPLAY_MODE_OPTIONS:
+            self.display_mode.addItem(label, mode)
+        self.display_mode.currentIndexChanged.connect(self.update_display_size_controls)
+
+        self.display_width = QSpinBox()
+        self.display_width.setRange(640, 7680)
+        self.display_width.setSingleStep(20)
+        self.display_width.setSuffix(" px")
+
+        self.display_height = QSpinBox()
+        self.display_height.setRange(480, 4320)
+        self.display_height.setSingleStep(20)
+        self.display_height.setSuffix(" px")
+
+        apply_button = QPushButton("套用顯示設定")
+        apply_button.clicked.connect(self.apply_display_settings)
+
+        layout.addWidget(QLabel("顯示模式"), 0, 0)
+        layout.addWidget(self.display_mode, 0, 1, 1, 2)
+        layout.addWidget(QLabel("寬度"), 1, 0)
+        layout.addWidget(self.display_width, 1, 1)
+        layout.addWidget(QLabel("高度"), 1, 2)
+        layout.addWidget(self.display_height, 1, 3)
+        layout.addWidget(apply_button, 2, 0, 1, 4)
+        self.load_display_controls()
+        return group
+
+    def load_display_controls(self):
+        if not hasattr(self, "display_mode"):
+            return
+        self.display_mode.blockSignals(True)
+        match = self.display_mode.findData(self.state.display.mode)
+        self.display_mode.setCurrentIndex(match if match >= 0 else 0)
+        self.display_mode.blockSignals(False)
+        self.display_width.setValue(self.state.display.width)
+        self.display_height.setValue(self.state.display.height)
+        self.update_display_size_controls()
+
+    def update_display_size_controls(self):
+        custom = self.display_mode.currentData() == "custom"
+        self.display_width.setEnabled(custom)
+        self.display_height.setEnabled(custom)
+
+    def apply_display_settings(self):
+        self.state.display.mode = self.display_mode.currentData()
+        self.state.display.width = self.display_width.value()
+        self.state.display.height = self.display_height.value()
+        save_app_config(self.state)
+        if self.on_display_change:
+            self.on_display_change()
 
     def populate_camera_indexes(self, selected_index=None):
         self.camera_index.blockSignals(True)

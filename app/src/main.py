@@ -12,7 +12,7 @@ def main():
     app = QApplication(sys.argv)
     apply_styles(app)
     window = MainWindow()
-    window.show()
+    window.show_with_display_config()
     sys.exit(app.exec())
 
 

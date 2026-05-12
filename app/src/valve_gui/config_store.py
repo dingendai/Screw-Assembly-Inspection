@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict
 
-from valve_gui.models import CameraConfig, ModelConfig
+from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig
 from valve_gui.paths import APP_CONFIG_PATH
 
 
@@ -13,6 +13,16 @@ def load_app_config(state):
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
+    display = data.get("display", {})
+    if display:
+        mode = str(display.get("mode", state.display.mode))
+        if mode not in {"auto", "custom", "fullscreen"}:
+            mode = "auto"
+        state.display = DisplayConfig(
+            mode=mode,
+            width=int(display.get("width", state.display.width)),
+            height=int(display.get("height", state.display.height)),
+        )
 
     cameras = data.get("inspection_cameras", [])
     if cameras:
@@ -48,6 +58,7 @@ def save_app_config(state):
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": state.use_simulation,
+        "display": asdict(state.display),
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }
