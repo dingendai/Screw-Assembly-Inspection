@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -46,11 +47,12 @@ DISPLAY_MODE_OPTIONS = [
 
 
 class SettingsPage(QWidget):
-    def __init__(self, state: AppState, on_apply, before_camera_scan=None, on_logout=None):
+    def __init__(self, state: AppState, on_apply, before_camera_scan=None, on_display_change=None, on_logout=None):
         super().__init__()
         self.state = state
         self.on_apply = on_apply
         self.before_camera_scan = before_camera_scan
+        self.on_display_change = on_display_change
         self.on_logout = on_logout
         self.rows = []
         self.preview_sources = []
@@ -73,17 +75,36 @@ class SettingsPage(QWidget):
         header.addStretch()
         header.addWidget(logout_button)
 
-        content = QHBoxLayout()
+        self.tabs = QTabWidget()
+
+        camera_tab = QWidget()
+        content = QHBoxLayout(camera_tab)
         left = QVBoxLayout()
         right = QVBoxLayout()
-        left.addWidget(self.build_display_group())
         left.addWidget(self.build_camera_group())
         left.addWidget(self.build_model_group())
-        left.addWidget(self.build_access_group())
         left.addStretch()
         right.addWidget(self.build_preview_group(), 1)
         content.addLayout(left, 0)
         content.addLayout(right, 1)
+
+        display_tab = QWidget()
+        display_layout = QVBoxLayout(display_tab)
+        display_layout.addWidget(self.build_display_group())
+        display_apply_button = QPushButton("保存 GUI 顯示設定")
+        display_apply_button.setObjectName("primaryButton")
+        display_apply_button.clicked.connect(self.save_display_settings)
+        display_layout.addWidget(display_apply_button)
+        display_layout.addStretch()
+
+        access_tab = QWidget()
+        access_layout = QVBoxLayout(access_tab)
+        access_layout.addWidget(self.build_access_group())
+        access_layout.addStretch()
+
+        self.camera_tab_index = self.tabs.addTab(camera_tab, "相機與模型")
+        self.display_tab_index = self.tabs.addTab(display_tab, "GUI 顯示設定")
+        self.access_tab_index = self.tabs.addTab(access_tab, "登入密鑰管理")
 
         action_row = QHBoxLayout()
         apply_button = QPushButton("套用並保存設定")
@@ -93,7 +114,7 @@ class SettingsPage(QWidget):
         action_row.addWidget(apply_button)
 
         layout.addLayout(header)
-        layout.addLayout(content, 1)
+        layout.addWidget(self.tabs, 1)
         layout.addLayout(action_row)
 
     def build_display_group(self):
@@ -330,7 +351,10 @@ class SettingsPage(QWidget):
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
         self.simulation_box.setEnabled(can_use_simulation)
-        self.access_group.setVisible(self.state.operator_role == ROLE_DEVELOPER)
+        can_manage_access = self.state.operator_role == ROLE_DEVELOPER
+        self.tabs.setTabVisible(self.access_tab_index, can_manage_access)
+        if not can_manage_access and self.tabs.currentIndex() == self.access_tab_index:
+            self.tabs.setCurrentIndex(self.camera_tab_index)
 
     def load_access_controls(self):
         if not hasattr(self, "password_inputs"):
@@ -355,6 +379,15 @@ class SettingsPage(QWidget):
         self.state.role_passwords.update(updated)
         save_app_config(self.state)
         QMessageBox.information(self, "保存完成", "登入密鑰已更新。")
+
+    def save_display_settings(self):
+        self.state.display.mode = self.display_mode.currentData()
+        self.state.display.width = self.display_width.value()
+        self.state.display.height = self.display_height.value()
+        save_app_config(self.state)
+        if self.on_display_change:
+            self.on_display_change()
+        QMessageBox.information(self, "保存完成", "GUI 顯示設定已更新。")
 
     def load_display_controls(self):
         if not hasattr(self, "display_mode"):

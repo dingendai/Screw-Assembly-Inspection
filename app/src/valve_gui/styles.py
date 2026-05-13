@@ -23,6 +23,33 @@ def apply_styles(app: QApplication):
         QToolButton:hover {
             background: #e8eef1;
         }
+        #roleBadge {
+            background: #172026;
+            color: #ffffff;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-weight: 800;
+        }
+        QTabWidget::pane {
+            border: 1px solid #d7dee2;
+            background: #ffffff;
+            border-radius: 8px;
+            top: -1px;
+        }
+        QTabBar::tab {
+            background: #eef3f5;
+            border: 1px solid #c9d4d9;
+            border-bottom: 0;
+            padding: 9px 16px;
+            margin-right: 4px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            font-weight: 700;
+        }
+        QTabBar::tab:selected {
+            background: #ffffff;
+            color: #176b5d;
+        }
         QGroupBox, #cameraCard {
             background: #ffffff;
             border: 1px solid #d7dee2;

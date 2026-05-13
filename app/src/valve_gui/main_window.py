@@ -2,7 +2,7 @@ from datetime import datetime
 
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QStackedWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QSizePolicy, QStackedWidget, QWidget
 
 from valve_gui.config_store import load_app_config
 from valve_gui.model_registry import ensure_model_configs
@@ -16,6 +16,7 @@ from valve_gui.permissions import (
     PERMISSION_OPEN_SETTINGS,
     ROLE_OPERATOR,
     has_permission,
+    role_label,
 )
 from valve_gui.storage import write_sessions_csv
 
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
             self.state,
             self.after_settings,
             before_camera_scan=self.release_inspection_hardware,
+            on_display_change=self.apply_display_config,
             on_logout=self.logout,
         )
         self.history_page = HistoryPage(self.state)
@@ -114,6 +116,13 @@ class MainWindow(QMainWindow):
             toolbar.addAction(action)
             self.actions[key] = action
 
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+        self.role_badge = QLabel()
+        self.role_badge.setObjectName("roleBadge")
+        toolbar.addWidget(self.role_badge)
+
     def update_navigation(self):
         logged_in = self.state.is_logged_in
         settings_ready = self.state.settings_applied
@@ -124,6 +133,10 @@ class MainWindow(QMainWindow):
         self.actions["monitor"].setVisible(logged_in and settings_ready)
         self.actions["history"].setVisible(logged_in and settings_ready)
         self.actions["logout"].setVisible(logged_in)
+        if logged_in:
+            self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role)}")
+        else:
+            self.role_badge.setText("目前權限：未登入")
 
     def require_login(self):
         if not self.state.is_logged_in:
