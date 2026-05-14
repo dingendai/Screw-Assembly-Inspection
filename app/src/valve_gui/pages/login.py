@@ -68,6 +68,9 @@ class LoginPage(QWidget):
         scan_button.clicked.connect(self.scan_cameras)
         capture_button = QPushButton("拍攝登入照片")
         capture_button.clicked.connect(self.capture_photo)
+        self.start_button = start_button
+        self.scan_button = scan_button
+        self.capture_button = capture_button
         login_button = QPushButton("登入")
         login_button.setObjectName("primaryButton")
         login_button.clicked.connect(self.submit)
@@ -75,6 +78,7 @@ class LoginPage(QWidget):
         exit_button.clicked.connect(self.exit_application)
 
         form = QFormLayout()
+        self.form = form
         form.addRow("操作者姓名", self.name_input)
         form.addRow("登入角色", self.role_input)
         form.addRow("登入密鑰", self.password_input)
@@ -94,6 +98,7 @@ class LoginPage(QWidget):
         panel_layout.addWidget(exit_button)
 
         preview_group = QGroupBox("可用相機畫面")
+        self.preview_group = preview_group
         self.preview_grid = QGridLayout(preview_group)
         self.preview_grid.setSpacing(12)
 
@@ -236,11 +241,38 @@ class LoginPage(QWidget):
         return self.role_input.currentData() or ROLE_OPERATOR
 
     def update_login_requirements(self):
-        is_developer = self.selected_role() == ROLE_DEVELOPER
-        self.name_input.setEnabled(not is_developer)
-        self.camera_index.setEnabled(not is_developer)
-        self.simulation_box.setEnabled(not is_developer)
-        self.photo_status.setText("開發者登入不需要拍照" if is_developer else "尚未拍照")
+        role = self.selected_role()
+        is_developer = role == ROLE_DEVELOPER
+        needs_name = not is_developer
+        needs_password = bool(self.state.role_passwords.get(role, ""))
+        needs_photo = not is_developer
+
+        self.set_form_row_visible(self.name_input, needs_name)
+        self.set_form_row_visible(self.password_input, needs_password)
+        self.set_form_row_visible(self.camera_index, needs_photo)
+        self.set_form_row_visible(self.simulation_box, needs_photo)
+
+        self.scan_button.setVisible(needs_photo)
+        self.start_button.setVisible(needs_photo)
+        self.capture_button.setVisible(needs_photo)
+        self.photo_status.setVisible(needs_photo)
+        self.preview_group.setVisible(needs_photo)
+
+        if not needs_name:
+            self.name_input.clear()
+        if not needs_password:
+            self.password_input.clear()
+        if is_developer:
+            self.stop()
+            self.state.operator_photo_path = ""
+        else:
+            self.photo_status.setText("尚未拍照")
+
+    def set_form_row_visible(self, field, visible):
+        label = self.form.labelForField(field)
+        if label:
+            label.setVisible(visible)
+        field.setVisible(visible)
 
     def validate_password(self, role):
         expected = self.state.role_passwords.get(role, "")
