@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -25,16 +24,10 @@ from valve_gui.model_registry import enabled_model_names, ensure_model_configs
 from valve_gui.models import AppState, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
-    CONFIGURABLE_PERMISSIONS,
-    PERMISSION_LABELS,
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_SETTINGS,
     PERMISSION_USE_SIMULATION,
-    ROLE_DEVELOPER,
-    ROLE_MANAGER,
-    ROLE_OPTIONS,
     has_permission,
-    role_label,
 )
 from valve_gui.widgets import CameraView
 
@@ -99,14 +92,8 @@ class SettingsPage(QWidget):
         display_layout.addWidget(display_apply_button)
         display_layout.addStretch()
 
-        access_tab = QWidget()
-        access_layout = QVBoxLayout(access_tab)
-        access_layout.addWidget(self.build_access_group())
-        access_layout.addStretch()
-
         self.camera_tab_index = self.tabs.addTab(camera_tab, "相機與模型")
         self.display_tab_index = self.tabs.addTab(display_tab, "GUI 顯示設定")
-        self.access_tab_index = self.tabs.addTab(access_tab, "登入密鑰管理")
 
         action_row = QHBoxLayout()
         apply_button = QPushButton("套用並保存設定")
@@ -233,47 +220,6 @@ class SettingsPage(QWidget):
         layout.addLayout(actions)
         return group
 
-    def build_access_group(self):
-        self.access_group = QGroupBox("登入密鑰管理")
-        layout = QGridLayout(self.access_group)
-        self.password_inputs = {}
-        self.permission_checks = {}
-
-        for row, (role, label) in enumerate(ROLE_OPTIONS):
-            input_box = QLineEdit()
-            input_box.setEchoMode(QLineEdit.EchoMode.Password)
-            input_box.setPlaceholderText(f"{label}登入密鑰")
-            self.password_inputs[role] = input_box
-            layout.addWidget(QLabel(label), row, 0)
-            layout.addWidget(input_box, row, 1)
-
-        permission_start_row = len(ROLE_OPTIONS) + 1
-        layout.addWidget(QLabel("GUI 介面權限"), permission_start_row, 0, 1, 2)
-        current_row = permission_start_row + 1
-        for role, label in ROLE_OPTIONS:
-            if role == ROLE_DEVELOPER:
-                continue
-            layout.addWidget(QLabel(label), current_row, 0)
-            permission_box = QVBoxLayout()
-            role_checks = {}
-            for permission in CONFIGURABLE_PERMISSIONS:
-                checkbox = QCheckBox(PERMISSION_LABELS.get(permission, permission))
-                role_checks[permission] = checkbox
-                permission_box.addWidget(checkbox)
-            self.permission_checks[role] = role_checks
-            layout.addLayout(permission_box, current_row, 1)
-            current_row += 1
-
-        hint = QLabel("開發者可管理所有角色密鑰；操作員密鑰可留空，代表不需要密鑰。")
-        hint.setObjectName("mutedText")
-        save_button = QPushButton("保存登入密鑰與權限")
-        save_button.setObjectName("primaryButton")
-        save_button.clicked.connect(self.save_access_passwords)
-
-        layout.addWidget(hint, current_row, 0, 1, 2)
-        layout.addWidget(save_button, current_row + 1, 0, 1, 2)
-        return self.access_group
-
     def build_preview_group(self):
         group = QGroupBox("相機設定即時預覽")
         layout = QVBoxLayout(group)
@@ -353,7 +299,6 @@ class SettingsPage(QWidget):
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
         self.load_model_table()
-        self.load_access_controls()
         self.apply_role_permissions()
         self.restart_preview()
 
@@ -371,45 +316,6 @@ class SettingsPage(QWidget):
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
         self.simulation_box.setEnabled(can_use_simulation)
-        can_manage_access = self.state.operator_role == ROLE_DEVELOPER
-        self.tabs.setTabVisible(self.access_tab_index, can_manage_access)
-        if not can_manage_access and self.tabs.currentIndex() == self.access_tab_index:
-            self.tabs.setCurrentIndex(self.camera_tab_index)
-
-    def load_access_controls(self):
-        if not hasattr(self, "password_inputs"):
-            return
-        for role, input_box in self.password_inputs.items():
-            input_box.setText(self.state.role_passwords.get(role, ""))
-        for role, role_checks in self.permission_checks.items():
-            permissions = self.state.role_permissions.get(role, set())
-            for permission, checkbox in role_checks.items():
-                checkbox.setChecked(permission in permissions)
-
-    def save_access_passwords(self):
-        if self.state.operator_role != ROLE_DEVELOPER:
-            QMessageBox.warning(self, "權限不足", "只有開發者可以管理登入密鑰。")
-            return
-
-        updated = {
-            role: input_box.text()
-            for role, input_box in self.password_inputs.items()
-        }
-        for role in (ROLE_DEVELOPER, ROLE_MANAGER):
-            if not updated.get(role):
-                QMessageBox.warning(self, "密鑰不可空白", f"{role_label(role)}密鑰不可空白。")
-                return
-
-        self.state.role_passwords.update(updated)
-        for role, role_checks in self.permission_checks.items():
-            self.state.role_permissions[role] = {
-                permission
-                for permission, checkbox in role_checks.items()
-                if checkbox.isChecked()
-            }
-        save_app_config(self.state)
-        QMessageBox.information(self, "保存完成", "登入密鑰與 GUI 權限已更新。")
-
     def save_display_settings(self):
         self.state.display.mode = self.display_mode.currentData()
         self.state.display.width = self.display_width.value()

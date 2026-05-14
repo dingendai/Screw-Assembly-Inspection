@@ -18,7 +18,6 @@ from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
     PERMISSION_LABELS,
     ROLE_DEVELOPER,
-    default_role_labels,
     default_role_permissions,
     role_label,
 )
@@ -44,9 +43,16 @@ class UserManagementPage(QWidget):
         header.addStretch()
         header.addWidget(logout_button)
 
-        self.role_table = QTableWidget(0, 2 + len(CONFIGURABLE_PERMISSIONS))
+        developer_key_row = QHBoxLayout()
+        developer_key_row.addWidget(QLabel("Developer 登入密鑰"))
+        self.developer_password = QLineEdit()
+        self.developer_password.setEchoMode(QLineEdit.EchoMode.Password)
+        developer_key_row.addWidget(self.developer_password)
+
+        self.role_table = QTableWidget(0, 3 + len(CONFIGURABLE_PERMISSIONS))
         self.role_table.setHorizontalHeaderLabels(
-            ["階級代碼", "顯示名稱"] + [PERMISSION_LABELS.get(permission, permission) for permission in CONFIGURABLE_PERMISSIONS]
+            ["階級代碼", "顯示名稱", "角色登入密鑰"]
+            + [PERMISSION_LABELS.get(permission, permission) for permission in CONFIGURABLE_PERMISSIONS]
         )
 
         role_actions = QHBoxLayout()
@@ -75,6 +81,7 @@ class UserManagementPage(QWidget):
         save_button.clicked.connect(self.save)
 
         layout.addLayout(header)
+        layout.addLayout(developer_key_row)
         layout.addWidget(QLabel("用戶階級"))
         layout.addWidget(self.role_table, 1)
         layout.addLayout(role_actions)
@@ -84,6 +91,7 @@ class UserManagementPage(QWidget):
         layout.addWidget(save_button)
 
     def refresh(self):
+        self.developer_password.setText(self.state.role_passwords.get(ROLE_DEVELOPER, ""))
         self.load_roles()
         self.load_users()
 
@@ -92,9 +100,14 @@ class UserManagementPage(QWidget):
         for role, label in self.state.role_labels.items():
             if role == ROLE_DEVELOPER:
                 continue
-            self.add_role_row(role, label, self.state.role_permissions.get(role, set()))
+            self.add_role_row(
+                role,
+                label,
+                self.state.role_permissions.get(role, set()),
+                self.state.role_passwords.get(role, ""),
+            )
 
-    def add_role_row(self, role=None, label=None, permissions=None):
+    def add_role_row(self, role=None, label=None, permissions=None, password=""):
         if role is None:
             role = self.next_role_key()
             label = "新階級"
@@ -103,8 +116,11 @@ class UserManagementPage(QWidget):
         self.role_table.insertRow(row)
         self.role_table.setItem(row, 0, QTableWidgetItem(role))
         self.role_table.setItem(row, 1, QTableWidgetItem(label or role))
+        password_input = QLineEdit(password)
+        password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.role_table.setCellWidget(row, 2, password_input)
         permissions = permissions or set()
-        for col, permission in enumerate(CONFIGURABLE_PERMISSIONS, start=2):
+        for col, permission in enumerate(CONFIGURABLE_PERMISSIONS, start=3):
             checkbox = QCheckBox()
             checkbox.setChecked(permission in permissions)
             self.role_table.setCellWidget(row, col, checkbox)
@@ -189,7 +205,11 @@ class UserManagementPage(QWidget):
     def save(self):
         role_labels = {ROLE_DEVELOPER: self.state.role_labels.get(ROLE_DEVELOPER, role_label(ROLE_DEVELOPER))}
         role_permissions = default_role_permissions()
+        role_passwords = {ROLE_DEVELOPER: self.developer_password.text()}
         role_keys = set(role_labels)
+        if not role_passwords[ROLE_DEVELOPER]:
+            QMessageBox.warning(self, "資料錯誤", "Developer 登入密鑰不可空白。")
+            return
 
         for row in range(self.role_table.rowCount()):
             role_item = self.role_table.item(row, 0)
@@ -204,9 +224,11 @@ class UserManagementPage(QWidget):
                 return
             role_keys.add(role)
             role_labels[role] = label or role
+            password_input = self.role_table.cellWidget(row, 2)
+            role_passwords[role] = password_input.text() if password_input else ""
             role_permissions[role] = {
                 permission
-                for col, permission in enumerate(CONFIGURABLE_PERMISSIONS, start=2)
+                for col, permission in enumerate(CONFIGURABLE_PERMISSIONS, start=3)
                 if self.role_table.cellWidget(row, col) and self.role_table.cellWidget(row, col).isChecked()
             }
 
@@ -242,10 +264,7 @@ class UserManagementPage(QWidget):
 
         self.state.role_labels = role_labels
         self.state.role_permissions = role_permissions
-        self.state.role_passwords = {
-            role: self.state.role_passwords.get(role, "")
-            for role in role_labels
-        }
+        self.state.role_passwords = role_passwords
         self.state.user_accounts = users
         save_app_config(self.state)
         if self.on_saved:
