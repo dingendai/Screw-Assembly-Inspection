@@ -11,11 +11,13 @@ from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.settings import SettingsPage
+from valve_gui.pages.users import UserManagementPage
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
 from valve_gui.permissions import (
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
     PERMISSION_OPEN_SETTINGS,
+    ROLE_DEVELOPER,
     ROLE_OPERATOR,
     has_permission,
     role_label,
@@ -48,10 +50,12 @@ class MainWindow(QMainWindow):
             on_logout=self.logout,
         )
         self.history_page = HistoryPage(self.state)
+        self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.user_page)
         self.setCentralWidget(self.stack)
 
         self.actions = {}
@@ -107,6 +111,7 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login),
             ("settings", "相機設定", self.show_settings),
+            ("users", "用戶管理", self.show_users),
             ("monitor", "監視", self.show_monitor),
             ("history", "歷史紀錄", self.show_history),
             ("logout", "登出", self.logout),
@@ -145,9 +150,10 @@ class MainWindow(QMainWindow):
             and settings_ready
             and has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions)
         )
+        self.actions["users"].setVisible(logged_in and self.state.operator_role == ROLE_DEVELOPER)
         self.actions["logout"].setVisible(logged_in)
         if logged_in:
-            self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role)}")
+            self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
             self.role_badge.setText("目前權限：未登入")
 
@@ -167,6 +173,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.login_page)
 
     def restart_login_preview(self):
+        self.login_page.refresh_role_options()
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
         self.login_page.load_display_controls()
         self.login_page.start_preview()
@@ -241,6 +248,20 @@ class MainWindow(QMainWindow):
         self.release_all_hardware()
         self.history_page.refresh()
         self.stack.setCurrentWidget(self.history_page)
+
+    def show_users(self):
+        if not self.require_login():
+            return
+        if self.state.operator_role != ROLE_DEVELOPER:
+            QMessageBox.warning(self, "權限不足", "只有開發者可以進入用戶管理。")
+            return
+        self.release_all_hardware()
+        self.user_page.refresh()
+        self.stack.setCurrentWidget(self.user_page)
+
+    def after_user_management_saved(self):
+        self.login_page.refresh_role_options()
+        self.update_navigation()
 
     def add_record(self, record: InspectionRecord):
         self.state.records.insert(0, record)

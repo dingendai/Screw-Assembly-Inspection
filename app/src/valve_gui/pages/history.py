@@ -86,7 +86,7 @@ class HistoryPage(QWidget):
             values = [
                 record.timestamp,
                 record.operator_name,
-                role_label(record.operator_role),
+                role_label(record.operator_role, self.state.role_labels),
                 record.result,
                 record.part_id,
                 record.active_cameras,
@@ -111,7 +111,7 @@ class HistoryPage(QWidget):
         for row, session in enumerate(self.state.sessions):
             values = [
                 session.operator_name,
-                role_label(session.operator_role),
+                role_label(session.operator_role, self.state.role_labels),
                 session.login_time,
                 session.logout_time,
                 session.photo_path,
@@ -149,7 +149,7 @@ class HistoryPage(QWidget):
                     record.timestamp,
                     record.operator_name,
                     record.operator_role,
-                    role_label(record.operator_role),
+                    role_label(record.operator_role, self.state.role_labels),
                     record.result,
                     record.part_id,
                     record.active_cameras,

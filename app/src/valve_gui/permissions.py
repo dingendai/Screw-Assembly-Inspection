@@ -77,8 +77,9 @@ ROLE_PERMISSIONS = {
 }
 
 
-def role_label(role):
-    return ROLE_LABELS.get(role, ROLE_LABELS[ROLE_OPERATOR])
+def role_label(role, role_labels=None):
+    labels = role_labels or ROLE_LABELS
+    return labels.get(role, ROLE_LABELS.get(role, role))
 
 
 def has_permission(role, permission, role_permissions=None):
@@ -94,3 +95,23 @@ def default_role_passwords():
 
 def default_role_permissions():
     return {role: set(permissions) for role, permissions in ROLE_PERMISSIONS.items()}
+
+
+def default_role_labels():
+    return dict(ROLE_LABELS)
+
+
+def role_options(role_labels=None):
+    labels = role_labels or ROLE_LABELS
+    ordered = []
+    for role in (ROLE_OPERATOR, ROLE_MANAGER, ROLE_DEVELOPER):
+        if role in labels:
+            ordered.append((role, labels[role]))
+    for role in sorted(labels):
+        if role not in {ROLE_OPERATOR, ROLE_MANAGER, ROLE_DEVELOPER}:
+            ordered.append((role, labels[role]))
+    return ordered
+
+
+def protected_roles():
+    return {ROLE_DEVELOPER}

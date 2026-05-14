@@ -1,9 +1,15 @@
 import json
 from dataclasses import asdict
 
-from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig
+from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig, UserAccount
 from valve_gui.paths import APP_CONFIG_PATH
-from valve_gui.permissions import CONFIGURABLE_PERMISSIONS, DEFAULT_ROLE_PASSWORDS, ROLE_DEVELOPER, default_role_permissions
+from valve_gui.permissions import (
+    CONFIGURABLE_PERMISSIONS,
+    DEFAULT_ROLE_PASSWORDS,
+    ROLE_DEVELOPER,
+    default_role_labels,
+    default_role_permissions,
+)
 
 
 def load_app_config(state):
@@ -14,12 +20,21 @@ def load_app_config(state):
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
+    role_labels = data.get("role_labels", {})
+    merged_labels = default_role_labels()
+    if isinstance(role_labels, dict):
+        for role, label in role_labels.items():
+            role_key = str(role).strip()
+            if role_key:
+                merged_labels[role_key] = str(label).strip() or role_key
+    state.role_labels = merged_labels
+
     role_passwords = data.get("role_passwords", {})
     if isinstance(role_passwords, dict):
         merged_passwords = dict(DEFAULT_ROLE_PASSWORDS)
         for role, password in role_passwords.items():
-            if role in merged_passwords:
-                merged_passwords[role] = str(password)
+            if role in state.role_labels:
+                merged_passwords[str(role)] = str(password)
         state.role_passwords = merged_passwords
 
     role_permissions = data.get("role_permissions", {})
@@ -27,11 +42,26 @@ def load_app_config(state):
     if isinstance(role_permissions, dict):
         allowed_permissions = set(CONFIGURABLE_PERMISSIONS)
         for role, permissions in role_permissions.items():
-            if role == ROLE_DEVELOPER or role not in merged_permissions:
+            role_key = str(role)
+            if role_key == ROLE_DEVELOPER or role_key not in state.role_labels:
                 continue
             if isinstance(permissions, list):
-                merged_permissions[role] = {item for item in permissions if item in allowed_permissions}
+                merged_permissions[role_key] = {item for item in permissions if item in allowed_permissions}
     state.role_permissions = merged_permissions
+
+    users = data.get("user_accounts", [])
+    if isinstance(users, list):
+        state.user_accounts = [
+            UserAccount(
+                username=str(item.get("username", "")).strip(),
+                display_name=str(item.get("display_name", "")).strip(),
+                role=str(item.get("role", "operator")).strip() or "operator",
+                password=str(item.get("password", "")),
+                enabled=bool(item.get("enabled", True)),
+            )
+            for item in users
+            if isinstance(item, dict) and str(item.get("username", "")).strip()
+        ]
 
     display = data.get("display", {})
     if display:
@@ -79,11 +109,13 @@ def save_app_config(state):
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": state.use_simulation,
         "display": asdict(state.display),
+        "role_labels": state.role_labels,
         "role_passwords": state.role_passwords,
         "role_permissions": {
             role: sorted(permissions)
             for role, permissions in state.role_permissions.items()
         },
+        "user_accounts": [asdict(account) for account in state.user_accounts],
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }

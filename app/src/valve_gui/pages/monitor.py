@@ -93,7 +93,7 @@ class MonitorPage(QWidget):
     def refresh(self):
         self.operator_label.setText(
             f"操作者：{self.state.operator_name or '--'}"
-            f" / 角色：{role_label(self.state.operator_role)}"
+            f" / 角色：{role_label(self.state.operator_role, self.state.role_labels)}"
             f" / 登入：{self.state.login_time or '--'}"
         )
         routes = [
