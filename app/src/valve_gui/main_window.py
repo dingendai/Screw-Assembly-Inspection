@@ -97,8 +97,7 @@ class MainWindow(QMainWindow):
         self.move(frame.topLeft())
 
     def start_all_cameras_on_boot(self):
-        self.login_page.start_preview()
-        self.monitor_page.start()
+        self.restart_login_preview()
 
     def create_toolbar(self):
         toolbar = self.addToolBar("Navigation")
@@ -141,6 +140,8 @@ class MainWindow(QMainWindow):
     def require_login(self):
         if not self.state.is_logged_in:
             QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
+            self.release_all_hardware()
+            self.restart_login_preview()
             self.stack.setCurrentWidget(self.login_page)
             return False
         return True
@@ -163,7 +164,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入相機設定。")
             self.show_monitor()
             return
-        self.release_inspection_hardware()
+        self.release_all_hardware()
         self.settings_page.refresh()
         self.stack.setCurrentWidget(self.settings_page)
 
@@ -171,16 +172,17 @@ class MainWindow(QMainWindow):
         if self.state.operator_role == ROLE_OPERATOR:
             self.state.settings_applied = True
             self.update_navigation()
+            self.release_all_hardware()
             self.monitor_page.start()
             self.stack.setCurrentWidget(self.monitor_page)
             return
         self.update_navigation()
-        self.release_inspection_hardware()
+        self.release_all_hardware()
         self.settings_page.refresh()
         self.stack.setCurrentWidget(self.settings_page)
 
     def after_settings(self):
-        self.settings_page.stop_preview()
+        self.release_all_hardware()
         self.apply_display_config()
         self.update_navigation()
         self.monitor_page.start()
@@ -193,10 +195,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "尚未套用設定", "請先套用相機設定。")
             self.show_settings()
             return
-        self.settings_page.stop_preview()
+        self.release_all_hardware()
         self.monitor_page.refresh()
-        if not self.monitor_page.sources:
-            self.monitor_page.start()
+        self.monitor_page.start()
         self.stack.setCurrentWidget(self.monitor_page)
 
     def show_history(self):
@@ -205,7 +206,7 @@ class MainWindow(QMainWindow):
         if not self.state.settings_applied:
             self.show_settings()
             return
-        self.settings_page.stop_preview()
+        self.release_all_hardware()
         self.history_page.refresh()
         self.stack.setCurrentWidget(self.history_page)
 
@@ -216,6 +217,7 @@ class MainWindow(QMainWindow):
     def release_inspection_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
+        self.login_page.stop()
 
     def release_all_hardware(self):
         self.monitor_page.stop()
