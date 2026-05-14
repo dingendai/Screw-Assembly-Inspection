@@ -25,6 +25,8 @@ from valve_gui.model_registry import enabled_model_names, ensure_model_configs
 from valve_gui.models import AppState, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
+    CONFIGURABLE_PERMISSIONS,
+    PERMISSION_LABELS,
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_SETTINGS,
     PERMISSION_USE_SIMULATION,
@@ -235,6 +237,7 @@ class SettingsPage(QWidget):
         self.access_group = QGroupBox("登入密鑰管理")
         layout = QGridLayout(self.access_group)
         self.password_inputs = {}
+        self.permission_checks = {}
 
         for row, (role, label) in enumerate(ROLE_OPTIONS):
             input_box = QLineEdit()
@@ -244,14 +247,31 @@ class SettingsPage(QWidget):
             layout.addWidget(QLabel(label), row, 0)
             layout.addWidget(input_box, row, 1)
 
+        permission_start_row = len(ROLE_OPTIONS) + 1
+        layout.addWidget(QLabel("GUI 介面權限"), permission_start_row, 0, 1, 2)
+        current_row = permission_start_row + 1
+        for role, label in ROLE_OPTIONS:
+            if role == ROLE_DEVELOPER:
+                continue
+            layout.addWidget(QLabel(label), current_row, 0)
+            permission_box = QVBoxLayout()
+            role_checks = {}
+            for permission in CONFIGURABLE_PERMISSIONS:
+                checkbox = QCheckBox(PERMISSION_LABELS.get(permission, permission))
+                role_checks[permission] = checkbox
+                permission_box.addWidget(checkbox)
+            self.permission_checks[role] = role_checks
+            layout.addLayout(permission_box, current_row, 1)
+            current_row += 1
+
         hint = QLabel("開發者可管理所有角色密鑰；操作員密鑰可留空，代表不需要密鑰。")
         hint.setObjectName("mutedText")
-        save_button = QPushButton("保存登入密鑰")
+        save_button = QPushButton("保存登入密鑰與權限")
         save_button.setObjectName("primaryButton")
         save_button.clicked.connect(self.save_access_passwords)
 
-        layout.addWidget(hint, len(ROLE_OPTIONS), 0, 1, 2)
-        layout.addWidget(save_button, len(ROLE_OPTIONS) + 1, 0, 1, 2)
+        layout.addWidget(hint, current_row, 0, 1, 2)
+        layout.addWidget(save_button, current_row + 1, 0, 1, 2)
         return self.access_group
 
     def build_preview_group(self):
@@ -318,7 +338,7 @@ class SettingsPage(QWidget):
             self.populate_model_combo(model_combo, selected)
 
     def refresh(self):
-        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS):
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             return
         ensure_model_configs(self.state)
         self.load_display_controls()
@@ -338,8 +358,8 @@ class SettingsPage(QWidget):
         self.restart_preview()
 
     def apply_role_permissions(self):
-        can_manage_models = has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS)
-        can_use_simulation = has_permission(self.state.operator_role, PERMISSION_USE_SIMULATION)
+        can_manage_models = has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
+        can_use_simulation = has_permission(self.state.operator_role, PERMISSION_USE_SIMULATION, self.state.role_permissions)
         self.model_table.setEditTriggers(
             QAbstractItemView.EditTrigger.AllEditTriggers
             if can_manage_models
@@ -361,6 +381,10 @@ class SettingsPage(QWidget):
             return
         for role, input_box in self.password_inputs.items():
             input_box.setText(self.state.role_passwords.get(role, ""))
+        for role, role_checks in self.permission_checks.items():
+            permissions = self.state.role_permissions.get(role, set())
+            for permission, checkbox in role_checks.items():
+                checkbox.setChecked(permission in permissions)
 
     def save_access_passwords(self):
         if self.state.operator_role != ROLE_DEVELOPER:
@@ -377,8 +401,14 @@ class SettingsPage(QWidget):
                 return
 
         self.state.role_passwords.update(updated)
+        for role, role_checks in self.permission_checks.items():
+            self.state.role_permissions[role] = {
+                permission
+                for permission, checkbox in role_checks.items()
+                if checkbox.isChecked()
+            }
         save_app_config(self.state)
-        QMessageBox.information(self, "保存完成", "登入密鑰已更新。")
+        QMessageBox.information(self, "保存完成", "登入密鑰與 GUI 權限已更新。")
 
     def save_display_settings(self):
         self.state.display.mode = self.display_mode.currentData()
@@ -411,7 +441,7 @@ class SettingsPage(QWidget):
             self.add_model_row(config)
 
     def add_model_row(self, config=None):
-        if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能新增模型。")
             return
         config = config or ModelConfig(name=f"Model {self.model_table.rowCount() + 1}")
@@ -434,7 +464,7 @@ class SettingsPage(QWidget):
         self.model_table.setItem(row, 3, QTableWidgetItem(config.file_path))
 
     def remove_selected_model(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能移除模型。")
             return
         row = self.model_table.currentRow()
@@ -443,7 +473,7 @@ class SettingsPage(QWidget):
             self.sync_models_from_table()
 
     def browse_selected_model(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能選取模型檔案。")
             return
         row = self.model_table.currentRow()
@@ -461,7 +491,7 @@ class SettingsPage(QWidget):
             self.sync_models_from_table()
 
     def rescan_models(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能重新掃描模型。")
             return
         ensure_model_configs(self.state)
@@ -470,7 +500,7 @@ class SettingsPage(QWidget):
         self.restart_preview()
 
     def sync_models_from_table(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             return
         self.state.model_configs = self.collect_model_configs()
         self.refresh_camera_model_combos()
@@ -582,11 +612,11 @@ class SettingsPage(QWidget):
         return configs
 
     def apply(self):
-        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS):
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改相機與模型設定。")
             return
         self.release_external_cameras()
-        if has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS):
+        if has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             self.state.model_configs = self.collect_model_configs()
         enabled_names = enabled_model_names(self.state)
         if not enabled_names:

@@ -62,9 +62,21 @@ class HistoryPage(QWidget):
         layout.addLayout(actions)
 
     def refresh(self):
-        can_view_all = has_permission(self.state.operator_role, PERMISSION_VIEW_ALL_RECORDS)
-        can_view_sessions = has_permission(self.state.operator_role, PERMISSION_VIEW_SESSIONS)
-        can_export = has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS)
+        can_view_all = has_permission(
+            self.state.operator_role,
+            PERMISSION_VIEW_ALL_RECORDS,
+            self.state.role_permissions,
+        )
+        can_view_sessions = has_permission(
+            self.state.operator_role,
+            PERMISSION_VIEW_SESSIONS,
+            self.state.role_permissions,
+        )
+        can_export = has_permission(
+            self.state.operator_role,
+            PERMISSION_EXPORT_RECORDS,
+            self.state.role_permissions,
+        )
 
         records = self.state.records if can_view_all else [
             record for record in self.state.records if record.operator_name == self.state.operator_name
@@ -108,7 +120,7 @@ class HistoryPage(QWidget):
                 self.session_table.setItem(row, column, QTableWidgetItem(value))
 
     def export_csv(self):
-        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS):
+        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能匯出檢測紀錄。")
             return
         if not self.state.records:
@@ -147,7 +159,7 @@ class HistoryPage(QWidget):
         QMessageBox.information(self, "匯出完成", f"已匯出：{path}")
 
     def export_sessions_csv(self):
-        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS):
+        if not has_permission(self.state.operator_role, PERMISSION_EXPORT_RECORDS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能匯出登入紀錄。")
             return
         if not self.state.sessions:

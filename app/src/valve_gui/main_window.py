@@ -13,6 +13,8 @@ from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.settings import SettingsPage
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
 from valve_gui.permissions import (
+    PERMISSION_OPEN_HISTORY,
+    PERMISSION_OPEN_MONITOR,
     PERMISSION_OPEN_SETTINGS,
     ROLE_OPERATOR,
     has_permission,
@@ -127,10 +129,22 @@ class MainWindow(QMainWindow):
         settings_ready = self.state.settings_applied
         self.actions["login"].setVisible(not logged_in)
         self.actions["settings"].setVisible(
-            logged_in and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS)
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
         )
-        self.actions["monitor"].setVisible(logged_in and settings_ready)
-        self.actions["history"].setVisible(logged_in and settings_ready)
+        self.actions["monitor"].setVisible(
+            logged_in
+            and settings_ready
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions)
+        )
+        self.actions["history"].setVisible(
+            logged_in
+            and settings_ready
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions)
+        )
         self.actions["logout"].setVisible(logged_in)
         if logged_in:
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role)}")
@@ -160,7 +174,7 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         if not self.require_login():
             return
-        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS):
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入相機設定。")
             self.show_monitor()
             return
@@ -173,23 +187,38 @@ class MainWindow(QMainWindow):
             self.state.settings_applied = True
             self.update_navigation()
             self.release_all_hardware()
-            self.monitor_page.start()
-            self.stack.setCurrentWidget(self.monitor_page)
+            if has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
+                self.monitor_page.start()
+                self.stack.setCurrentWidget(self.monitor_page)
+            else:
+                QMessageBox.information(self, "權限不足", "目前角色沒有可進入的監視頁面。")
             return
         self.update_navigation()
         self.release_all_hardware()
-        self.settings_page.refresh()
-        self.stack.setCurrentWidget(self.settings_page)
+        if has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            self.settings_page.refresh()
+            self.stack.setCurrentWidget(self.settings_page)
+        elif has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
+            self.state.settings_applied = True
+            self.update_navigation()
+            self.monitor_page.start()
+            self.stack.setCurrentWidget(self.monitor_page)
+        else:
+            QMessageBox.information(self, "權限不足", "目前角色沒有可進入的 GUI 介面。")
 
     def after_settings(self):
         self.release_all_hardware()
         self.apply_display_config()
         self.update_navigation()
-        self.monitor_page.start()
-        self.stack.setCurrentWidget(self.monitor_page)
+        if has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
+            self.monitor_page.start()
+            self.stack.setCurrentWidget(self.monitor_page)
 
     def show_monitor(self):
         if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入監視頁面。")
             return
         if not self.state.settings_applied:
             QMessageBox.information(self, "尚未套用設定", "請先套用相機設定。")
@@ -202,6 +231,9 @@ class MainWindow(QMainWindow):
 
     def show_history(self):
         if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入歷史紀錄。")
             return
         if not self.state.settings_applied:
             self.show_settings()

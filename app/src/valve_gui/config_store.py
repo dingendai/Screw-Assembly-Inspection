@@ -3,7 +3,7 @@ from dataclasses import asdict
 
 from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig
 from valve_gui.paths import APP_CONFIG_PATH
-from valve_gui.permissions import DEFAULT_ROLE_PASSWORDS
+from valve_gui.permissions import CONFIGURABLE_PERMISSIONS, DEFAULT_ROLE_PASSWORDS, ROLE_DEVELOPER, default_role_permissions
 
 
 def load_app_config(state):
@@ -21,6 +21,17 @@ def load_app_config(state):
             if role in merged_passwords:
                 merged_passwords[role] = str(password)
         state.role_passwords = merged_passwords
+
+    role_permissions = data.get("role_permissions", {})
+    merged_permissions = default_role_permissions()
+    if isinstance(role_permissions, dict):
+        allowed_permissions = set(CONFIGURABLE_PERMISSIONS)
+        for role, permissions in role_permissions.items():
+            if role == ROLE_DEVELOPER or role not in merged_permissions:
+                continue
+            if isinstance(permissions, list):
+                merged_permissions[role] = {item for item in permissions if item in allowed_permissions}
+    state.role_permissions = merged_permissions
 
     display = data.get("display", {})
     if display:
@@ -69,6 +80,10 @@ def save_app_config(state):
         "use_simulation": state.use_simulation,
         "display": asdict(state.display),
         "role_passwords": state.role_passwords,
+        "role_permissions": {
+            role: sorted(permissions)
+            for role, permissions in state.role_permissions.items()
+        },
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }

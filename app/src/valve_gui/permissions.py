@@ -21,15 +21,41 @@ DEFAULT_ROLE_PASSWORDS = {
 }
 
 PERMISSION_OPEN_SETTINGS = "open_settings"
+PERMISSION_OPEN_MONITOR = "open_monitor"
+PERMISSION_OPEN_HISTORY = "open_history"
 PERMISSION_MANAGE_MODELS = "manage_models"
 PERMISSION_EXPORT_RECORDS = "export_records"
 PERMISSION_VIEW_ALL_RECORDS = "view_all_records"
 PERMISSION_VIEW_SESSIONS = "view_sessions"
 PERMISSION_USE_SIMULATION = "use_simulation"
 
+PERMISSION_LABELS = {
+    PERMISSION_OPEN_SETTINGS: "相機設定",
+    PERMISSION_OPEN_MONITOR: "監視頁面",
+    PERMISSION_OPEN_HISTORY: "歷史紀錄頁面",
+    PERMISSION_MANAGE_MODELS: "模型管理",
+    PERMISSION_EXPORT_RECORDS: "匯出紀錄",
+    PERMISSION_VIEW_ALL_RECORDS: "查看全部檢測紀錄",
+    PERMISSION_VIEW_SESSIONS: "查看登入紀錄",
+    PERMISSION_USE_SIMULATION: "使用模擬相機",
+}
+
+CONFIGURABLE_PERMISSIONS = [
+    PERMISSION_OPEN_MONITOR,
+    PERMISSION_OPEN_SETTINGS,
+    PERMISSION_OPEN_HISTORY,
+    PERMISSION_MANAGE_MODELS,
+    PERMISSION_EXPORT_RECORDS,
+    PERMISSION_VIEW_ALL_RECORDS,
+    PERMISSION_VIEW_SESSIONS,
+    PERMISSION_USE_SIMULATION,
+]
+
 ROLE_PERMISSIONS = {
     ROLE_DEVELOPER: {
         PERMISSION_OPEN_SETTINGS,
+        PERMISSION_OPEN_MONITOR,
+        PERMISSION_OPEN_HISTORY,
         PERMISSION_MANAGE_MODELS,
         PERMISSION_EXPORT_RECORDS,
         PERMISSION_VIEW_ALL_RECORDS,
@@ -38,12 +64,16 @@ ROLE_PERMISSIONS = {
     },
     ROLE_MANAGER: {
         PERMISSION_OPEN_SETTINGS,
+        PERMISSION_OPEN_MONITOR,
+        PERMISSION_OPEN_HISTORY,
         PERMISSION_EXPORT_RECORDS,
         PERMISSION_VIEW_ALL_RECORDS,
         PERMISSION_VIEW_SESSIONS,
         PERMISSION_USE_SIMULATION,
     },
-    ROLE_OPERATOR: set(),
+    ROLE_OPERATOR: {
+        PERMISSION_OPEN_MONITOR,
+    },
 }
 
 
@@ -51,9 +81,16 @@ def role_label(role):
     return ROLE_LABELS.get(role, ROLE_LABELS[ROLE_OPERATOR])
 
 
-def has_permission(role, permission):
-    return permission in ROLE_PERMISSIONS.get(role, set())
+def has_permission(role, permission, role_permissions=None):
+    if role == ROLE_DEVELOPER:
+        return permission in ROLE_PERMISSIONS[ROLE_DEVELOPER]
+    permissions = role_permissions or ROLE_PERMISSIONS
+    return permission in permissions.get(role, set())
 
 
 def default_role_passwords():
     return dict(DEFAULT_ROLE_PASSWORDS)
+
+
+def default_role_permissions():
+    return {role: set(permissions) for role, permissions in ROLE_PERMISSIONS.items()}
