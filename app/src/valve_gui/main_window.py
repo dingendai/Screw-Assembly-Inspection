@@ -148,9 +148,13 @@ class MainWindow(QMainWindow):
     def show_login(self):
         if self.state.is_logged_in:
             return
+        self.restart_login_preview()
+        self.stack.setCurrentWidget(self.login_page)
+
+    def restart_login_preview(self):
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
         self.login_page.load_display_controls()
-        self.stack.setCurrentWidget(self.login_page)
+        self.login_page.start_preview()
 
     def show_settings(self):
         if not self.require_login():
@@ -221,6 +225,7 @@ class MainWindow(QMainWindow):
     def logout(self):
         if not self.state.is_logged_in:
             self.release_all_hardware()
+            self.restart_login_preview()
             self.stack.setCurrentWidget(self.login_page)
             return
 
@@ -237,8 +242,7 @@ class MainWindow(QMainWindow):
         self.state.is_logged_in = False
         self.state.settings_applied = False
         self.login_page.reset()
-        self.login_page.populate_camera_indexes(self.state.operator_camera_index)
-        self.login_page.load_display_controls()
+        self.restart_login_preview()
         self.update_navigation()
         self.stack.setCurrentWidget(self.login_page)
 
