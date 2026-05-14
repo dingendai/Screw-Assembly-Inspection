@@ -43,6 +43,8 @@ class LoginPage(QWidget):
         self.sources = {}
         self.views = {}
         self.last_frames = {}
+        self.camera_visibility_checks = {}
+        self.visible_camera_indexes = set()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_previews)
 
@@ -61,6 +63,8 @@ class LoginPage(QWidget):
         self.simulation_box.setChecked(state.use_simulation)
         self.photo_status = QLabel("尚未拍照")
         self.photo_status.setObjectName("mutedText")
+        self.camera_visibility_group = QGroupBox("相機顯示")
+        self.camera_visibility_layout = QVBoxLayout(self.camera_visibility_group)
 
         start_button = QPushButton("重新啟動全部預覽")
         start_button.clicked.connect(self.start_preview)
@@ -91,6 +95,7 @@ class LoginPage(QWidget):
         panel_layout.addWidget(self.build_display_group())
         panel_layout.addWidget(scan_button)
         panel_layout.addWidget(start_button)
+        panel_layout.addWidget(self.camera_visibility_group)
         panel_layout.addWidget(capture_button)
         panel_layout.addWidget(self.photo_status)
         panel_layout.addStretch()
@@ -191,16 +196,63 @@ class LoginPage(QWidget):
 
         indexes = self.preview_indexes()
         self.clear_preview_grid()
-        columns = 1 if len(indexes) == 1 else 2
-        for idx, camera_index in enumerate(indexes):
+        self.build_camera_visibility_controls(indexes)
+        for camera_index in indexes:
             view = CameraView(f"Camera Device {camera_index}")
             source = VideoSource(f"CAMERA {camera_index}", camera_index, self.state.use_simulation)
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
             self.views[camera_index] = view
             self.sources[camera_index] = source
-            self.preview_grid.addWidget(view, idx // columns, idx % columns)
+        self.arrange_visible_previews()
         self.timer.start(33)
+
+    def build_camera_visibility_controls(self, indexes):
+        while self.camera_visibility_layout.count():
+            item = self.camera_visibility_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+        self.camera_visibility_checks = {}
+
+        if not self.visible_camera_indexes:
+            self.visible_camera_indexes = set(indexes)
+        else:
+            self.visible_camera_indexes = {index for index in self.visible_camera_indexes if index in indexes}
+            if not self.visible_camera_indexes:
+                self.visible_camera_indexes = set(indexes)
+
+        for camera_index in indexes:
+            checkbox = QCheckBox(f"Camera Device {camera_index}")
+            checkbox.setChecked(camera_index in self.visible_camera_indexes)
+            checkbox.stateChanged.connect(self.update_camera_visibility)
+            self.camera_visibility_layout.addWidget(checkbox)
+            self.camera_visibility_checks[camera_index] = checkbox
+
+    def update_camera_visibility(self):
+        self.visible_camera_indexes = {
+            camera_index
+            for camera_index, checkbox in self.camera_visibility_checks.items()
+            if checkbox.isChecked()
+        }
+        self.arrange_visible_previews()
+
+    def arrange_visible_previews(self):
+        while self.preview_grid.count():
+            item = self.preview_grid.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+
+        visible_indexes = [index for index in sorted(self.views) if index in self.visible_camera_indexes]
+        columns = 1 if len(visible_indexes) <= 1 else 2
+        for idx, camera_index in enumerate(visible_indexes):
+            view = self.views[camera_index]
+            self.preview_grid.addWidget(view, idx // columns, idx % columns)
+            view.show()
+
+        for camera_index, view in self.views.items():
+            view.setVisible(camera_index in self.visible_camera_indexes)
 
     def preview_indexes(self):
         if self.state.use_simulation:
@@ -257,6 +309,7 @@ class LoginPage(QWidget):
         self.capture_button.setVisible(needs_photo)
         self.photo_status.setVisible(needs_photo)
         self.preview_group.setVisible(needs_photo)
+        self.camera_visibility_group.setVisible(needs_photo)
 
         if not needs_name:
             self.name_input.clear()
