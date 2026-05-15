@@ -73,19 +73,12 @@ class UserManagementPage(QWidget):
         self.tabs.addTab(self.build_rank_tab(), "使用者密碼設定")
         self.tabs.addTab(self.build_user_permission_tab(), "操作介面權限控制")
 
-        save_row = QHBoxLayout()
         self.status_label = QLabel("")
         self.status_label.setObjectName("mutedText")
-        save_button = QPushButton("儲存設定")
-        save_button.setObjectName("primaryButton")
-        save_button.clicked.connect(self.save)
-        save_row.addWidget(self.status_label)
-        save_row.addStretch()
-        save_row.addWidget(save_button)
 
         layout.addLayout(header)
         layout.addWidget(self.tabs, 1)
-        layout.addLayout(save_row)
+        layout.addWidget(self.status_label)
 
     def build_rank_tab(self):
         page = QWidget()
@@ -120,6 +113,10 @@ class UserManagementPage(QWidget):
         move_up_button.clicked.connect(lambda: self.move_selected_role(-1))
         move_down_button = QPushButton("提高位階")
         move_down_button.clicked.connect(lambda: self.move_selected_role(1))
+        self.add_role_button = add_button
+        self.remove_role_button = remove_button
+        self.move_role_down_button = move_up_button
+        self.move_role_up_button = move_down_button
         actions.addWidget(add_button)
         actions.addWidget(remove_button)
         actions.addWidget(move_up_button)

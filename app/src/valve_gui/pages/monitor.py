@@ -69,6 +69,8 @@ class MonitorPage(QWidget):
         start_button.clicked.connect(self.start)
         stop_button = QPushButton("停止相機")
         stop_button.clicked.connect(lambda: self.stop())
+        self.start_button = start_button
+        self.stop_button = stop_button
         self.inspect_button = QPushButton("單次檢測")
         self.inspect_button.setObjectName("primaryButton")
         self.inspect_button.clicked.connect(self.inspect_once)

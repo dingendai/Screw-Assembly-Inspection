@@ -2,7 +2,7 @@ from datetime import datetime
 
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QSizePolicy, QStackedWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QWidget
 
 from valve_gui.config_store import load_app_config
 from valve_gui.model_registry import ensure_model_configs
@@ -135,6 +135,10 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
+        self.apply_settings_button = QPushButton("儲存 / 套用設定")
+        self.apply_settings_button.setObjectName("primaryButton")
+        self.apply_settings_button.clicked.connect(self.save_current_page_settings)
+        toolbar.addWidget(self.apply_settings_button)
         self.role_badge = QLabel()
         self.role_badge.setObjectName("roleBadge")
         toolbar.addWidget(self.role_badge)
@@ -173,6 +177,7 @@ class MainWindow(QMainWindow):
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
             self.role_badge.setText("目前權限：未登入")
+        self.update_apply_settings_button()
         self.update_active_action()
 
     def update_active_action(self):
@@ -190,6 +195,35 @@ class MainWindow(QMainWindow):
         for key, action in self.actions.items():
             if action.isCheckable():
                 action.setChecked(key == active_key and action.isVisible())
+        self.update_apply_settings_button()
+
+    def update_apply_settings_button(self):
+        if not hasattr(self, "apply_settings_button"):
+            return
+        self.apply_settings_button.setVisible(self.current_page_save_handler() is not None)
+
+    def current_page_save_handler(self):
+        current = self.stack.currentWidget()
+        if (
+            current == self.settings_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.settings_page.apply
+        if (
+            current == self.display_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.display_page.save_display_settings
+        if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
+            return self.user_page.save
+        return None
+
+    def save_current_page_settings(self):
+        handler = self.current_page_save_handler()
+        if handler:
+            handler()
 
     def require_login(self):
         if not self.state.is_logged_in:

@@ -83,6 +83,8 @@ class LoginPage(QWidget):
         login_button.clicked.connect(self.submit)
         exit_button = QPushButton("結束應用程式")
         exit_button.clicked.connect(self.exit_application)
+        self.login_button = login_button
+        self.exit_button = exit_button
 
         form = QFormLayout()
         self.form = form
@@ -148,16 +150,12 @@ class LoginPage(QWidget):
         self.display_height.setSingleStep(20)
         self.display_height.setSuffix(" px")
 
-        apply_button = QPushButton("套用顯示設定")
-        apply_button.clicked.connect(self.apply_display_settings)
-
         layout.addWidget(QLabel("顯示模式"), 0, 0)
         layout.addWidget(self.display_mode, 0, 1, 1, 2)
         layout.addWidget(QLabel("寬度"), 1, 0)
         layout.addWidget(self.display_width, 1, 1)
         layout.addWidget(QLabel("高度"), 1, 2)
         layout.addWidget(self.display_height, 1, 3)
-        layout.addWidget(apply_button, 2, 0, 1, 4)
         self.load_display_controls()
         return group
 

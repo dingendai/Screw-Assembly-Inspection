@@ -86,16 +86,8 @@ class SettingsPage(QWidget):
         self.camera_tab_index = self.tabs.addTab(camera_tab, "相機設定")
         self.model_tab_index = self.tabs.addTab(model_tab, "模型清單")
 
-        action_row = QHBoxLayout()
-        apply_button = QPushButton("套用並保存設定")
-        apply_button.setObjectName("primaryButton")
-        apply_button.clicked.connect(self.apply)
-        action_row.addStretch()
-        action_row.addWidget(apply_button)
-
         layout.addLayout(header)
         layout.addWidget(self.tabs, 1)
-        layout.addLayout(action_row)
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
@@ -161,6 +153,7 @@ class SettingsPage(QWidget):
 
         search_button = QPushButton("搜尋相機")
         search_button.clicked.connect(self.search_cameras)
+        self.search_camera_button = search_button
         self.detected_label = QLabel("尚未搜尋相機")
         self.detected_label.setObjectName("mutedText")
 
@@ -215,6 +208,8 @@ class SettingsPage(QWidget):
         restart_button.clicked.connect(self.restart_preview)
         stop_button = QPushButton("停止預覽並釋放相機")
         stop_button.clicked.connect(self.stop_preview)
+        self.restart_preview_button = restart_button
+        self.stop_preview_button = stop_button
 
         actions = QHBoxLayout()
         actions.addWidget(restart_button)
@@ -561,13 +556,8 @@ class DisplaySettingsPage(QWidget):
         header.addWidget(title)
         header.addStretch()
 
-        display_apply_button = QPushButton("保存 GUI 顯示設定")
-        display_apply_button.setObjectName("primaryButton")
-        display_apply_button.clicked.connect(self.save_display_settings)
-
         layout.addLayout(header)
         layout.addWidget(self.build_display_group())
-        layout.addWidget(display_apply_button)
         layout.addStretch()
 
     def build_display_group(self):
