@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.inference_router import InferenceRouter
+from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
 from valve_gui.permissions import role_label
 from valve_gui.widgets import CameraView
@@ -122,7 +123,7 @@ class MonitorPage(QWidget):
             f" / 登入：{self.state.login_time or '--'}"
         )
         routes = [
-            f"C{camera.slot}->{camera.assigned_model_name or '--'}"
+            f"C{camera.slot}->{format_camera_model_names(camera)}"
             for camera in self.state.inspection_cameras
             if camera.enabled
         ]
@@ -138,7 +139,7 @@ class MonitorPage(QWidget):
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
             view = CameraView(
-                f"Camera {config.slot} / Device {config.device_index} / Model: {config.assigned_model_name or '--'}"
+                f"Camera {config.slot} / Device {config.device_index} / Model: {format_camera_model_names(config)}"
             )
             self.views.append((config, view))
             self.grid.addWidget(view, idx // columns, idx % columns)
@@ -250,7 +251,7 @@ class MonitorPage(QWidget):
 
     def record_detection(self, inference):
         active = ",".join(
-            f"C{config.slot}:D{config.device_index}:M{config.assigned_model_name or '--'}"
+            f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
             for config, _ in self.views
         )
         record = InspectionRecord(

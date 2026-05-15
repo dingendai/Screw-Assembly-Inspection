@@ -92,6 +92,7 @@ def load_app_config(state):
                 flip_vertical=bool(item.get("flip_vertical", False)),
                 rotation_degrees=int(item.get("rotation_degrees", 0)),
                 assigned_model_name=str(item.get("assigned_model_name", "")),
+                assigned_model_names=normalise_model_names(item.get("assigned_model_names", [])),
             )
             for index, item in enumerate(cameras)
         ]
@@ -128,3 +129,11 @@ def save_app_config(state):
     }
     with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def normalise_model_names(value):
+    if isinstance(value, list):
+        return [str(name).strip() for name in value if str(name).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []

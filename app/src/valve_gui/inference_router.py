@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from valve_gui.model_registry import model_by_name
+from valve_gui.model_registry import camera_model_names, model_by_name
 
 
 @dataclass
@@ -15,7 +15,7 @@ class InferenceResult:
 
 
 class InferenceRouter:
-    """Routes each camera frame to the model assigned to that camera."""
+    """Routes each camera frame to every model assigned to that camera."""
 
     def __init__(self, state):
         self.state = state
@@ -34,16 +34,22 @@ class InferenceRouter:
         for camera in self.state.inspection_cameras:
             if not camera.enabled or camera.slot not in frames_by_slot:
                 continue
-            model = model_by_name(self.state, camera.assigned_model_name)
-            if not model or not model.enabled:
+            model_names = camera_model_names(camera)
+            if not model_names:
                 missing.append(f"Camera {camera.slot}")
                 continue
 
             frame = frames_by_slot[camera.slot]
-            annotated, confidence, note = self.run_single_model(frame, camera.slot, model)
+            annotated = frame
+            for model_name in model_names:
+                model = model_by_name(self.state, model_name)
+                if not model or not model.enabled:
+                    missing.append(f"Camera {camera.slot}->{model_name}")
+                    continue
+                annotated, confidence, note = self.run_single_model(annotated, camera.slot, model)
+                confidences.append(confidence)
+                notes.append(note)
             annotated_frames[camera.slot] = annotated
-            confidences.append(confidence)
-            notes.append(note)
 
         if missing:
             return InferenceResult("NG", 0.0, "Missing model assignment: " + ", ".join(missing), annotated_frames)

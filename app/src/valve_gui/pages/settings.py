@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -20,7 +22,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform, detect_camera_indexes
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import enabled_model_names, ensure_model_configs
+from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
 from valve_gui.models import AppState, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
@@ -103,23 +105,29 @@ class SettingsPage(QWidget):
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
-        form = QGridLayout(group)
-        headers = ["啟用", "位置", "相機索引", "指定模型", "左右鏡像", "上下翻轉", "旋轉"]
-        for column, text in enumerate(headers):
-            form.addWidget(QLabel(text), 0, column)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
 
-        for row, config in enumerate(self.state.inspection_cameras, start=1):
-            enabled = QCheckBox("使用")
+        camera_grid = QGridLayout()
+        camera_grid.setSpacing(10)
+
+        for row, config in enumerate(self.state.inspection_cameras):
+            enabled = QCheckBox("啟用")
             enabled.setChecked(config.enabled)
-            slot = QLabel(f"Camera {config.slot}")
+
             index = QComboBox()
             self.populate_camera_index_combo(index, config.device_index)
-            model_combo = QComboBox()
-            self.populate_model_combo(model_combo, config.assigned_model_name)
-            flip_h = QCheckBox("左右")
+
+            model_list = QListWidget()
+            model_list.setMinimumHeight(88)
+            model_list.setMaximumHeight(120)
+            self.populate_model_list(model_list, camera_model_names(config))
+
+            flip_h = QCheckBox("左右翻轉")
             flip_h.setChecked(config.flip_horizontal)
-            flip_v = QCheckBox("上下")
+            flip_v = QCheckBox("上下翻轉")
             flip_v.setChecked(config.flip_vertical)
+
             rotation = QComboBox()
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
@@ -129,28 +137,47 @@ class SettingsPage(QWidget):
             flip_h.stateChanged.connect(self.restart_preview)
             flip_v.stateChanged.connect(self.restart_preview)
             rotation.currentTextChanged.connect(self.restart_preview)
-            model_combo.currentTextChanged.connect(self.restart_preview)
+            model_list.itemChanged.connect(self.restart_preview)
 
-            form.addWidget(enabled, row, 0)
-            form.addWidget(slot, row, 1)
-            form.addWidget(index, row, 2)
-            form.addWidget(model_combo, row, 3)
-            form.addWidget(flip_h, row, 4)
-            form.addWidget(flip_v, row, 5)
-            form.addWidget(rotation, row, 6)
-            self.rows.append((enabled, index, model_combo, flip_h, flip_v, rotation))
+            camera_box = QGroupBox(f"Camera {config.slot}")
+            card = QGridLayout(camera_box)
+            card.setHorizontalSpacing(10)
+            card.setVerticalSpacing(8)
+
+            card.addWidget(enabled, 0, 0)
+            card.addWidget(QLabel("相機"), 0, 1)
+            card.addWidget(index, 0, 2)
+
+            card.addWidget(QLabel("方向"), 1, 0)
+            card.addWidget(flip_h, 1, 1)
+            card.addWidget(flip_v, 1, 2)
+            card.addWidget(QLabel("旋轉"), 2, 0)
+            card.addWidget(rotation, 2, 1, 1, 2)
+
+            card.addWidget(QLabel("指定模型"), 3, 0, 1, 3)
+            card.addWidget(model_list, 4, 0, 1, 3)
+            card.setColumnStretch(2, 1)
+
+            camera_grid.addWidget(camera_box, row // 2, row % 2)
+            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation))
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
         self.simulation_box.stateChanged.connect(self.restart_preview)
-        search_button = QPushButton("搜尋現有相機設備")
+
+        search_button = QPushButton("搜尋相機")
         search_button.clicked.connect(self.search_cameras)
         self.detected_label = QLabel("尚未搜尋相機")
         self.detected_label.setObjectName("mutedText")
 
-        form.addWidget(search_button, 5, 0, 1, 2)
-        form.addWidget(self.simulation_box, 6, 0, 1, 7)
-        form.addWidget(self.detected_label, 7, 0, 1, 7)
+        action_row = QHBoxLayout()
+        action_row.addWidget(search_button)
+        action_row.addStretch()
+
+        layout.addLayout(camera_grid)
+        layout.addLayout(action_row)
+        layout.addWidget(self.simulation_box)
+        layout.addWidget(self.detected_label)
         return group
 
     def build_model_group(self):
@@ -229,22 +256,32 @@ class SettingsPage(QWidget):
             selected = int(index_combo.currentData() if index_combo.currentData() is not None else config.device_index)
             self.populate_camera_index_combo(index_combo, selected)
 
-    def populate_model_combo(self, combo, selected_name=""):
-        combo.blockSignals(True)
-        combo.clear()
+    def populate_model_list(self, model_list, selected_names=None):
+        selected_names = set(selected_names or [])
+        model_list.blockSignals(True)
+        model_list.clear()
         names = enabled_model_names(self.state)
-        combo.addItems(names)
-        if selected_name and selected_name in names:
-            combo.setCurrentText(selected_name)
-        elif names:
-            combo.setCurrentIndex(0)
-        combo.blockSignals(False)
+        if not selected_names and names:
+            selected_names.add(names[0])
+        for name in names:
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if name in selected_names else Qt.CheckState.Unchecked)
+            model_list.addItem(item)
+        model_list.blockSignals(False)
 
     def refresh_camera_model_combos(self):
         for controls in self.rows:
-            model_combo = controls[2]
-            selected = model_combo.currentText()
-            self.populate_model_combo(model_combo, selected)
+            model_list = controls[2]
+            selected = self.checked_model_names(model_list)
+            self.populate_model_list(model_list, selected)
+
+    def checked_model_names(self, model_list):
+        return [
+            model_list.item(index).text()
+            for index in range(model_list.count())
+            if model_list.item(index).checkState() == Qt.CheckState.Checked
+        ]
 
     def refresh(self):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
@@ -253,10 +290,10 @@ class SettingsPage(QWidget):
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_combo, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation = controls
             enabled.setChecked(config.enabled)
             self.populate_camera_index_combo(index, config.device_index)
-            self.populate_model_combo(model_combo, config.assigned_model_name)
+            self.populate_model_list(model_list, camera_model_names(config))
             flip_h.setChecked(config.flip_horizontal)
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
@@ -422,13 +459,15 @@ class SettingsPage(QWidget):
     def current_enabled_camera_rows(self):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
-            enabled, index, model_combo, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation = controls
             if enabled.isChecked():
+                model_names = self.checked_model_names(model_list)
                 enabled_rows.append(
                     {
                         "slot": slot,
                         "device_index": int(index.currentData()),
-                        "model_name": model_combo.currentText(),
+                        "model_name": ", ".join(model_names),
+                        "model_names": model_names,
                         "flip_horizontal": flip_h.isChecked(),
                         "flip_vertical": flip_v.isChecked(),
                         "rotation_degrees": int(rotation.currentText()),
@@ -468,17 +507,29 @@ class SettingsPage(QWidget):
             return
 
         enabled_count = 0
+        missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_combo, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation = controls
             config.enabled = enabled.isChecked()
             config.device_index = int(index.currentData())
-            config.assigned_model_name = model_combo.currentText()
+            selected_models = self.checked_model_names(model_list)
+            set_camera_model_names(config, selected_models)
             config.flip_horizontal = flip_h.isChecked()
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
             enabled_count += int(config.enabled)
+            if config.enabled and not selected_models:
+                missing_model_slots.append(f"Camera {config.slot}")
         if enabled_count == 0:
             QMessageBox.warning(self, "相機設定", "至少需要啟用一顆檢測相機。")
+            return
+
+        if missing_model_slots:
+            QMessageBox.warning(
+                self,
+                "Model assignment",
+                "Select at least one model for: " + ", ".join(missing_model_slots),
+            )
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()

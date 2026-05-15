@@ -12,6 +12,7 @@ class CameraConfig:
     flip_vertical: bool = False
     rotation_degrees: int = 0
     assigned_model_name: str = ""
+    assigned_model_names: list[str] = field(default_factory=list)
 
 
 @dataclass

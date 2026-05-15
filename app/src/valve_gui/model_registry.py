@@ -38,8 +38,11 @@ def ensure_model_configs(state):
     enabled_names = [model.name for model in state.model_configs if model.enabled]
     fallback = enabled_names[0] if enabled_names else ""
     for camera in state.inspection_cameras:
-        if not camera.assigned_model_name or camera.assigned_model_name not in enabled_names:
-            camera.assigned_model_name = fallback
+        selected_names = camera_model_names(camera)
+        valid_names = [name for name in selected_names if name in enabled_names]
+        if not valid_names and fallback:
+            valid_names = [fallback]
+        set_camera_model_names(camera, valid_names)
 
 
 def enabled_model_names(state) -> list[str]:
@@ -51,3 +54,25 @@ def model_by_name(state, name: str) -> ModelConfig | None:
         if model.name == name:
             return model
     return None
+
+
+def camera_model_names(camera) -> list[str]:
+    names = []
+    assigned_names = getattr(camera, "assigned_model_names", None)
+    if isinstance(assigned_names, list):
+        names.extend(str(name).strip() for name in assigned_names if str(name).strip())
+    legacy_name = str(getattr(camera, "assigned_model_name", "")).strip()
+    if legacy_name:
+        names.append(legacy_name)
+    return list(dict.fromkeys(names))
+
+
+def set_camera_model_names(camera, names: list[str]):
+    deduped = list(dict.fromkeys(str(name).strip() for name in names if str(name).strip()))
+    camera.assigned_model_names = deduped
+    camera.assigned_model_name = deduped[0] if deduped else ""
+
+
+def format_camera_model_names(camera) -> str:
+    names = camera_model_names(camera)
+    return ", ".join(names) if names else "--"
