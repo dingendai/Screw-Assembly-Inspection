@@ -65,6 +65,7 @@ class SettingsPage(QWidget):
         title = QLabel("相機與模型配置")
         title.setObjectName("pageTitle")
         logout_button = QPushButton("登出並釋放硬體")
+        logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.logout)
         header.addWidget(title)
         header.addStretch()
@@ -77,23 +78,17 @@ class SettingsPage(QWidget):
         left = QVBoxLayout()
         right = QVBoxLayout()
         left.addWidget(self.build_camera_group())
-        left.addWidget(self.build_model_group())
         left.addStretch()
         right.addWidget(self.build_preview_group(), 1)
         content.addLayout(left, 0)
         content.addLayout(right, 1)
 
-        display_tab = QWidget()
-        display_layout = QVBoxLayout(display_tab)
-        display_layout.addWidget(self.build_display_group())
-        display_apply_button = QPushButton("保存 GUI 顯示設定")
-        display_apply_button.setObjectName("primaryButton")
-        display_apply_button.clicked.connect(self.save_display_settings)
-        display_layout.addWidget(display_apply_button)
-        display_layout.addStretch()
+        model_tab = QWidget()
+        model_layout = QVBoxLayout(model_tab)
+        model_layout.addWidget(self.build_model_group())
 
-        self.camera_tab_index = self.tabs.addTab(camera_tab, "相機與模型")
-        self.display_tab_index = self.tabs.addTab(display_tab, "GUI 顯示設定")
+        self.camera_tab_index = self.tabs.addTab(camera_tab, "相機設定")
+        self.model_tab_index = self.tabs.addTab(model_tab, "模型清單")
 
         action_row = QHBoxLayout()
         apply_button = QPushButton("套用並保存設定")
@@ -105,38 +100,6 @@ class SettingsPage(QWidget):
         layout.addLayout(header)
         layout.addWidget(self.tabs, 1)
         layout.addLayout(action_row)
-
-    def build_display_group(self):
-        group = QGroupBox("GUI 顯示設定")
-        form = QGridLayout(group)
-
-        self.display_mode = QComboBox()
-        for mode, label in DISPLAY_MODE_OPTIONS:
-            self.display_mode.addItem(label, mode)
-        self.display_mode.currentIndexChanged.connect(self.update_display_size_controls)
-
-        self.display_width = QSpinBox()
-        self.display_width.setRange(640, 7680)
-        self.display_width.setSingleStep(20)
-        self.display_width.setSuffix(" px")
-
-        self.display_height = QSpinBox()
-        self.display_height.setRange(480, 4320)
-        self.display_height.setSingleStep(20)
-        self.display_height.setSuffix(" px")
-
-        hint = QLabel("全螢幕會自動使用目前螢幕；非全螢幕可自動最大化或指定寬高。")
-        hint.setObjectName("mutedText")
-
-        form.addWidget(QLabel("顯示模式"), 0, 0)
-        form.addWidget(self.display_mode, 0, 1, 1, 2)
-        form.addWidget(QLabel("寬度"), 1, 0)
-        form.addWidget(self.display_width, 1, 1)
-        form.addWidget(QLabel("高度"), 1, 2)
-        form.addWidget(self.display_height, 1, 3)
-        form.addWidget(hint, 2, 0, 1, 4)
-        self.load_display_controls()
-        return group
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
@@ -182,13 +145,10 @@ class SettingsPage(QWidget):
         self.simulation_box.stateChanged.connect(self.restart_preview)
         search_button = QPushButton("搜尋現有相機設備")
         search_button.clicked.connect(self.search_cameras)
-        self.rescan_models_button = QPushButton("重新掃描 modles 模型")
-        self.rescan_models_button.clicked.connect(self.rescan_models)
         self.detected_label = QLabel("尚未搜尋相機")
         self.detected_label.setObjectName("mutedText")
 
         form.addWidget(search_button, 5, 0, 1, 2)
-        form.addWidget(self.rescan_models_button, 5, 2, 1, 2)
         form.addWidget(self.simulation_box, 6, 0, 1, 7)
         form.addWidget(self.detected_label, 7, 0, 1, 7)
         return group
@@ -209,11 +169,14 @@ class SettingsPage(QWidget):
         self.remove_model_button.clicked.connect(self.remove_selected_model)
         self.browse_model_button = QPushButton("選取模型檔案")
         self.browse_model_button.clicked.connect(self.browse_selected_model)
+        self.rescan_models_button = QPushButton("重新掃描 modles 模型")
+        self.rescan_models_button.clicked.connect(self.rescan_models)
 
         actions = QHBoxLayout()
         actions.addWidget(self.add_model_button)
         actions.addWidget(self.remove_model_button)
         actions.addWidget(self.browse_model_button)
+        actions.addWidget(self.rescan_models_button)
         actions.addStretch()
 
         layout.addWidget(self.model_table)
@@ -287,7 +250,6 @@ class SettingsPage(QWidget):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             return
         ensure_model_configs(self.state)
-        self.load_display_controls()
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
@@ -316,30 +278,6 @@ class SettingsPage(QWidget):
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
         self.simulation_box.setEnabled(can_use_simulation)
-    def save_display_settings(self):
-        self.state.display.mode = self.display_mode.currentData()
-        self.state.display.width = self.display_width.value()
-        self.state.display.height = self.display_height.value()
-        save_app_config(self.state)
-        if self.on_display_change:
-            self.on_display_change()
-        QMessageBox.information(self, "保存完成", "GUI 顯示設定已更新。")
-
-    def load_display_controls(self):
-        if not hasattr(self, "display_mode"):
-            return
-        self.display_mode.blockSignals(True)
-        match = self.display_mode.findData(self.state.display.mode)
-        self.display_mode.setCurrentIndex(match if match >= 0 else 0)
-        self.display_mode.blockSignals(False)
-        self.display_width.setValue(self.state.display.width)
-        self.display_height.setValue(self.state.display.height)
-        self.update_display_size_controls()
-
-    def update_display_size_controls(self):
-        custom = self.display_mode.currentData() == "custom"
-        self.display_width.setEnabled(custom)
-        self.display_height.setEnabled(custom)
 
     def load_model_table(self):
         self.model_table.setRowCount(0)
@@ -544,9 +482,6 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()
-        self.state.display.mode = self.display_mode.currentData()
-        self.state.display.width = self.display_width.value()
-        self.state.display.height = self.display_height.value()
         first_enabled = next((model for model in self.state.model_configs if model.enabled), None)
         self.state.yolo_model_path = first_enabled.file_path if first_enabled else ""
         self.state.settings_applied = True
@@ -561,5 +496,100 @@ class SettingsPage(QWidget):
 
     def logout(self):
         self.stop_preview()
+        if self.on_logout:
+            self.on_logout()
+
+
+class DisplaySettingsPage(QWidget):
+    def __init__(self, state: AppState, on_display_change=None, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_display_change = on_display_change
+        self.on_logout = on_logout
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        title = QLabel("GUI 顯示設定")
+        title.setObjectName("pageTitle")
+        logout_button = QPushButton("登出")
+        logout_button.setObjectName("logoutButton")
+        logout_button.clicked.connect(self.logout)
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(logout_button)
+
+        display_apply_button = QPushButton("保存 GUI 顯示設定")
+        display_apply_button.setObjectName("primaryButton")
+        display_apply_button.clicked.connect(self.save_display_settings)
+
+        layout.addLayout(header)
+        layout.addWidget(self.build_display_group())
+        layout.addWidget(display_apply_button)
+        layout.addStretch()
+
+    def build_display_group(self):
+        group = QGroupBox("GUI 顯示設定")
+        form = QGridLayout(group)
+
+        self.display_mode = QComboBox()
+        for mode, label in DISPLAY_MODE_OPTIONS:
+            self.display_mode.addItem(label, mode)
+        self.display_mode.currentIndexChanged.connect(self.update_display_size_controls)
+
+        self.display_width = QSpinBox()
+        self.display_width.setRange(640, 7680)
+        self.display_width.setSingleStep(20)
+        self.display_width.setSuffix(" px")
+
+        self.display_height = QSpinBox()
+        self.display_height.setRange(480, 4320)
+        self.display_height.setSingleStep(20)
+        self.display_height.setSuffix(" px")
+
+        hint = QLabel("全螢幕會自動使用目前螢幕；非全螢幕可自動最大化或指定寬高。")
+        hint.setObjectName("mutedText")
+
+        form.addWidget(QLabel("顯示模式"), 0, 0)
+        form.addWidget(self.display_mode, 0, 1, 1, 2)
+        form.addWidget(QLabel("寬度"), 1, 0)
+        form.addWidget(self.display_width, 1, 1)
+        form.addWidget(QLabel("高度"), 1, 2)
+        form.addWidget(self.display_height, 1, 3)
+        form.addWidget(hint, 2, 0, 1, 4)
+        self.load_display_controls()
+        return group
+
+    def refresh(self):
+        self.load_display_controls()
+
+    def save_display_settings(self):
+        self.state.display.mode = self.display_mode.currentData()
+        self.state.display.width = self.display_width.value()
+        self.state.display.height = self.display_height.value()
+        save_app_config(self.state)
+        if self.on_display_change:
+            self.on_display_change()
+        QMessageBox.information(self, "保存完成", "GUI 顯示設定已更新。")
+
+    def load_display_controls(self):
+        if not hasattr(self, "display_mode"):
+            return
+        self.display_mode.blockSignals(True)
+        match = self.display_mode.findData(self.state.display.mode)
+        self.display_mode.setCurrentIndex(match if match >= 0 else 0)
+        self.display_mode.blockSignals(False)
+        self.display_width.setValue(self.state.display.width)
+        self.display_height.setValue(self.state.display.height)
+        self.update_display_size_controls()
+
+    def update_display_size_controls(self):
+        custom = self.display_mode.currentData() == "custom"
+        self.display_width.setEnabled(custom)
+        self.display_height.setEnabled(custom)
+
+    def logout(self):
         if self.on_logout:
             self.on_logout()

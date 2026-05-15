@@ -67,6 +67,7 @@ class MonitorPage(QWidget):
         inspect_button.setObjectName("primaryButton")
         inspect_button.clicked.connect(self.inspect_once)
         logout_button = QPushButton("登出並釋放硬體")
+        logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.logout)
 
         side = QGroupBox("檢測狀態")

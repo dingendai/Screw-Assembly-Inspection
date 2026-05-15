@@ -10,7 +10,7 @@ from valve_gui.models import AppState, InspectionRecord
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
-from valve_gui.pages.settings import SettingsPage
+from valve_gui.pages.settings import DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
 from valve_gui.permissions import (
@@ -50,11 +50,13 @@ class MainWindow(QMainWindow):
             on_logout=self.logout,
         )
         self.history_page = HistoryPage(self.state)
+        self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.display_page)
         self.stack.addWidget(self.user_page)
         self.setCentralWidget(self.stack)
 
@@ -112,6 +114,7 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login, True),
             ("settings", "相機設定", self.show_settings, True),
+            ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
             ("users", "用戶管理", self.show_users, True),
@@ -122,6 +125,10 @@ class MainWindow(QMainWindow):
             action.setCheckable(checkable)
             action.triggered.connect(callback)
             toolbar.addAction(action)
+            if key == "logout":
+                logout_tool_button = toolbar.widgetForAction(action)
+                if logout_tool_button:
+                    logout_tool_button.setObjectName("logoutButton")
             self.actions[key] = action
 
         spacer = QWidget()
@@ -136,6 +143,13 @@ class MainWindow(QMainWindow):
         settings_ready = self.state.settings_applied
         self.actions["login"].setVisible(not logged_in)
         self.actions["settings"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
+        self.actions["display"].setVisible(
             logged_in and has_permission(
                 self.state.operator_role,
                 PERMISSION_OPEN_SETTINGS,
@@ -168,6 +182,7 @@ class MainWindow(QMainWindow):
             self.settings_page: "settings",
             self.monitor_page: "monitor",
             self.history_page: "history",
+            self.display_page: "display",
             self.user_page: "users",
         }
         active_key = page_actions.get(self.stack.currentWidget())
@@ -206,6 +221,17 @@ class MainWindow(QMainWindow):
         self.release_all_hardware()
         self.settings_page.refresh()
         self.stack.setCurrentWidget(self.settings_page)
+
+    def show_display_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入 GUI 顯示設定。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.display_page.refresh()
+        self.stack.setCurrentWidget(self.display_page)
 
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:

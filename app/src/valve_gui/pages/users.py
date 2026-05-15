@@ -66,6 +66,7 @@ class UserManagementPage(QWidget):
         title_block.addWidget(subtitle)
 
         logout_button = QPushButton("登出")
+        logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.logout)
         header.addLayout(title_block)
         header.addStretch()

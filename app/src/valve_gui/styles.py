@@ -139,6 +139,16 @@ def apply_styles(app: QApplication):
         QPushButton:hover {
             background: #e1eaee;
         }
+        #logoutButton {
+            background: #ffe2df;
+            color: #9f1f16;
+            border: 1px solid #f4aaa4;
+            font-weight: 700;
+        }
+        #logoutButton:hover {
+            background: #ffd2cc;
+            border: 1px solid #e98f86;
+        }
         #primaryButton {
             background: #176b5d;
             color: #ffffff;
