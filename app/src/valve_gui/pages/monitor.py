@@ -46,6 +46,9 @@ class MonitorPage(QWidget):
         self.confidence_label.setObjectName("mutedText")
         self.camera_status_label = QLabel("相機狀態：--")
         self.camera_status_label.setObjectName("mutedText")
+        self.ng_reason_label = QLabel("尚未檢測")
+        self.ng_reason_label.setObjectName("ngReasonBox")
+        self.ng_reason_label.setWordWrap(True)
         self.operator_label = QLabel()
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
@@ -80,6 +83,8 @@ class MonitorPage(QWidget):
         side_layout.addWidget(self.result_label)
         side_layout.addWidget(self.confidence_label)
         side_layout.addWidget(self.camera_status_label)
+        side_layout.addWidget(QLabel("NG 原因"))
+        side_layout.addWidget(self.ng_reason_label)
         side_layout.addStretch()
 
         bottom_controls = QVBoxLayout()
@@ -211,6 +216,7 @@ class MonitorPage(QWidget):
             self.start()
         inference = self.router.run(self.last_frames)
         self.set_result(inference.result, inference.confidence)
+        self.set_ng_reason(inference)
         self.show_annotated_frames(inference.annotated_frames)
         if record or inference.result == "NG":
             self.record_detection(inference)
@@ -245,6 +251,19 @@ class MonitorPage(QWidget):
         self.result_label.style().unpolish(self.result_label)
         self.result_label.style().polish(self.result_label)
         self.confidence_label.setText(f"Confidence: {confidence:.3f}")
+
+    def set_ng_reason(self, inference):
+        note = inference.note.strip() if inference.note else ""
+        if inference.result == "PASS":
+            self.ng_reason_label.setText("目前判定為 PASS，無 NG 原因。")
+            return
+
+        reasons = []
+        if inference.confidence < 0.5:
+            reasons.append(f"信心值低於門檻：{inference.confidence:.3f} < 0.500")
+        if note:
+            reasons.append(note)
+        self.ng_reason_label.setText("；".join(reasons) if reasons else "系統判定為 NG，未提供詳細原因。")
 
     def logout(self):
         self.stop()

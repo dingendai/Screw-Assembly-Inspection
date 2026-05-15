@@ -202,6 +202,14 @@ def apply_styles(app: QApplication):
         #mutedText {
             color: #687981;
         }
+        #ngReasonBox {
+            background: #fff8e7;
+            color: #6f4e00;
+            border: 1px solid #f0d68a;
+            border-radius: 6px;
+            padding: 10px 12px;
+            min-height: 52px;
+        }
         #pageTitle {
             color: #172026;
             font-size: 20px;
