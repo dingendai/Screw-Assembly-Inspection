@@ -138,7 +138,8 @@ class MainWindow(QMainWindow):
         self.apply_settings_button = QPushButton("儲存 / 套用設定")
         self.apply_settings_button.setObjectName("primaryButton")
         self.apply_settings_button.clicked.connect(self.save_current_page_settings)
-        toolbar.addWidget(self.apply_settings_button)
+        self.apply_settings_action = toolbar.addWidget(self.apply_settings_button)
+        toolbar.addWidget(self.login_page.exit_button)
         self.role_badge = QLabel()
         self.role_badge.setObjectName("roleBadge")
         toolbar.addWidget(self.role_badge)
@@ -154,13 +155,7 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
-        self.actions["display"].setVisible(
-            logged_in and has_permission(
-                self.state.operator_role,
-                PERMISSION_OPEN_SETTINGS,
-                self.state.role_permissions,
-            )
-        )
+        self.actions["display"].setVisible(True)
         self.actions["monitor"].setVisible(
             logged_in
             and settings_ready
@@ -173,6 +168,7 @@ class MainWindow(QMainWindow):
         )
         self.actions["users"].setVisible(logged_in and self.state.operator_role == ROLE_DEVELOPER)
         self.actions["logout"].setVisible(logged_in)
+        self.login_page.exit_button.setVisible(not logged_in)
         if logged_in:
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
@@ -200,21 +196,22 @@ class MainWindow(QMainWindow):
     def update_apply_settings_button(self):
         if not hasattr(self, "apply_settings_button"):
             return
-        self.apply_settings_button.setVisible(self.current_page_save_handler() is not None)
+        should_show = self.current_page_save_handler() is not None
+        self.apply_settings_button.setVisible(should_show)
+        if hasattr(self, "apply_settings_action"):
+            self.apply_settings_action.setVisible(should_show)
 
     def current_page_save_handler(self):
         current = self.stack.currentWidget()
+        if current == self.login_page:
+            return None
         if (
             current == self.settings_page
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.settings_page.apply
-        if (
-            current == self.display_page
-            and self.state.is_logged_in
-            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
-        ):
+        if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
             return self.user_page.save
@@ -239,11 +236,11 @@ class MainWindow(QMainWindow):
             return
         self.restart_login_preview()
         self.stack.setCurrentWidget(self.login_page)
+        self.update_apply_settings_button()
 
     def restart_login_preview(self):
         self.login_page.refresh_role_options()
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
-        self.login_page.load_display_controls()
         self.login_page.start_preview()
 
     def show_settings(self):
@@ -258,9 +255,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.settings_page)
 
     def show_display_settings(self):
-        if not self.require_login():
-            return
-        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+        if self.state.is_logged_in and not has_permission(
+            self.state.operator_role,
+            PERMISSION_OPEN_SETTINGS,
+            self.state.role_permissions,
+        ):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入 GUI 顯示設定。")
             self.show_monitor()
             return
@@ -361,6 +360,7 @@ class MainWindow(QMainWindow):
             self.release_all_hardware()
             self.restart_login_preview()
             self.stack.setCurrentWidget(self.login_page)
+            self.update_apply_settings_button()
             return
 
         logout_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
@@ -379,6 +379,7 @@ class MainWindow(QMainWindow):
         self.restart_login_preview()
         self.update_navigation()
         self.stack.setCurrentWidget(self.login_page)
+        self.update_apply_settings_button()
 
     def closeEvent(self, event):
         if self.state.is_logged_in:
