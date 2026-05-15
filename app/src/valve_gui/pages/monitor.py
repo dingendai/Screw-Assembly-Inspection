@@ -2,7 +2,6 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -51,8 +50,10 @@ class MonitorPage(QWidget):
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
         self.model_label.setObjectName("mutedText")
-        self.continuous_box = QCheckBox("連續檢測")
-        self.continuous_box.stateChanged.connect(self.toggle_continuous_detection)
+        self.continuous_button = QPushButton("連續檢測")
+        self.continuous_button.setCheckable(True)
+        self.continuous_button.setObjectName("continuousButton")
+        self.continuous_button.toggled.connect(self.toggle_continuous_detection)
 
         self.grid_holder = QWidget()
         self.grid = QGridLayout(self.grid_holder)
@@ -62,7 +63,7 @@ class MonitorPage(QWidget):
         start_button = QPushButton("重新啟動所有相機")
         start_button.clicked.connect(self.start)
         stop_button = QPushButton("停止相機")
-        stop_button.clicked.connect(self.stop)
+        stop_button.clicked.connect(lambda: self.stop())
         inspect_button = QPushButton("單次檢測")
         inspect_button.setObjectName("primaryButton")
         inspect_button.clicked.connect(self.inspect_once)
@@ -79,12 +80,29 @@ class MonitorPage(QWidget):
         side_layout.addWidget(self.result_label)
         side_layout.addWidget(self.confidence_label)
         side_layout.addWidget(self.camera_status_label)
-        side_layout.addWidget(self.continuous_box)
         side_layout.addStretch()
-        side_layout.addWidget(start_button)
-        side_layout.addWidget(stop_button)
-        side_layout.addWidget(inspect_button)
-        side_layout.addWidget(logout_button)
+
+        bottom_controls = QVBoxLayout()
+        bottom_controls.setSpacing(8)
+
+        detection_actions = QHBoxLayout()
+        detection_actions.setSpacing(8)
+        detection_actions.addWidget(inspect_button)
+        detection_actions.addWidget(self.continuous_button)
+
+        camera_actions = QHBoxLayout()
+        camera_actions.setSpacing(8)
+        camera_actions.addWidget(start_button)
+        camera_actions.addWidget(stop_button)
+
+        bottom_controls.addWidget(QLabel("檢測控制"))
+        bottom_controls.addLayout(detection_actions)
+        side_layout.addSpacing(8)
+        bottom_controls.addWidget(QLabel("相機控制"))
+        bottom_controls.addLayout(camera_actions)
+        bottom_controls.addWidget(logout_button)
+
+        side_layout.addLayout(bottom_controls)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -120,7 +138,9 @@ class MonitorPage(QWidget):
             self.grid.addWidget(view, idx // columns, idx % columns)
 
     def start(self):
-        self.stop()
+        continuous_requested = self.continuous_detection
+        self.stop(reset_continuous=False)
+        self.continuous_detection = continuous_requested
         self.refresh()
         errors = []
         for config, _ in self.views:
@@ -133,9 +153,14 @@ class MonitorPage(QWidget):
         if self.continuous_detection:
             self.detection_timer.start(500)
 
-    def stop(self):
+    def stop(self, reset_continuous=True):
         self.frame_timer.stop()
         self.detection_timer.stop()
+        if reset_continuous:
+            self.continuous_button.blockSignals(True)
+            self.continuous_button.setChecked(False)
+            self.continuous_button.blockSignals(False)
+            self.continuous_detection = False
         for _, source in self.sources:
             source.release()
         self.sources = []
@@ -164,8 +189,8 @@ class MonitorPage(QWidget):
     def inspect_once(self):
         self.detect_current_frames(record=True)
 
-    def toggle_continuous_detection(self):
-        self.continuous_detection = self.continuous_box.isChecked()
+    def toggle_continuous_detection(self, checked):
+        self.continuous_detection = checked
         if self.continuous_detection:
             if not self.sources:
                 self.start()
@@ -176,11 +201,11 @@ class MonitorPage(QWidget):
     def detect_current_frames(self, record=False):
         if not self.state.is_logged_in:
             QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
-            self.continuous_box.setChecked(False)
+            self.continuous_button.setChecked(False)
             return
         if not self.state.settings_applied:
             QMessageBox.warning(self, "尚未套用設定", "請先在相機設定畫面套用設定。")
-            self.continuous_box.setChecked(False)
+            self.continuous_button.setChecked(False)
             return
         if not self.views:
             self.start()

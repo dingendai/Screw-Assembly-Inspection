@@ -158,6 +158,15 @@ def apply_styles(app: QApplication):
         #primaryButton:hover {
             background: #135b50;
         }
+        #continuousButton:checked {
+            background: #176b5d;
+            color: #ffffff;
+            border: 1px solid #176b5d;
+            font-weight: 700;
+        }
+        #continuousButton:checked:hover {
+            background: #135b50;
+        }
         #passwordToggleButton {
             background: #ffffff;
             border: 1px solid #bcc8ce;
