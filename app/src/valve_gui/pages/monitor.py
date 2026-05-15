@@ -72,9 +72,6 @@ class MonitorPage(QWidget):
         self.inspect_button = QPushButton("單次檢測")
         self.inspect_button.setObjectName("primaryButton")
         self.inspect_button.clicked.connect(self.inspect_once)
-        logout_button = QPushButton("登出並釋放硬體")
-        logout_button.setObjectName("logoutButton")
-        logout_button.clicked.connect(self.logout)
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
@@ -107,7 +104,6 @@ class MonitorPage(QWidget):
         side_layout.addSpacing(8)
         bottom_controls.addWidget(QLabel("相機控制"))
         bottom_controls.addLayout(camera_actions)
-        bottom_controls.addWidget(logout_button)
 
         side_layout.addLayout(bottom_controls)
 

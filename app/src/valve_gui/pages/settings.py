@@ -66,12 +66,8 @@ class SettingsPage(QWidget):
         header = QHBoxLayout()
         title = QLabel("相機與模型配置")
         title.setObjectName("pageTitle")
-        logout_button = QPushButton("登出並釋放硬體")
-        logout_button.setObjectName("logoutButton")
-        logout_button.clicked.connect(self.logout)
         header.addWidget(title)
         header.addStretch()
-        header.addWidget(logout_button)
 
         self.tabs = QTabWidget()
 
@@ -562,12 +558,8 @@ class DisplaySettingsPage(QWidget):
         header = QHBoxLayout()
         title = QLabel("GUI 顯示設定")
         title.setObjectName("pageTitle")
-        logout_button = QPushButton("登出")
-        logout_button.setObjectName("logoutButton")
-        logout_button.clicked.connect(self.logout)
         header.addWidget(title)
         header.addStretch()
-        header.addWidget(logout_button)
 
         display_apply_button = QPushButton("保存 GUI 顯示設定")
         display_apply_button.setObjectName("primaryButton")
