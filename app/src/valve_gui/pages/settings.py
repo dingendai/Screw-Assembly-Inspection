@@ -77,13 +77,11 @@ class SettingsPage(QWidget):
 
         camera_tab = QWidget()
         content = QHBoxLayout(camera_tab)
-        left = QVBoxLayout()
-        right = QVBoxLayout()
-        left.addWidget(self.build_camera_group())
-        left.addStretch()
-        right.addWidget(self.build_preview_group(), 1)
-        content.addLayout(left, 0)
-        content.addLayout(right, 1)
+        content.setSpacing(12)
+        content.addWidget(self.build_camera_group(), 1)
+        content.addWidget(self.build_preview_group(), 1)
+        content.setStretch(0, 1)
+        content.setStretch(1, 1)
 
         model_tab = QWidget()
         model_layout = QVBoxLayout(model_tab)
@@ -408,7 +406,6 @@ class SettingsPage(QWidget):
             self.preview_status.setText("目前沒有啟用的檢測相機。")
             return
 
-        columns = 1 if len(enabled_rows) == 1 else 2
         errors = []
         for idx, camera in enumerate(enabled_rows):
             view = CameraView(
@@ -420,7 +417,7 @@ class SettingsPage(QWidget):
                 errors.append(source.last_error)
             self.preview_views.append((camera, view))
             self.preview_sources.append((camera["slot"], source))
-            self.preview_grid.addWidget(view, idx // columns, idx % columns)
+            self.preview_grid.addWidget(view, idx // 2, idx % 2)
         self.preview_status.setText("；".join(errors) if errors else "正在預覽目前相機配置、方向與指定模型。")
         self.preview_timer.start(33)
 
