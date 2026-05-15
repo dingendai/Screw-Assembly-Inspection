@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer
@@ -34,10 +35,14 @@ class MonitorPage(QWidget):
         self.last_frames = {}
         self.last_detection_time = None
         self.continuous_detection = False
+        self.detection_executor = ThreadPoolExecutor(max_workers=1)
+        self.pending_detection_future = None
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
         self.detection_timer.timeout.connect(self.detect_current_frames)
+        self.result_timer = QTimer(self)
+        self.result_timer.timeout.connect(self.apply_pending_detection_result)
 
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
@@ -161,6 +166,8 @@ class MonitorPage(QWidget):
     def stop(self, reset_continuous=True):
         self.frame_timer.stop()
         self.detection_timer.stop()
+        self.result_timer.stop()
+        self.pending_detection_future = None
         if reset_continuous:
             self.continuous_button.blockSignals(True)
             self.continuous_button.setChecked(False)
@@ -189,8 +196,7 @@ class MonitorPage(QWidget):
                 rotation_degrees=config.rotation_degrees,
             )
             self.last_frames[config.slot] = frame
-            if not self.continuous_detection:
-                view.set_frame(frame, input_fps=source.input_fps)
+            view.set_frame(frame, input_fps=source.input_fps)
 
     def inspect_once(self):
         self.continuous_button.setEnabled(False)
@@ -216,6 +222,8 @@ class MonitorPage(QWidget):
             self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
+            self.result_timer.stop()
+            self.pending_detection_future = None
 
     def update_detection_controls(self):
         self.inspect_button.setVisible(not self.continuous_detection)
@@ -233,7 +241,32 @@ class MonitorPage(QWidget):
             return
         if not self.views:
             self.start()
-        inference = self.router.run(self.last_frames)
+        frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
+        if self.continuous_detection and not record:
+            if self.pending_detection_future and not self.pending_detection_future.done():
+                return
+            self.pending_detection_future = self.detection_executor.submit(self.router.run, frames)
+            self.result_timer.start(30)
+            return
+
+        inference = self.router.run(frames)
+        self.apply_detection_result(inference, record=record)
+
+    def apply_pending_detection_result(self):
+        if not self.pending_detection_future or not self.pending_detection_future.done():
+            return
+        future = self.pending_detection_future
+        self.pending_detection_future = None
+        self.result_timer.stop()
+        try:
+            inference = future.result()
+        except Exception as exc:
+            self.ng_reason_label.setText(f"背景檢測錯誤：{exc}")
+            self.set_result("NG", 0.0)
+            return
+        self.apply_detection_result(inference, record=False)
+
+    def apply_detection_result(self, inference, record=False):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
         self.show_annotated_frames(inference.annotated_frames)
