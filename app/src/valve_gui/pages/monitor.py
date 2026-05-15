@@ -2,6 +2,7 @@ from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QApplication,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -67,9 +68,9 @@ class MonitorPage(QWidget):
         start_button.clicked.connect(self.start)
         stop_button = QPushButton("停止相機")
         stop_button.clicked.connect(lambda: self.stop())
-        inspect_button = QPushButton("單次檢測")
-        inspect_button.setObjectName("primaryButton")
-        inspect_button.clicked.connect(self.inspect_once)
+        self.inspect_button = QPushButton("單次檢測")
+        self.inspect_button.setObjectName("primaryButton")
+        self.inspect_button.clicked.connect(self.inspect_once)
         logout_button = QPushButton("登出並釋放硬體")
         logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.logout)
@@ -92,7 +93,7 @@ class MonitorPage(QWidget):
 
         detection_actions = QHBoxLayout()
         detection_actions.setSpacing(8)
-        detection_actions.addWidget(inspect_button)
+        detection_actions.addWidget(self.inspect_button)
         detection_actions.addWidget(self.continuous_button)
 
         camera_actions = QHBoxLayout()
@@ -166,6 +167,7 @@ class MonitorPage(QWidget):
             self.continuous_button.setChecked(False)
             self.continuous_button.blockSignals(False)
             self.continuous_detection = False
+            self.update_detection_controls()
         for _, source in self.sources:
             source.release()
         self.sources = []
@@ -192,16 +194,34 @@ class MonitorPage(QWidget):
                 view.set_frame(frame)
 
     def inspect_once(self):
-        self.detect_current_frames(record=True)
+        self.continuous_button.setEnabled(False)
+        self.inspect_button.setObjectName("activeDetectionButton")
+        self.inspect_button.style().unpolish(self.inspect_button)
+        self.inspect_button.style().polish(self.inspect_button)
+        QApplication.processEvents()
+        try:
+            self.detect_current_frames(record=True)
+        finally:
+            self.inspect_button.setObjectName("primaryButton")
+            self.inspect_button.style().unpolish(self.inspect_button)
+            self.inspect_button.style().polish(self.inspect_button)
+            if not self.continuous_detection:
+                self.continuous_button.setEnabled(True)
 
     def toggle_continuous_detection(self, checked):
         self.continuous_detection = checked
+        self.update_detection_controls()
         if self.continuous_detection:
             if not self.sources:
                 self.start()
             self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
+
+    def update_detection_controls(self):
+        self.inspect_button.setVisible(not self.continuous_detection)
+        self.continuous_button.setEnabled(True)
+        self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "連續檢測")
 
     def detect_current_frames(self, record=False):
         if not self.state.is_logged_in:

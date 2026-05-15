@@ -34,12 +34,13 @@ DISPLAY_MODE_OPTIONS = [
 
 
 class LoginPage(QWidget):
-    def __init__(self, state: AppState, on_login, on_display_change=None, on_exit=None):
+    def __init__(self, state: AppState, on_login, on_display_change=None, on_exit=None, on_release_cameras=None):
         super().__init__()
         self.state = state
         self.on_login = on_login
         self.on_display_change = on_display_change
         self.on_exit = on_exit
+        self.on_release_cameras = on_release_cameras
         self.sources = {}
         self.views = {}
         self.last_frames = {}
@@ -69,10 +70,13 @@ class LoginPage(QWidget):
         start_button.clicked.connect(self.start_preview)
         scan_button = QPushButton("搜尋可用相機")
         scan_button.clicked.connect(self.scan_cameras)
+        release_button = QPushButton("強制釋放相機")
+        release_button.clicked.connect(self.force_release_cameras)
         capture_button = QPushButton("拍攝登入照片")
         capture_button.clicked.connect(self.capture_photo)
         self.start_button = start_button
         self.scan_button = scan_button
+        self.release_button = release_button
         self.capture_button = capture_button
         login_button = QPushButton("登入")
         login_button.setObjectName("primaryButton")
@@ -94,6 +98,7 @@ class LoginPage(QWidget):
         panel_layout.addWidget(self.build_display_group())
         panel_layout.addWidget(scan_button)
         panel_layout.addWidget(start_button)
+        panel_layout.addWidget(release_button)
         panel_layout.addWidget(self.camera_visibility_group)
         panel_layout.addWidget(capture_button)
         panel_layout.addWidget(self.photo_status)
@@ -317,6 +322,7 @@ class LoginPage(QWidget):
 
         self.scan_button.setVisible(needs_photo)
         self.start_button.setVisible(needs_photo)
+        self.release_button.setVisible(needs_photo)
         self.capture_button.setVisible(needs_photo)
         self.photo_status.setVisible(needs_photo)
         self.preview_group.setVisible(needs_photo)
@@ -408,6 +414,13 @@ class LoginPage(QWidget):
         for source in self.sources.values():
             source.release()
         self.sources = {}
+
+    def force_release_cameras(self):
+        self.stop()
+        self.clear_preview_grid()
+        if self.on_release_cameras:
+            self.on_release_cameras()
+        self.photo_status.setText("已強制釋放相機，需重新啟動預覽後才能拍照。")
 
     def clear_preview_grid(self):
         while self.preview_grid.count():

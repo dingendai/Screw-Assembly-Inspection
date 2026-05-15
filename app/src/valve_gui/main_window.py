@@ -40,6 +40,7 @@ class MainWindow(QMainWindow):
             self.after_login,
             on_display_change=self.apply_display_config,
             on_exit=self.exit_application,
+            on_release_cameras=self.release_all_hardware,
         )
         self.monitor_page = MonitorPage(self.state, self.add_record, self.logout)
         self.settings_page = SettingsPage(

@@ -158,6 +158,15 @@ def apply_styles(app: QApplication):
         #primaryButton:hover {
             background: #135b50;
         }
+        #activeDetectionButton {
+            background: #f59e0b;
+            color: #172026;
+            border: 1px solid #d97706;
+            font-weight: 800;
+        }
+        #activeDetectionButton:hover {
+            background: #f59e0b;
+        }
         #continuousButton:checked {
             background: #176b5d;
             color: #ffffff;
