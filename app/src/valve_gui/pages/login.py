@@ -221,7 +221,7 @@ class LoginPage(QWidget):
                 view.set_message(source.last_error or "沒有相機影像。", is_error=True)
                 continue
             self.last_frames[camera_index] = frame
-            view.set_frame(frame)
+            view.set_frame(frame, input_fps=source.input_fps)
 
     def capture_photo(self):
         camera_index = int(self.camera_index.currentData())

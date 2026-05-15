@@ -190,7 +190,7 @@ class MonitorPage(QWidget):
             )
             self.last_frames[config.slot] = frame
             if not self.continuous_detection:
-                view.set_frame(frame)
+                view.set_frame(frame, input_fps=source.input_fps)
 
     def inspect_once(self):
         self.continuous_button.setEnabled(False)

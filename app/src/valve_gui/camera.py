@@ -1,3 +1,5 @@
+import time
+
 import cv2
 import numpy as np
 
@@ -29,6 +31,8 @@ class VideoSource:
         self.capture = None
         self.counter = 0
         self.last_error = ""
+        self.input_fps = 0.0
+        self._last_frame_time = None
         if not simulate:
             self.capture = cv2.VideoCapture(index, cv2.CAP_DSHOW)
             if not self.capture.isOpened():
@@ -45,11 +49,23 @@ class VideoSource:
             ok, frame = self.capture.read()
             if ok:
                 self.last_error = ""
+                self._mark_frame_received()
                 return frame
             self.last_error = f"{self.label} / Device {self.index}: 相機已開啟但讀不到影像。"
         if self.simulate:
-            return self._simulated_frame()
+            frame = self._simulated_frame()
+            self._mark_frame_received()
+            return frame
         return None
+
+    def _mark_frame_received(self):
+        now = time.perf_counter()
+        if self._last_frame_time is not None:
+            elapsed = now - self._last_frame_time
+            if elapsed > 0:
+                current_fps = 1.0 / elapsed
+                self.input_fps = current_fps if self.input_fps <= 0 else (self.input_fps * 0.85 + current_fps * 0.15)
+        self._last_frame_time = now
 
     def has_error(self):
         return bool(self.last_error)

@@ -442,7 +442,7 @@ class SettingsPage(QWidget):
                     flip_vertical=camera["flip_vertical"],
                     rotation_degrees=camera["rotation_degrees"],
                 )
-                view.set_frame(frame)
+                view.set_frame(frame, input_fps=source.input_fps)
 
     def current_enabled_camera_rows(self):
         enabled_rows = []
