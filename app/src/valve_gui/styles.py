@@ -23,6 +23,18 @@ def apply_styles(app: QApplication):
         QToolButton:hover {
             background: #e8eef1;
         }
+        QToolButton:checked {
+            background: #176b5d;
+            color: #ffffff;
+            border: 1px solid #176b5d;
+            border-radius: 6px;
+            font-weight: 800;
+        }
+        QToolButton:checked:hover {
+            background: #135b50;
+            border: 1px solid #135b50;
+            color: #ffffff;
+        }
         #roleBadge {
             background: #172026;
             color: #ffffff;
@@ -49,6 +61,23 @@ def apply_styles(app: QApplication):
         QTabBar::tab:selected {
             background: #ffffff;
             color: #176b5d;
+        }
+        #userManagementTabs QTabBar::tab {
+            background: #e8eef1;
+            color: #41515c;
+            border: 1px solid #c9d4d9;
+            border-bottom: 0;
+            padding: 10px 18px;
+        }
+        #userManagementTabs QTabBar::tab:selected {
+            background: #176b5d;
+            color: #ffffff;
+            border: 1px solid #176b5d;
+            font-weight: 800;
+        }
+        #userManagementTabs QTabBar::tab:hover:!selected {
+            background: #dce7eb;
+            color: #172026;
         }
         QGroupBox, #cameraCard {
             background: #ffffff;
@@ -118,6 +147,21 @@ def apply_styles(app: QApplication):
         }
         #primaryButton:hover {
             background: #135b50;
+        }
+        #passwordToggleButton {
+            background: #ffffff;
+            border: 1px solid #bcc8ce;
+            border-radius: 6px;
+            color: #41515c;
+            font-size: 14px;
+            font-weight: 800;
+            min-width: 0;
+            padding: 0;
+        }
+        #passwordToggleButton:hover {
+            background: #eef7f4;
+            border: 1px solid #176b5d;
+            color: #176b5d;
         }
         #cameraImage, #cameraError {
             background: #11171c;

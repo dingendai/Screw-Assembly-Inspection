@@ -50,8 +50,6 @@ class LoginPage(QWidget):
 
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("輸入操作者姓名")
-        self.user_input = QComboBox()
-        self.user_input.currentIndexChanged.connect(self.apply_selected_user)
         self.role_input = QComboBox()
         self.refresh_role_options()
         self.role_input.currentIndexChanged.connect(self.update_login_requirements)
@@ -84,7 +82,6 @@ class LoginPage(QWidget):
 
         form = QFormLayout()
         self.form = form
-        form.addRow("使用者帳號", self.user_input)
         form.addRow("操作者姓名", self.name_input)
         form.addRow("登入角色", self.role_input)
         form.addRow("登入密鑰", self.password_input)
@@ -126,45 +123,6 @@ class LoginPage(QWidget):
             if match >= 0:
                 self.role_input.setCurrentIndex(match)
         self.role_input.blockSignals(False)
-        self.update_user_options()
-
-    def update_user_options(self):
-        if not hasattr(self, "user_input"):
-            return
-        current_user = self.user_input.currentData()
-        self.user_input.blockSignals(True)
-        self.user_input.clear()
-        self.user_input.addItem("手動輸入", "")
-        for account in self.state.user_accounts:
-            if account.enabled:
-                label = f"{account.display_name or account.username} ({role_label(account.role, self.state.role_labels)})"
-                self.user_input.addItem(label, account.username)
-        if current_user:
-            match = self.user_input.findData(current_user)
-            if match >= 0:
-                self.user_input.setCurrentIndex(match)
-        self.user_input.blockSignals(False)
-
-    def selected_account(self):
-        username = self.user_input.currentData() if hasattr(self, "user_input") else ""
-        if not username:
-            return None
-        return next((account for account in self.state.user_accounts if account.username == username and account.enabled), None)
-
-    def apply_selected_user(self):
-        account = self.selected_account()
-        if not account:
-            self.name_input.setReadOnly(False)
-            self.role_input.setEnabled(True)
-            self.update_login_requirements()
-            return
-        self.name_input.setText(account.display_name or account.username)
-        match = self.role_input.findData(account.role)
-        if match >= 0:
-            self.role_input.setCurrentIndex(match)
-        self.name_input.setReadOnly(True)
-        self.role_input.setEnabled(False)
-        self.update_login_requirements()
 
     def build_display_group(self):
         group = QGroupBox("GUI 顯示設定")
@@ -351,11 +309,7 @@ class LoginPage(QWidget):
         needs_name = not is_developer
         needs_password = bool(self.state.role_passwords.get(role, ""))
         needs_photo = not is_developer
-        account = self.selected_account()
-        if account and account.password:
-            needs_password = True
 
-        self.set_form_row_visible(self.user_input, bool(self.state.user_accounts) and not is_developer)
         self.set_form_row_visible(self.name_input, needs_name)
         self.set_form_row_visible(self.password_input, needs_password)
         self.set_form_row_visible(self.camera_index, needs_photo)
@@ -385,20 +339,18 @@ class LoginPage(QWidget):
         field.setVisible(visible)
 
     def validate_password(self, role):
-        account = self.selected_account()
-        expected = account.password if account and account.password else self.state.role_passwords.get(role, "")
+        expected = self.state.role_passwords.get(role, "")
         if expected and self.password_input.text() != expected:
             QMessageBox.warning(self, "登入密鑰錯誤", f"{role_label(role, self.state.role_labels)}密鑰不正確。")
             return False
         return True
 
     def submit(self):
-        account = self.selected_account()
-        role = account.role if account else self.selected_role()
+        role = self.selected_role()
         if not self.validate_password(role):
             return
         if role == ROLE_DEVELOPER:
-            self.state.operator_name = (account.display_name if account else self.name_input.text().strip()) or "Developer"
+            self.state.operator_name = self.name_input.text().strip() or "Developer"
             self.state.operator_role = role
             self.state.operator_photo_path = ""
             self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
@@ -417,7 +369,7 @@ class LoginPage(QWidget):
             self.on_login()
             return
 
-        name = (account.display_name if account else self.name_input.text().strip()) or (account.username if account else "")
+        name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "缺少資料", "請輸入操作者姓名。")
             return
@@ -446,7 +398,6 @@ class LoginPage(QWidget):
         self.name_input.setReadOnly(False)
         self.password_input.clear()
         self.refresh_role_options()
-        self.user_input.setCurrentIndex(0)
         self.role_input.setEnabled(True)
         self.role_input.setCurrentIndex(0)
         self.state.operator_photo_path = ""

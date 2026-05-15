@@ -4,8 +4,8 @@ ROLE_OPERATOR = "operator"
 
 ROLE_LABELS = {
     ROLE_DEVELOPER: "開發者",
-    ROLE_MANAGER: "管理級",
-    ROLE_OPERATOR: "操作員",
+    ROLE_MANAGER: "管理者",
+    ROLE_OPERATOR: "作業員",
 }
 
 ROLE_OPTIONS = [
@@ -30,10 +30,10 @@ PERMISSION_VIEW_SESSIONS = "view_sessions"
 PERMISSION_USE_SIMULATION = "use_simulation"
 
 PERMISSION_LABELS = {
-    PERMISSION_OPEN_SETTINGS: "相機設定",
-    PERMISSION_OPEN_MONITOR: "監視頁面",
-    PERMISSION_OPEN_HISTORY: "歷史紀錄頁面",
-    PERMISSION_MANAGE_MODELS: "模型管理",
+    PERMISSION_OPEN_SETTINGS: "進入相機設定",
+    PERMISSION_OPEN_MONITOR: "進入監視頁面",
+    PERMISSION_OPEN_HISTORY: "查看歷史紀錄",
+    PERMISSION_MANAGE_MODELS: "管理模型",
     PERMISSION_EXPORT_RECORDS: "匯出紀錄",
     PERMISSION_VIEW_ALL_RECORDS: "查看全部檢測紀錄",
     PERMISSION_VIEW_SESSIONS: "查看登入紀錄",
@@ -102,14 +102,20 @@ def default_role_labels():
 
 
 def role_options(role_labels=None):
-    labels = role_labels or ROLE_LABELS
+    if role_labels is None:
+        return list(ROLE_OPTIONS)
+    labels = role_labels
     ordered = []
-    for role in (ROLE_OPERATOR, ROLE_MANAGER, ROLE_DEVELOPER):
-        if role in labels:
-            ordered.append((role, labels[role]))
-    for role in sorted(labels):
-        if role not in {ROLE_OPERATOR, ROLE_MANAGER, ROLE_DEVELOPER}:
-            ordered.append((role, labels[role]))
+    for role, label in labels.items():
+        if role != ROLE_DEVELOPER:
+            ordered.append((role, label))
+    for role, label in ROLE_OPTIONS:
+        if role != ROLE_DEVELOPER and role not in labels:
+            ordered.append((role, label))
+    if ROLE_DEVELOPER in labels:
+        ordered.append((ROLE_DEVELOPER, labels[ROLE_DEVELOPER]))
+    else:
+        ordered.append((ROLE_DEVELOPER, ROLE_LABELS[ROLE_DEVELOPER]))
     return ordered
 
 

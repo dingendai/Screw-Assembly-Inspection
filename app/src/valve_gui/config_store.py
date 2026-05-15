@@ -21,12 +21,19 @@ def load_app_config(state):
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
     role_labels = data.get("role_labels", {})
-    merged_labels = default_role_labels()
+    default_labels = default_role_labels()
+    merged_labels = {ROLE_DEVELOPER: default_labels[ROLE_DEVELOPER]}
     if isinstance(role_labels, dict):
         for role, label in role_labels.items():
             role_key = str(role).strip()
-            if role_key:
+            if role_key and role_key != ROLE_DEVELOPER:
                 merged_labels[role_key] = str(label).strip() or role_key
+        if ROLE_DEVELOPER in role_labels:
+            developer_label = str(role_labels.get(ROLE_DEVELOPER, "")).strip()
+            merged_labels[ROLE_DEVELOPER] = developer_label or default_labels[ROLE_DEVELOPER]
+    for role, label in default_labels.items():
+        if role not in merged_labels:
+            merged_labels[role] = label
     state.role_labels = merged_labels
 
     role_passwords = data.get("role_passwords", {})

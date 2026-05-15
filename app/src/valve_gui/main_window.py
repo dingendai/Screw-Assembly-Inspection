@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
 
         self.actions = {}
         self.create_toolbar()
+        self.stack.currentChanged.connect(self.update_active_action)
         self.update_navigation()
         self.start_all_cameras_on_boot()
 
@@ -109,15 +110,16 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("Navigation")
         toolbar.setMovable(False)
         action_specs = [
-            ("login", "登入", self.show_login),
-            ("settings", "相機設定", self.show_settings),
-            ("users", "用戶管理", self.show_users),
-            ("monitor", "監視", self.show_monitor),
-            ("history", "歷史紀錄", self.show_history),
-            ("logout", "登出", self.logout),
+            ("login", "登入", self.show_login, True),
+            ("settings", "相機設定", self.show_settings, True),
+            ("monitor", "監視", self.show_monitor, True),
+            ("history", "歷史紀錄", self.show_history, True),
+            ("users", "用戶管理", self.show_users, True),
+            ("logout", "登出", self.logout, False),
         ]
-        for key, text, callback in action_specs:
+        for key, text, callback, checkable in action_specs:
             action = QAction(text, self)
+            action.setCheckable(checkable)
             action.triggered.connect(callback)
             toolbar.addAction(action)
             self.actions[key] = action
@@ -156,6 +158,22 @@ class MainWindow(QMainWindow):
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
             self.role_badge.setText("目前權限：未登入")
+        self.update_active_action()
+
+    def update_active_action(self):
+        if not self.actions:
+            return
+        page_actions = {
+            self.login_page: "login",
+            self.settings_page: "settings",
+            self.monitor_page: "monitor",
+            self.history_page: "history",
+            self.user_page: "users",
+        }
+        active_key = page_actions.get(self.stack.currentWidget())
+        for key, action in self.actions.items():
+            if action.isCheckable():
+                action.setChecked(key == active_key and action.isVisible())
 
     def require_login(self):
         if not self.state.is_logged_in:
