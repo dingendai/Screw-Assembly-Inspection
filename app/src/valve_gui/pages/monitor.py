@@ -270,7 +270,7 @@ class MonitorPage(QWidget):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
         self.show_annotated_frames(inference.annotated_frames)
-        if record or inference.result == "NG":
+        if record or self.continuous_detection or inference.result == "NG":
             self.record_detection(inference)
 
     def show_annotated_frames(self, annotated_frames):
