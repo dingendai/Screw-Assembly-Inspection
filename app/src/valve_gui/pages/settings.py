@@ -3,9 +3,11 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -619,6 +621,197 @@ class DisplaySettingsPage(QWidget):
         custom = self.display_mode.currentData() == "custom"
         self.display_width.setEnabled(custom)
         self.display_height.setEnabled(custom)
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
+class DecisionSettingsPage(QWidget):
+    RULE_ROW_HEIGHT = 45
+
+    def __init__(self, state: AppState, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_logout = on_logout
+        self.rule_rows = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        title = QLabel("判定設定")
+        title.setObjectName("pageTitle")
+        header.addWidget(title)
+        header.addStretch()
+
+        layout.addLayout(header)
+        layout.addWidget(self.build_decision_group(), 1)
+
+    def build_decision_group(self):
+        group = QGroupBox("PASS / NG 條件")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        global_row = QHBoxLayout()
+        global_row.addWidget(QLabel("全域 PASS 信心值門檻"))
+        self.global_threshold = QDoubleSpinBox()
+        self.global_threshold.setRange(0.0, 1.0)
+        self.global_threshold.setSingleStep(0.05)
+        self.global_threshold.setDecimals(3)
+        global_row.addWidget(self.global_threshold)
+        global_row.addStretch()
+
+        self.model_tabs = QTabWidget()
+
+        layout.addLayout(global_row)
+        layout.addWidget(self.model_tabs, 1)
+        return group
+
+    def refresh(self):
+        ensure_model_configs(self.state)
+        self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
+        self.load_rule_table()
+
+    def load_rule_table(self):
+        self.rule_rows = []
+        self.model_tabs.clear()
+        grouped_rules = {}
+        all_rules = []
+        for camera in self.state.inspection_cameras:
+            if not camera.enabled:
+                continue
+            for model_name in camera_model_names(camera):
+                grouped_rules.setdefault(model_name, []).append(camera.slot)
+                all_rules.append((camera.slot, model_name))
+
+        if not grouped_rules:
+            empty_page = QWidget()
+            empty_layout = QVBoxLayout(empty_page)
+            empty_label = QLabel("目前沒有啟用的 Camera / 模型判定規則。")
+            empty_label.setObjectName("mutedText")
+            empty_layout.addWidget(empty_label)
+            empty_layout.addStretch()
+            self.model_tabs.addTab(empty_page, "未設定")
+            return
+
+        overview_page = QWidget()
+        overview_layout = QVBoxLayout(overview_page)
+        overview_table = self.create_overview_table()
+        overview_layout.addWidget(overview_table)
+        for slot, model_name in sorted(all_rules, key=lambda item: (item[0], item[1])):
+            self.add_overview_row(overview_table, slot, model_name)
+        self.model_tabs.addTab(overview_page, "一覽表")
+
+        for model_name in sorted(grouped_rules):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            table = self.create_rule_table()
+            page_layout.addWidget(table)
+            for slot in sorted(grouped_rules[model_name]):
+                self.add_rule_row(table, slot, model_name)
+            self.model_tabs.addTab(page, model_name)
+
+    def create_rule_table(self, show_model=False):
+        table = QTableWidget(0, 4 if show_model else 3)
+        if show_model:
+            table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
+        else:
+            table.setHorizontalHeaderLabels(["畫面", "信心值閥值", "必須偵測標籤框數"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        if show_model:
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        else:
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.setAlternatingRowColors(True)
+        return table
+
+    def create_overview_table(self):
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        return table
+
+    def add_overview_row(self, table, slot, model_name):
+        row = table.rowCount()
+        table.insertRow(row)
+        table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+        rule = self.state.decision.model_rules.get(self.decision_rule_key(slot, model_name), {})
+        confidence = float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold))
+        required_count = int(rule.get("required_object_count", 1))
+        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
+        table.setItem(row, 1, QTableWidgetItem(model_name))
+        table.setItem(row, 2, QTableWidgetItem(f"{confidence:.3f}"))
+        table.setItem(row, 3, QTableWidgetItem(str(required_count)))
+
+    def add_rule_row(self, table, slot, model_name, show_model=False):
+        row = table.rowCount()
+        table.insertRow(row)
+        table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+
+        rule_key = self.decision_rule_key(slot, model_name)
+        rule = self.state.decision.model_rules.get(rule_key, {})
+
+        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
+        confidence_column = 1
+        count_column = 2
+        if show_model:
+            table.setItem(row, 1, QTableWidgetItem(model_name))
+            confidence_column = 2
+            count_column = 3
+
+        confidence = QDoubleSpinBox()
+        confidence.setRange(0.0, 1.0)
+        confidence.setSingleStep(0.05)
+        confidence.setDecimals(3)
+        confidence.setValue(float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold)))
+        table.setCellWidget(row, confidence_column, confidence)
+
+        count = QComboBox()
+        for value in range(0, 21):
+            count.addItem(str(value), value)
+        required_count = int(rule.get("required_object_count", 1))
+        if count.findData(required_count) < 0:
+            count.addItem(str(required_count), required_count)
+        count.setCurrentIndex(count.findData(required_count))
+        table.setCellWidget(row, count_column, count)
+
+        self.rule_rows.append(
+            {
+                "slot": slot,
+                "model_name": model_name,
+                "confidence": confidence,
+                "count": count,
+            }
+        )
+
+    def save_decision_settings(self):
+        self.state.decision.pass_confidence_threshold = self.global_threshold.value()
+        rules = {}
+        for row in self.rule_rows:
+            rules[self.decision_rule_key(row["slot"], row["model_name"])] = {
+                "confidence_threshold": row["confidence"].value(),
+                "required_object_count": int(row["count"].currentData()),
+            }
+        self.state.decision.model_rules = rules
+        save_app_config(self.state)
+        QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
+
+    def decision_rule_key(self, slot, model_name):
+        return f"{slot}::{model_name}"
 
     def logout(self):
         if self.on_logout:

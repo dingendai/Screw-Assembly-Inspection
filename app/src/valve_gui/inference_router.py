@@ -32,6 +32,7 @@ class InferenceRouter:
         confidences = []
         notes = []
         missing = []
+        rule_failures = []
 
         for camera in self.state.inspection_cameras:
             if not camera.enabled or camera.slot not in frames_by_slot:
@@ -57,15 +58,25 @@ class InferenceRouter:
                     camera_confidences.append(0.0)
                     camera_reasons.append(f"{model_name}: 模型未啟用或不存在")
                     continue
-                annotated, confidence, note = self.run_single_model(annotated, camera.slot, model)
+                annotated, confidence, object_count, note = self.run_single_model(annotated, camera.slot, model)
+                rule = self.decision_rule_for(camera.slot, model.name)
+                threshold = float(rule.get("confidence_threshold", 0.5))
+                required_count = int(rule.get("required_object_count", 1))
+                model_pass = confidence >= threshold and object_count == required_count
                 confidences.append(confidence)
                 notes.append(note)
                 camera_confidences.append(confidence)
-                camera_reasons.append(f"{model.name}: {note}")
+                camera_reasons.append(
+                    f"{model.name}: {'PASS' if model_pass else 'NG'} / "
+                    f"confidence {confidence:.3f} (門檻 >= {threshold:.3f}) / "
+                    f"標籤框 {object_count} (需求 = {required_count})"
+                )
+                if not model_pass:
+                    rule_failures.append(f"Camera {camera.slot}->{model.name}")
             annotated_frames[camera.slot] = annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
-                "result": "PASS" if camera_confidence >= 0.5 else "NG",
+                "result": "NG" if any(item.startswith(f"Camera {camera.slot}->") for item in rule_failures) else "PASS",
                 "confidence": camera_confidence,
                 "reasons": camera_reasons or ["沒有可用的模型結果"],
             }
@@ -80,7 +91,7 @@ class InferenceRouter:
             )
 
         confidence = min(confidences) if confidences else 0.0
-        result = "PASS" if confidence >= 0.5 else "NG"
+        result = "NG" if rule_failures or not confidences else "PASS"
         return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
 
     def run_single_model(self, frame, slot, model_config):
@@ -94,15 +105,35 @@ class InferenceRouter:
                 if boxes is not None and len(boxes) > 0:
                     confidence = float(boxes.conf.max().item())
                     count = len(boxes)
-                    return annotated, confidence, f"C{slot}->{model_config.name}: {count} object(s)"
-                return annotated, 0.0, f"C{slot}->{model_config.name}: no object"
+                    return annotated, confidence, count, f"C{slot}->{model_config.name}: {count} object(s)"
+                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: no object"
             except Exception as exc:
                 annotated = self.draw_placeholder_annotation(frame.copy(), slot, model_config.name, f"YOLO error: {exc}")
-                return annotated, 0.0, f"C{slot}->{model_config.name}: YOLO error"
+                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: YOLO error"
 
         confidence = random.uniform(0.82, 0.96)
         annotated = self.draw_placeholder_annotation(frame.copy(), slot, model_config.name, f"placeholder {confidence:.2f}")
-        return annotated, confidence, f"C{slot}->{model_config.name}: placeholder"
+        return annotated, confidence, 1, f"C{slot}->{model_config.name}: placeholder"
+
+    def decision_rule_for(self, slot, model_name):
+        default_threshold = getattr(self.state.decision, "pass_confidence_threshold", 0.5)
+        default_rule = {
+            "confidence_threshold": default_threshold,
+            "required_object_count": 1,
+        }
+        rules = getattr(self.state.decision, "model_rules", {})
+        if not isinstance(rules, dict):
+            return default_rule
+        rule = rules.get(self.decision_rule_key(slot, model_name), {})
+        if not isinstance(rule, dict):
+            return default_rule
+        return {
+            "confidence_threshold": rule.get("confidence_threshold", default_threshold),
+            "required_object_count": rule.get("required_object_count", 1),
+        }
+
+    def decision_rule_key(self, slot, model_name):
+        return f"{slot}::{model_name}"
 
     def load_yolo_model(self, path):
         if not path:

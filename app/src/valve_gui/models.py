@@ -31,6 +31,12 @@ class DisplayConfig:
 
 
 @dataclass
+class DecisionConfig:
+    pass_confidence_threshold: float = 0.5
+    model_rules: dict[str, dict] = field(default_factory=dict)
+
+
+@dataclass
 class InspectionRecord:
     timestamp: str
     operator_name: str
@@ -77,6 +83,7 @@ class AppState:
     operator_camera_index: int = 4
     use_simulation: bool = True
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
     role_labels: dict[str, str] = field(default_factory=default_role_labels)
     role_passwords: dict[str, str] = field(default_factory=default_role_passwords)
     role_permissions: dict[str, set[str]] = field(default_factory=default_role_permissions)

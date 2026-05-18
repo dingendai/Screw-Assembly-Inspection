@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict
 
-from valve_gui.models import CameraConfig, DisplayConfig, ModelConfig, UserAccount
+from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, UserAccount
 from valve_gui.paths import APP_CONFIG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
@@ -81,6 +81,15 @@ def load_app_config(state):
             height=int(display.get("height", state.display.height)),
         )
 
+    decision = data.get("decision", {})
+    if isinstance(decision, dict):
+        state.decision = DecisionConfig(
+            pass_confidence_threshold=float(
+                decision.get("pass_confidence_threshold", state.decision.pass_confidence_threshold)
+            ),
+            model_rules=normalise_decision_rules(decision.get("model_rules", {})),
+        )
+
     cameras = data.get("inspection_cameras", [])
     if cameras:
         state.inspection_cameras = [
@@ -117,6 +126,7 @@ def save_app_config(state):
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": state.use_simulation,
         "display": asdict(state.display),
+        "decision": asdict(state.decision),
         "role_labels": state.role_labels,
         "role_passwords": state.role_passwords,
         "role_permissions": {
@@ -137,3 +147,28 @@ def normalise_model_names(value):
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def normalise_decision_rules(value):
+    if not isinstance(value, dict):
+        return {}
+    rules = {}
+    for key, rule in value.items():
+        if not isinstance(rule, dict):
+            continue
+        rule_key = str(key).strip()
+        if not rule_key:
+            continue
+        try:
+            confidence_threshold = float(rule.get("confidence_threshold", 0.5))
+        except (TypeError, ValueError):
+            confidence_threshold = 0.5
+        try:
+            required_object_count = int(rule.get("required_object_count", 1))
+        except (TypeError, ValueError):
+            required_object_count = 1
+        rules[rule_key] = {
+            "confidence_threshold": max(0.0, min(1.0, confidence_threshold)),
+            "required_object_count": max(0, required_object_count),
+        }
+    return rules
