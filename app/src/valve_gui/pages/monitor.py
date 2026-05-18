@@ -4,6 +4,7 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -33,6 +34,7 @@ class MonitorPage(QWidget):
         self.sources = []
         self.views = []
         self.last_frames = {}
+        self.latest_annotated_frames = {}
         self.last_detection_time = None
         self.continuous_detection = False
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
@@ -53,9 +55,11 @@ class MonitorPage(QWidget):
         self.confidence_label.setObjectName("mutedText")
         self.camera_status_label = QLabel("相機狀態：--")
         self.camera_status_label.setObjectName("mutedText")
-        self.ng_reason_label = QLabel("尚未檢測")
-        self.ng_reason_label.setObjectName("ngReasonBox")
-        self.ng_reason_label.setWordWrap(True)
+        self.reason_cards = {}
+        self.reason_list = QWidget()
+        self.reason_layout = QVBoxLayout(self.reason_list)
+        self.reason_layout.setContentsMargins(0, 0, 0, 0)
+        self.reason_layout.setSpacing(8)
         self.operator_label = QLabel()
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
@@ -89,8 +93,8 @@ class MonitorPage(QWidget):
         side_layout.addWidget(self.result_label)
         side_layout.addWidget(self.confidence_label)
         side_layout.addWidget(self.camera_status_label)
-        side_layout.addWidget(QLabel("NG 原因"))
-        side_layout.addWidget(self.ng_reason_label)
+        side_layout.addWidget(QLabel("相機檢測狀態"))
+        side_layout.addWidget(self.reason_list)
         side_layout.addStretch()
 
         bottom_controls = QVBoxLayout()
@@ -168,6 +172,7 @@ class MonitorPage(QWidget):
         self.detection_timer.stop()
         self.result_timer.stop()
         self.pending_detection_future = None
+        self.latest_annotated_frames = {}
         if reset_continuous:
             self.continuous_button.blockSignals(True)
             self.continuous_button.setChecked(False)
@@ -196,7 +201,8 @@ class MonitorPage(QWidget):
                 rotation_degrees=config.rotation_degrees,
             )
             self.last_frames[config.slot] = frame
-            view.set_frame(frame, input_fps=source.input_fps)
+            display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
+            view.set_frame(display_frame if display_frame is not None else frame, input_fps=source.input_fps)
 
     def inspect_once(self):
         self.continuous_button.setEnabled(False)
@@ -219,11 +225,13 @@ class MonitorPage(QWidget):
         if self.continuous_detection:
             if not self.sources:
                 self.start()
+            self.latest_annotated_frames = {}
             self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
             self.result_timer.stop()
             self.pending_detection_future = None
+            self.latest_annotated_frames = {}
 
     def update_detection_controls(self):
         self.inspect_button.setVisible(not self.continuous_detection)
@@ -261,8 +269,16 @@ class MonitorPage(QWidget):
         try:
             inference = future.result()
         except Exception as exc:
-            self.ng_reason_label.setText(f"背景檢測錯誤：{exc}")
             self.set_result("NG", 0.0)
+            self.set_reason_cards(
+                {
+                    0: {
+                        "result": "NG",
+                        "confidence": 0.0,
+                        "reasons": [f"背景檢測錯誤：{exc}"],
+                    }
+                }
+            )
             return
         self.apply_detection_result(inference, record=False)
 
@@ -274,6 +290,8 @@ class MonitorPage(QWidget):
             self.record_detection(inference)
 
     def show_annotated_frames(self, annotated_frames):
+        if self.continuous_detection:
+            self.latest_annotated_frames = dict(annotated_frames)
         view_by_slot = {config.slot: view for config, view in self.views}
         for slot, frame in annotated_frames.items():
             view = view_by_slot.get(slot)
@@ -305,17 +323,49 @@ class MonitorPage(QWidget):
         self.confidence_label.setText(f"Confidence: {confidence:.3f}")
 
     def set_ng_reason(self, inference):
-        note = inference.note.strip() if inference.note else ""
-        if inference.result == "PASS":
-            self.ng_reason_label.setText("目前判定為 PASS，無 NG 原因。")
+        self.set_reason_cards(inference.camera_results)
+
+    def set_reason_cards(self, camera_results):
+        self.clear_reason_cards()
+        if not camera_results:
+            self.add_reason_card("尚未檢測", "WAITING", ["尚未取得檢測結果"], 0.0)
             return
 
-        reasons = []
-        if inference.confidence < 0.5:
-            reasons.append(f"信心值低於門檻：{inference.confidence:.3f} < 0.500")
-        if note:
-            reasons.append(note)
-        self.ng_reason_label.setText("；".join(reasons) if reasons else "系統判定為 NG，未提供詳細原因。")
+        for slot in sorted(camera_results):
+            result_info = camera_results[slot]
+            title = "系統" if slot == 0 else f"Camera {slot}"
+            self.add_reason_card(
+                title,
+                result_info.get("result", "NG"),
+                result_info.get("reasons", []),
+                float(result_info.get("confidence", 0.0)),
+            )
+
+    def clear_reason_cards(self):
+        while self.reason_layout.count():
+            item = self.reason_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+        self.reason_cards = {}
+
+    def add_reason_card(self, title, result, reasons, confidence):
+        card = QFrame()
+        card.setObjectName("reasonPassBox" if result == "PASS" else "reasonNgBox")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        header = QLabel(f"{title}: {result}  Confidence: {confidence:.3f}")
+        header.setObjectName("reasonTitle")
+        layout.addWidget(header)
+
+        bullet_text = "\n".join(f"- {reason}" for reason in reasons) if reasons else "- 無詳細原因"
+        detail = QLabel(bullet_text)
+        detail.setWordWrap(True)
+        layout.addWidget(detail)
+
+        self.reason_layout.addWidget(card)
 
     def logout(self):
         self.stop()

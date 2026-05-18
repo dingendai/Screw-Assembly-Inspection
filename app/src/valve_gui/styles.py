@@ -219,6 +219,21 @@ def apply_styles(app: QApplication):
             padding: 10px 12px;
             min-height: 52px;
         }
+        #reasonPassBox {
+            background: #dff4e9;
+            color: #0d6b3f;
+            border: 1px solid #8fd7b3;
+            border-radius: 6px;
+        }
+        #reasonNgBox {
+            background: #ffe2df;
+            color: #9f1f16;
+            border: 1px solid #f4aaa4;
+            border-radius: 6px;
+        }
+        #reasonTitle {
+            font-weight: 800;
+        }
         #pageTitle {
             color: #172026;
             font-size: 20px;

@@ -12,6 +12,7 @@ class InferenceResult:
     confidence: float
     note: str
     annotated_frames: dict[int, object] = field(default_factory=dict)
+    camera_results: dict[int, dict] = field(default_factory=dict)
 
 
 class InferenceRouter:
@@ -27,6 +28,7 @@ class InferenceRouter:
             return InferenceResult("NG", 0.0, "No frame available")
 
         annotated_frames = {}
+        camera_results = {}
         confidences = []
         notes = []
         missing = []
@@ -37,26 +39,49 @@ class InferenceRouter:
             model_names = camera_model_names(camera)
             if not model_names:
                 missing.append(f"Camera {camera.slot}")
+                camera_results[camera.slot] = {
+                    "result": "NG",
+                    "confidence": 0.0,
+                    "reasons": ["未指定模型"],
+                }
                 continue
 
             frame = frames_by_slot[camera.slot]
             annotated = frame
+            camera_confidences = []
+            camera_reasons = []
             for model_name in model_names:
                 model = model_by_name(self.state, model_name)
                 if not model or not model.enabled:
                     missing.append(f"Camera {camera.slot}->{model_name}")
+                    camera_confidences.append(0.0)
+                    camera_reasons.append(f"{model_name}: 模型未啟用或不存在")
                     continue
                 annotated, confidence, note = self.run_single_model(annotated, camera.slot, model)
                 confidences.append(confidence)
                 notes.append(note)
+                camera_confidences.append(confidence)
+                camera_reasons.append(f"{model.name}: {note}")
             annotated_frames[camera.slot] = annotated
+            camera_confidence = min(camera_confidences) if camera_confidences else 0.0
+            camera_results[camera.slot] = {
+                "result": "PASS" if camera_confidence >= 0.5 else "NG",
+                "confidence": camera_confidence,
+                "reasons": camera_reasons or ["沒有可用的模型結果"],
+            }
 
         if missing:
-            return InferenceResult("NG", 0.0, "Missing model assignment: " + ", ".join(missing), annotated_frames)
+            return InferenceResult(
+                "NG",
+                0.0,
+                "Missing model assignment: " + ", ".join(missing),
+                annotated_frames,
+                camera_results,
+            )
 
         confidence = min(confidences) if confidences else 0.0
         result = "PASS" if confidence >= 0.5 else "NG"
-        return InferenceResult(result, confidence, "；".join(notes), annotated_frames)
+        return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
 
     def run_single_model(self, frame, slot, model_config):
         yolo_model = self.load_yolo_model(model_config.file_path)
