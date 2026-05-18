@@ -72,8 +72,8 @@ OCR、條碼辨識、螺絲角度與更細分類屬於後續擴充項目。
 ## 專案結構
 
 ```text
+main.py                            # GUI 應用程式入口
 app/src/
-├─ main.py                         # GUI 應用程式入口
 ├─ requirements.txt                # GUI 執行環境套件
 ├─ 0README.md                      # 本文件
 ├─ inspection_data/
@@ -127,10 +127,10 @@ valve_gui/inference_router.py
 
 ## 安裝與執行
 
-請在 `app/src` 目錄中執行：
+請在專案根目錄中執行：
 
 ```powershell
-pip install -r requirements.txt
+pip install -r app/src/requirements.txt
 python main.py
 ```
 
@@ -149,6 +149,6 @@ python -m pip install --force-reinstall --no-cache-dir PyQt6 PyQt6-Qt6 PyQt6-sip
 ```powershell
 conda create -n screw-inspection-gui python=3.11
 conda activate screw-inspection-gui
-pip install -r requirements.txt
+pip install -r app/src/requirements.txt
 python main.py
 ```

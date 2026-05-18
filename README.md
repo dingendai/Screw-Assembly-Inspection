@@ -17,6 +17,7 @@
 
 ```text
 screw_assembly_inspection/
+├─ main.py             # GUI 應用程式入口
 ├─ app/                # 主程式（推論 / UI / API）
 ├─ training/           # 資料處理與模型訓練
 │  ├─ data/
@@ -27,6 +28,13 @@ screw_assembly_inspection/
 ├─ docs/               # 規格與文件（標註規則 / dataset / 訓練計畫）
 ├─ .gitignore
 └─ README.md
+```
+
+GUI 執行：
+
+```powershell
+pip install -r app/src/requirements.txt
+python main.py
 ```
 
 ---
