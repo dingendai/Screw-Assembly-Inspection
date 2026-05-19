@@ -102,6 +102,9 @@ def load_app_config(state):
                 rotation_degrees=int(item.get("rotation_degrees", 0)),
                 assigned_model_name=str(item.get("assigned_model_name", "")),
                 assigned_model_names=normalise_model_names(item.get("assigned_model_names", [])),
+                region_detection_enabled=bool(item.get("region_detection_enabled", False)),
+                detection_regions=normalise_regions(item.get("detection_regions", [])),
+                exclusion_regions=normalise_regions(item.get("exclusion_regions", [])),
             )
             for index, item in enumerate(cameras)
         ]
@@ -172,3 +175,27 @@ def normalise_decision_rules(value):
             "required_object_count": max(0, required_object_count),
         }
     return rules
+
+
+def normalise_regions(value):
+    if not isinstance(value, list):
+        return []
+    regions = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        try:
+            x = float(item.get("x", 0.0))
+            y = float(item.get("y", 0.0))
+            width = float(item.get("w", item.get("width", 0.0)))
+            height = float(item.get("h", item.get("height", 0.0)))
+        except (TypeError, ValueError):
+            continue
+        x = max(0.0, min(1.0, x))
+        y = max(0.0, min(1.0, y))
+        width = max(0.0, min(1.0 - x, width))
+        height = max(0.0, min(1.0 - y, height))
+        if width <= 0.001 or height <= 0.001:
+            continue
+        regions.append({"x": x, "y": y, "w": width, "h": height})
+    return regions

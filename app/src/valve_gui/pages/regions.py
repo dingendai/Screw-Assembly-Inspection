@@ -1,0 +1,358 @@
+import cv2
+
+from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QButtonGroup,
+    QCheckBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from valve_gui.camera import VideoSource, apply_frame_transform
+from valve_gui.config_store import save_app_config
+
+
+class RegionCanvas(QLabel):
+    def __init__(self, camera_config, on_regions_changed=None):
+        super().__init__("No Signal")
+        self.camera_config = camera_config
+        self.on_regions_changed = on_regions_changed
+        self.mode = "include"
+        self.frame = None
+        self.frame_size = None
+        self.image_rect = QRect()
+        self.drag_start = None
+        self.drag_current = None
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(640, 420)
+        self.setObjectName("cameraImage")
+        self.setMouseTracking(True)
+
+    def set_mode(self, mode):
+        self.mode = mode
+
+    def set_frame(self, frame):
+        self.frame = frame
+        height, width = frame.shape[:2]
+        self.frame_size = (width, height)
+        self.repaint_frame()
+
+    def repaint_frame(self):
+        if self.frame is None:
+            self.clear()
+            self.setText("No Signal")
+            return
+        rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+        height, width, channels = rgb.shape
+        image = QImage(rgb.data, width, height, channels * width, QImage.Format.Format_RGB888)
+        base = QPixmap.fromImage(image)
+        scaled = base.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        canvas = QPixmap(self.size())
+        canvas.fill(QColor("#111827"))
+        painter = QPainter(canvas)
+        x = (self.width() - scaled.width()) // 2
+        y = (self.height() - scaled.height()) // 2
+        self.image_rect = QRect(x, y, scaled.width(), scaled.height())
+        painter.drawPixmap(self.image_rect.topLeft(), scaled)
+        self.draw_regions(painter)
+        if self.drag_start and self.drag_current:
+            self.draw_drag_rect(painter)
+        painter.end()
+        self.setPixmap(canvas)
+
+    def draw_regions(self, painter):
+        self.draw_region_list(painter, self.camera_config.detection_regions, QColor("#22c55e"), "ROI")
+        self.draw_region_list(painter, self.camera_config.exclusion_regions, QColor("#ef4444"), "排除")
+
+    def draw_region_list(self, painter, regions, color, label):
+        pen = QPen(color, 3)
+        painter.setPen(pen)
+        for index, region in enumerate(regions, start=1):
+            rect = self.region_to_widget_rect(region)
+            painter.drawRect(rect)
+            painter.drawText(rect.adjusted(6, 6, -6, -6), Qt.AlignmentFlag.AlignTop, f"{label} {index}")
+
+    def draw_drag_rect(self, painter):
+        color = QColor("#22c55e") if self.mode == "include" else QColor("#ef4444")
+        painter.setPen(QPen(color, 2, Qt.PenStyle.DashLine))
+        painter.drawRect(QRect(self.drag_start, self.drag_current).normalized() & self.image_rect)
+
+    def region_to_widget_rect(self, region):
+        x = self.image_rect.left() + int(region["x"] * self.image_rect.width())
+        y = self.image_rect.top() + int(region["y"] * self.image_rect.height())
+        width = int(region["w"] * self.image_rect.width())
+        height = int(region["h"] * self.image_rect.height())
+        return QRect(x, y, width, height)
+
+    def widget_rect_to_region(self, rect):
+        clipped = rect.normalized() & self.image_rect
+        if clipped.width() < 8 or clipped.height() < 8:
+            return None
+        return {
+            "x": (clipped.left() - self.image_rect.left()) / self.image_rect.width(),
+            "y": (clipped.top() - self.image_rect.top()) / self.image_rect.height(),
+            "w": clipped.width() / self.image_rect.width(),
+            "h": clipped.height() / self.image_rect.height(),
+        }
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton or not self.image_rect.contains(event.position().toPoint()):
+            return
+        if not getattr(self.camera_config, "region_detection_enabled", False):
+            return
+        self.drag_start = event.position().toPoint()
+        self.drag_current = self.drag_start
+
+    def mouseMoveEvent(self, event):
+        if self.drag_start:
+            self.drag_current = event.position().toPoint()
+            self.repaint_frame()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton or not self.drag_start:
+            return
+        self.drag_current = event.position().toPoint()
+        region = self.widget_rect_to_region(QRect(self.drag_start, self.drag_current))
+        self.drag_start = None
+        self.drag_current = None
+        if region:
+            if self.mode == "include":
+                self.camera_config.detection_regions.append(region)
+            else:
+                self.camera_config.exclusion_regions.append(region)
+            if self.on_regions_changed:
+                self.on_regions_changed()
+        self.repaint_frame()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.repaint_frame()
+
+
+class CameraRegionEditor(QWidget):
+    def __init__(self, camera_config, state):
+        super().__init__()
+        self.camera_config = camera_config
+        self.state = state
+        self.source = None
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        left = QVBoxLayout()
+        self.canvas = RegionCanvas(camera_config, self.refresh_region_table)
+        left.addWidget(self.canvas, 1)
+
+        side = QGroupBox("已標示區域")
+        side_layout = QVBoxLayout(side)
+        self.enable_box = QCheckBox("啟用本相機範圍辨識")
+        self.enable_box.setChecked(getattr(self.camera_config, "region_detection_enabled", False))
+        self.enable_box.stateChanged.connect(self.toggle_region_detection)
+        side_layout.addWidget(self.enable_box)
+
+        side_layout.addWidget(QLabel("畫框模式"))
+
+        mode_buttons = QHBoxLayout()
+        self.include_button = QPushButton("新增辨識區域")
+        self.include_button.setCheckable(True)
+        self.include_button.setChecked(True)
+        self.exclude_button = QPushButton("新增排除區域")
+        self.exclude_button.setCheckable(True)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        self.mode_group.addButton(self.include_button)
+        self.mode_group.addButton(self.exclude_button)
+        self.include_button.clicked.connect(lambda: self.change_mode("include"))
+        self.exclude_button.clicked.connect(lambda: self.change_mode("exclude"))
+        self.apply_mode_button_style()
+        mode_buttons.addWidget(self.include_button)
+        mode_buttons.addWidget(self.exclude_button)
+        side_layout.addLayout(mode_buttons)
+
+        self.region_table = QTableWidget(0, 5)
+        self.region_table.setHorizontalHeaderLabels(["類型", "X", "Y", "W", "H"])
+        self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        side_layout.addWidget(self.region_table, 1)
+
+        actions = QHBoxLayout()
+        self.delete_button = QPushButton("刪除選取")
+        self.delete_button.clicked.connect(self.delete_selected_region)
+        self.clear_button = QPushButton("清除本相機")
+        self.clear_button.clicked.connect(self.clear_regions)
+        actions.addWidget(self.delete_button)
+        actions.addWidget(self.clear_button)
+        side_layout.addLayout(actions)
+
+        layout.addLayout(left, 3)
+        layout.addWidget(side, 1)
+        self.refresh_region_table()
+        self.update_region_controls_enabled()
+
+    def toggle_region_detection(self, _state=None):
+        self.camera_config.region_detection_enabled = self.enable_box.isChecked()
+        self.update_region_controls_enabled()
+        self.canvas.repaint_frame()
+
+    def update_region_controls_enabled(self):
+        enabled = self.enable_box.isChecked()
+        self.include_button.setEnabled(enabled)
+        self.exclude_button.setEnabled(enabled)
+        self.region_table.setEnabled(enabled)
+        self.delete_button.setEnabled(enabled)
+        self.clear_button.setEnabled(enabled)
+
+    def change_mode(self, mode):
+        self.canvas.set_mode(mode)
+        self.apply_mode_button_style()
+
+    def apply_mode_button_style(self):
+        self.include_button.setStyleSheet(
+            "QPushButton { padding: 8px 10px; }"
+            "QPushButton:checked { background: #dcfce7; border: 1px solid #22c55e; color: #166534; }"
+        )
+        self.exclude_button.setStyleSheet(
+            "QPushButton { padding: 8px 10px; }"
+            "QPushButton:checked { background: #fee2e2; border: 1px solid #ef4444; color: #991b1b; }"
+        )
+
+    def start(self):
+        self.stop()
+        self.source = VideoSource(
+            f"CAMERA {self.camera_config.slot}",
+            self.camera_config.device_index,
+            self.state.use_simulation,
+        )
+
+    def stop(self):
+        if self.source:
+            self.source.release()
+            self.source = None
+
+    def update_frame(self):
+        if not self.source:
+            return
+        frame = self.source.read()
+        if frame is None:
+            self.canvas.setText(self.source.last_error or "無影像")
+            return
+        frame = apply_frame_transform(
+            frame,
+            flip_horizontal=self.camera_config.flip_horizontal,
+            flip_vertical=self.camera_config.flip_vertical,
+            rotation_degrees=self.camera_config.rotation_degrees,
+        )
+        self.canvas.set_frame(frame)
+
+    def refresh_region_table(self):
+        rows = []
+        for index, region in enumerate(self.camera_config.detection_regions):
+            rows.append(("辨識", index, region))
+        for index, region in enumerate(self.camera_config.exclusion_regions):
+            rows.append(("排除", index, region))
+        self.region_table.setRowCount(0)
+        for row_index, (kind, source_index, region) in enumerate(rows):
+            self.region_table.insertRow(row_index)
+            type_item = QTableWidgetItem(kind)
+            type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
+            self.region_table.setItem(row_index, 0, type_item)
+            self.region_table.setItem(row_index, 1, QTableWidgetItem(f"{region['x']:.3f}"))
+            self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['y']:.3f}"))
+            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['w']:.3f}"))
+            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['h']:.3f}"))
+
+    def delete_selected_region(self):
+        row = self.region_table.currentRow()
+        if row < 0:
+            return
+        item = self.region_table.item(row, 0)
+        kind, index = item.data(Qt.ItemDataRole.UserRole)
+        if kind == "辨識":
+            del self.camera_config.detection_regions[index]
+        else:
+            del self.camera_config.exclusion_regions[index]
+        self.refresh_region_table()
+        self.canvas.repaint_frame()
+
+    def clear_regions(self):
+        self.camera_config.detection_regions = []
+        self.camera_config.exclusion_regions = []
+        self.refresh_region_table()
+        self.canvas.repaint_frame()
+
+
+class RegionSettingsPage(QWidget):
+    def __init__(self, state, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_logout = on_logout
+        self.editors = []
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_frames)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        title = QLabel("指定範圍位置辨識")
+        title.setObjectName("pageTitle")
+        header.addWidget(title)
+        header.addStretch()
+        layout.addLayout(header)
+
+        hint = QLabel("拖曳畫面可新增辨識區域或排除區域；綠色為辨識區域，紅色為不需要辨識區域。")
+        hint.setObjectName("mutedText")
+        layout.addWidget(hint)
+
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, 1)
+
+    def refresh(self):
+        self.stop()
+        self.tabs.clear()
+        self.editors = []
+        for camera in self.state.inspection_cameras:
+            editor = CameraRegionEditor(camera, self.state)
+            self.editors.append(editor)
+            self.tabs.addTab(editor, f"Camera {camera.slot}")
+        self.start()
+
+    def start(self):
+        for editor in self.editors:
+            editor.start()
+        self.timer.start(33)
+
+    def stop(self):
+        self.timer.stop()
+        for editor in self.editors:
+            editor.stop()
+
+    def update_frames(self):
+        current = self.tabs.currentWidget()
+        if current:
+            current.update_frame()
+
+    def save_region_settings(self):
+        save_app_config(self.state)
+        QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
+
+    def logout(self):
+        self.stop()
+        if self.on_logout:
+            self.on_logout()

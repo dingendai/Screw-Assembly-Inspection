@@ -10,6 +10,7 @@ from valve_gui.models import AppState, InspectionRecord
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
+from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import DecisionSettingsPage, DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
@@ -53,6 +54,7 @@ class MainWindow(QMainWindow):
         self.history_page = HistoryPage(self.state)
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
         self.decision_page = DecisionSettingsPage(self.state, self.logout)
+        self.region_page = RegionSettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
@@ -60,6 +62,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.display_page)
         self.stack.addWidget(self.decision_page)
+        self.stack.addWidget(self.region_page)
         self.stack.addWidget(self.user_page)
         self.setCentralWidget(self.stack)
 
@@ -117,6 +120,7 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login, True),
             ("settings", "相機設定", self.show_settings, True),
+            ("regions", "範圍設定", self.show_region_settings, True),
             ("decision", "判定設定", self.show_decision_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
@@ -165,6 +169,13 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["regions"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["display"].setVisible(True)
         self.actions["monitor"].setVisible(
             logged_in
@@ -192,6 +203,7 @@ class MainWindow(QMainWindow):
         page_actions = {
             self.login_page: "login",
             self.settings_page: "settings",
+            self.region_page: "regions",
             self.decision_page: "decision",
             self.monitor_page: "monitor",
             self.history_page: "history",
@@ -228,6 +240,12 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.decision_page.save_decision_settings
+        if (
+            current == self.region_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.region_page.save_region_settings
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -294,6 +312,17 @@ class MainWindow(QMainWindow):
         self.release_all_hardware()
         self.decision_page.refresh()
         self.stack.setCurrentWidget(self.decision_page)
+
+    def show_region_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色無法進入範圍設定。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.region_page.refresh()
+        self.stack.setCurrentWidget(self.region_page)
 
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
@@ -376,11 +405,13 @@ class MainWindow(QMainWindow):
     def release_inspection_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
+        self.region_page.stop()
         self.login_page.stop()
 
     def release_all_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
+        self.region_page.stop()
         self.login_page.stop()
 
     def logout(self):

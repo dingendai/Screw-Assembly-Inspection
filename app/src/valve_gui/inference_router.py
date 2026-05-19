@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 import cv2
 
+from valve_gui.camera import apply_region_mask
 from valve_gui.model_registry import camera_model_names, model_by_name
 
 
@@ -48,6 +49,12 @@ class InferenceRouter:
                 continue
 
             frame = frames_by_slot[camera.slot]
+            if getattr(camera, "region_detection_enabled", False):
+                frame = apply_region_mask(
+                    frame,
+                    camera.detection_regions,
+                    camera.exclusion_regions,
+                )
             annotated = frame
             camera_confidences = []
             camera_reasons = []

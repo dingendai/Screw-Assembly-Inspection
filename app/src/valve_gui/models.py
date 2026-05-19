@@ -13,6 +13,9 @@ class CameraConfig:
     rotation_degrees: int = 0
     assigned_model_name: str = ""
     assigned_model_names: list[str] = field(default_factory=list)
+    region_detection_enabled: bool = False
+    detection_regions: list[dict] = field(default_factory=list)
+    exclusion_regions: list[dict] = field(default_factory=list)
 
 
 @dataclass

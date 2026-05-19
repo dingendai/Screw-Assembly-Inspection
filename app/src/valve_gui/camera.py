@@ -22,6 +22,39 @@ def apply_frame_transform(frame, flip_horizontal=False, flip_vertical=False, rot
     return frame
 
 
+def apply_region_mask(frame, detection_regions=None, exclusion_regions=None):
+    detection_regions = detection_regions or []
+    exclusion_regions = exclusion_regions or []
+    if not detection_regions and not exclusion_regions:
+        return frame
+
+    height, width = frame.shape[:2]
+    if detection_regions:
+        masked = np.zeros_like(frame)
+        for region in detection_regions:
+            x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+            masked[y1:y2, x1:x2] = frame[y1:y2, x1:x2]
+    else:
+        masked = frame.copy()
+
+    for region in exclusion_regions:
+        x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+        masked[y1:y2, x1:x2] = 0
+    return masked
+
+
+def normalised_region_to_pixels(region, width, height):
+    x = float(region.get("x", 0.0))
+    y = float(region.get("y", 0.0))
+    w = float(region.get("w", 0.0))
+    h = float(region.get("h", 0.0))
+    x1 = max(0, min(width, int(x * width)))
+    y1 = max(0, min(height, int(y * height)))
+    x2 = max(x1, min(width, int((x + w) * width)))
+    y2 = max(y1, min(height, int((y + h) * height)))
+    return x1, y1, x2, y2
+
+
 class VideoSource:
     def __init__(self, label: str, index: int, simulate: bool):
         self.label = label
