@@ -635,6 +635,11 @@ class DecisionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
+        self.overview_rows = {}
+        self.loading_rules = False
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.timeout.connect(self.autosave_decision_settings)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -660,6 +665,7 @@ class DecisionSettingsPage(QWidget):
         self.global_threshold.setRange(0.0, 1.0)
         self.global_threshold.setSingleStep(0.05)
         self.global_threshold.setDecimals(3)
+        self.global_threshold.valueChanged.connect(self.queue_auto_save)
         global_row.addWidget(self.global_threshold)
         global_row.addStretch()
 
@@ -671,11 +677,14 @@ class DecisionSettingsPage(QWidget):
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.loading_rules = True
         self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
         self.load_rule_table()
+        self.loading_rules = False
 
     def load_rule_table(self):
         self.rule_rows = []
+        self.overview_rows = {}
         self.model_tabs.clear()
         grouped_rules = {}
         all_rules = []
@@ -756,6 +765,10 @@ class DecisionSettingsPage(QWidget):
         table.setItem(row, 1, QTableWidgetItem(model_name))
         table.setItem(row, 2, QTableWidgetItem(f"{confidence:.3f}"))
         table.setItem(row, 3, QTableWidgetItem(str(required_count)))
+        self.overview_rows[self.decision_rule_key(slot, model_name)] = {
+            "confidence": table.item(row, 2),
+            "count": table.item(row, 3),
+        }
 
     def add_rule_row(self, table, slot, model_name, show_model=False):
         row = table.rowCount()
@@ -778,6 +791,7 @@ class DecisionSettingsPage(QWidget):
         confidence.setSingleStep(0.05)
         confidence.setDecimals(3)
         confidence.setValue(float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold)))
+        confidence.valueChanged.connect(self.queue_auto_save)
         table.setCellWidget(row, confidence_column, confidence)
 
         count = QComboBox()
@@ -787,6 +801,7 @@ class DecisionSettingsPage(QWidget):
         if count.findData(required_count) < 0:
             count.addItem(str(required_count), required_count)
         count.setCurrentIndex(count.findData(required_count))
+        count.currentIndexChanged.connect(self.queue_auto_save)
         table.setCellWidget(row, count_column, count)
 
         self.rule_rows.append(
@@ -798,7 +813,20 @@ class DecisionSettingsPage(QWidget):
             }
         )
 
+    def queue_auto_save(self):
+        if self.loading_rules:
+            return
+        self.sync_overview_table()
+        self.autosave_timer.start(300)
+
+    def autosave_decision_settings(self):
+        self.persist_decision_settings()
+
     def save_decision_settings(self):
+        self.persist_decision_settings()
+        QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
+
+    def persist_decision_settings(self):
         self.state.decision.pass_confidence_threshold = self.global_threshold.value()
         rules = {}
         for row in self.rule_rows:
@@ -807,8 +835,16 @@ class DecisionSettingsPage(QWidget):
                 "required_object_count": int(row["count"].currentData()),
             }
         self.state.decision.model_rules = rules
+        self.sync_overview_table()
         save_app_config(self.state)
-        QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
+
+    def sync_overview_table(self):
+        for row in self.rule_rows:
+            overview = self.overview_rows.get(self.decision_rule_key(row["slot"], row["model_name"]))
+            if not overview:
+                continue
+            overview["confidence"].setText(f"{row['confidence'].value():.3f}")
+            overview["count"].setText(str(int(row["count"].currentData())))
 
     def decision_rule_key(self, slot, model_name):
         return f"{slot}::{model_name}"
