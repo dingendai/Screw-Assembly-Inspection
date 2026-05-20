@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QCheckBox,
+    QColorDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -23,10 +24,11 @@ from valve_gui.config_store import save_app_config
 
 
 class RegionCanvas(QLabel):
-    def __init__(self, camera_config, on_regions_changed=None):
+    def __init__(self, camera_config, on_regions_changed=None, overlay_config=None):
         super().__init__("No Signal")
         self.camera_config = camera_config
         self.on_regions_changed = on_regions_changed
+        self.overlay_config = overlay_config
         self.mode = "include"
         self.frame = None
         self.frame_size = None
@@ -75,8 +77,10 @@ class RegionCanvas(QLabel):
         self.setPixmap(canvas)
 
     def draw_regions(self, painter):
-        self.draw_region_list(painter, self.camera_config.detection_regions, QColor("#22c55e"), "ROI")
-        self.draw_region_list(painter, self.camera_config.exclusion_regions, QColor("#ef4444"), "排除")
+        detection_color = getattr(self.overlay_config, "detection_color", "#22c55e")
+        exclusion_color = getattr(self.overlay_config, "exclusion_color", "#ef4444")
+        self.draw_region_list(painter, self.camera_config.detection_regions, QColor(detection_color), "ROI")
+        self.draw_region_list(painter, self.camera_config.exclusion_regions, QColor(exclusion_color), "排除")
 
     def draw_region_list(self, painter, regions, color, label):
         pen = QPen(color, 3)
@@ -155,7 +159,7 @@ class CameraRegionEditor(QWidget):
         layout.setSpacing(12)
 
         left = QVBoxLayout()
-        self.canvas = RegionCanvas(camera_config, self.refresh_region_table)
+        self.canvas = RegionCanvas(camera_config, self.refresh_region_table, self.state.region_overlay)
         left.addWidget(self.canvas, 1)
 
         side = QGroupBox("已標示區域")
@@ -296,6 +300,70 @@ class CameraRegionEditor(QWidget):
         self.canvas.repaint_frame()
 
 
+class RegionOverlaySettingsPage(QWidget):
+    def __init__(self, state, on_changed=None):
+        super().__init__()
+        self.state = state
+        self.on_changed = on_changed
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        group = QGroupBox("監視畫面方框顯示")
+        group_layout = QVBoxLayout(group)
+
+        self.show_box = QCheckBox("在監視畫面顯示指定範圍方框")
+        self.show_box.setChecked(self.state.region_overlay.show_on_monitor)
+        self.show_box.stateChanged.connect(self.save_settings)
+        group_layout.addWidget(self.show_box)
+
+        detection_row = QHBoxLayout()
+        detection_row.addWidget(QLabel("辨識範圍方框顏色"))
+        self.detection_button = QPushButton()
+        self.detection_button.clicked.connect(lambda: self.choose_color("detection_color"))
+        detection_row.addWidget(self.detection_button)
+        detection_row.addStretch()
+        group_layout.addLayout(detection_row)
+
+        exclusion_row = QHBoxLayout()
+        exclusion_row.addWidget(QLabel("排除範圍方框顏色"))
+        self.exclusion_button = QPushButton()
+        self.exclusion_button.clicked.connect(lambda: self.choose_color("exclusion_color"))
+        exclusion_row.addWidget(self.exclusion_button)
+        exclusion_row.addStretch()
+        group_layout.addLayout(exclusion_row)
+
+        layout.addWidget(group)
+        layout.addStretch()
+        self.refresh_buttons()
+
+    def choose_color(self, field):
+        current = QColor(getattr(self.state.region_overlay, field))
+        color = QColorDialog.getColor(current, self, "選擇方框顏色")
+        if not color.isValid():
+            return
+        setattr(self.state.region_overlay, field, color.name())
+        self.refresh_buttons()
+        self.save_settings()
+
+    def save_settings(self):
+        self.state.region_overlay.show_on_monitor = self.show_box.isChecked()
+        save_app_config(self.state)
+        if self.on_changed:
+            self.on_changed()
+
+    def refresh_buttons(self):
+        self.apply_color_button(self.detection_button, self.state.region_overlay.detection_color)
+        self.apply_color_button(self.exclusion_button, self.state.region_overlay.exclusion_color)
+
+    def apply_color_button(self, button, color):
+        button.setText(color)
+        button.setStyleSheet(
+            f"QPushButton {{ background: {color}; color: #111827; border: 1px solid #374151; padding: 8px 14px; }}"
+        )
+
+
 class RegionSettingsPage(QWidget):
     def __init__(self, state, on_logout=None):
         super().__init__()
@@ -331,6 +399,7 @@ class RegionSettingsPage(QWidget):
             editor = CameraRegionEditor(camera, self.state)
             self.editors.append(editor)
             self.tabs.addTab(editor, f"Camera {camera.slot}")
+        self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
         self.start()
 
     def start(self):
@@ -345,8 +414,12 @@ class RegionSettingsPage(QWidget):
 
     def update_frames(self):
         current = self.tabs.currentWidget()
-        if current:
+        if current and hasattr(current, "update_frame"):
             current.update_frame()
+
+    def repaint_editors(self):
+        for editor in self.editors:
+            editor.canvas.repaint_frame()
 
     def save_region_settings(self):
         save_app_config(self.state)

@@ -40,6 +40,13 @@ class DecisionConfig:
 
 
 @dataclass
+class RegionOverlayConfig:
+    show_on_monitor: bool = True
+    detection_color: str = "#22c55e"
+    exclusion_color: str = "#ef4444"
+
+
+@dataclass
 class InspectionRecord:
     timestamp: str
     operator_name: str
@@ -87,6 +94,7 @@ class AppState:
     use_simulation: bool = True
     display: DisplayConfig = field(default_factory=DisplayConfig)
     decision: DecisionConfig = field(default_factory=DecisionConfig)
+    region_overlay: RegionOverlayConfig = field(default_factory=RegionOverlayConfig)
     role_labels: dict[str, str] = field(default_factory=default_role_labels)
     role_passwords: dict[str, str] = field(default_factory=default_role_passwords)
     role_permissions: dict[str, set[str]] = field(default_factory=default_role_permissions)

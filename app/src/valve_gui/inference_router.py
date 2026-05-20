@@ -48,14 +48,15 @@ class InferenceRouter:
                 }
                 continue
 
-            frame = frames_by_slot[camera.slot]
+            display_frame = frames_by_slot[camera.slot]
+            inference_frame = display_frame
             if getattr(camera, "region_detection_enabled", False):
-                frame = apply_region_mask(
-                    frame,
+                inference_frame = apply_region_mask(
+                    display_frame,
                     camera.detection_regions,
                     camera.exclusion_regions,
                 )
-            annotated = frame
+            annotated = display_frame.copy()
             camera_confidences = []
             camera_reasons = []
             for model_name in model_names:
@@ -65,7 +66,12 @@ class InferenceRouter:
                     camera_confidences.append(0.0)
                     camera_reasons.append(f"{model_name}: 模型未啟用或不存在")
                     continue
-                annotated, confidence, object_count, note = self.run_single_model(annotated, camera.slot, model)
+                annotated, confidence, object_count, note = self.run_single_model(
+                    inference_frame,
+                    camera.slot,
+                    model,
+                    display_frame=annotated,
+                )
                 rule = self.decision_rule_for(camera.slot, model.name)
                 threshold = float(rule.get("confidence_threshold", 0.5))
                 required_count = int(rule.get("required_object_count", 1))
@@ -101,13 +107,14 @@ class InferenceRouter:
         result = "NG" if rule_failures or not confidences else "PASS"
         return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
 
-    def run_single_model(self, frame, slot, model_config):
+    def run_single_model(self, frame, slot, model_config, display_frame=None):
+        display_frame = frame if display_frame is None else display_frame
         yolo_model = self.load_yolo_model(model_config.file_path)
         if yolo_model is not None:
             try:
                 results = yolo_model(frame, verbose=False)
                 result = results[0]
-                annotated = result.plot()
+                annotated = self.draw_yolo_annotations(display_frame.copy(), result)
                 boxes = getattr(result, "boxes", None)
                 if boxes is not None and len(boxes) > 0:
                     confidence = float(boxes.conf.max().item())
@@ -115,12 +122,38 @@ class InferenceRouter:
                     return annotated, confidence, count, f"C{slot}->{model_config.name}: {count} object(s)"
                 return annotated, 0.0, 0, f"C{slot}->{model_config.name}: no object"
             except Exception as exc:
-                annotated = self.draw_placeholder_annotation(frame.copy(), slot, model_config.name, f"YOLO error: {exc}")
+                annotated = self.draw_placeholder_annotation(display_frame.copy(), slot, model_config.name, f"YOLO error: {exc}")
                 return annotated, 0.0, 0, f"C{slot}->{model_config.name}: YOLO error"
 
         confidence = random.uniform(0.82, 0.96)
-        annotated = self.draw_placeholder_annotation(frame.copy(), slot, model_config.name, f"placeholder {confidence:.2f}")
+        annotated = self.draw_placeholder_annotation(display_frame.copy(), slot, model_config.name, f"placeholder {confidence:.2f}")
         return annotated, confidence, 1, f"C{slot}->{model_config.name}: placeholder"
+
+    def draw_yolo_annotations(self, frame, result):
+        boxes = getattr(result, "boxes", None)
+        if boxes is None or len(boxes) == 0:
+            return frame
+
+        names = getattr(result, "names", {}) or {}
+        for box in boxes:
+            coords = box.xyxy[0].detach().cpu().tolist()
+            x1, y1, x2, y2 = [int(value) for value in coords]
+            confidence = float(box.conf[0].detach().cpu().item()) if getattr(box, "conf", None) is not None else 0.0
+            class_id = int(box.cls[0].detach().cpu().item()) if getattr(box, "cls", None) is not None else -1
+            label = names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id)
+            color = (32, 190, 92)
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                frame,
+                f"{label} {confidence:.2f}",
+                (x1, max(18, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2,
+            )
+        return frame
 
     def decision_rule_for(self, slot, model_name):
         default_threshold = getattr(self.state.decision, "pass_confidence_threshold", 0.5)

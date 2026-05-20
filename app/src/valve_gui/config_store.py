@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict
 
-from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, UserAccount
+from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, RegionOverlayConfig, UserAccount
 from valve_gui.paths import APP_CONFIG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
@@ -90,6 +90,20 @@ def load_app_config(state):
             model_rules=normalise_decision_rules(decision.get("model_rules", {})),
         )
 
+    region_overlay = data.get("region_overlay", {})
+    if isinstance(region_overlay, dict):
+        state.region_overlay = RegionOverlayConfig(
+            show_on_monitor=bool(region_overlay.get("show_on_monitor", state.region_overlay.show_on_monitor)),
+            detection_color=normalise_color(
+                region_overlay.get("detection_color", state.region_overlay.detection_color),
+                state.region_overlay.detection_color,
+            ),
+            exclusion_color=normalise_color(
+                region_overlay.get("exclusion_color", state.region_overlay.exclusion_color),
+                state.region_overlay.exclusion_color,
+            ),
+        )
+
     cameras = data.get("inspection_cameras", [])
     if cameras:
         state.inspection_cameras = [
@@ -130,6 +144,7 @@ def save_app_config(state):
         "use_simulation": state.use_simulation,
         "display": asdict(state.display),
         "decision": asdict(state.decision),
+        "region_overlay": asdict(state.region_overlay),
         "role_labels": state.role_labels,
         "role_passwords": state.role_passwords,
         "role_permissions": {
@@ -175,6 +190,17 @@ def normalise_decision_rules(value):
             "required_object_count": max(0, required_object_count),
         }
     return rules
+
+
+def normalise_color(value, fallback):
+    text = str(value).strip()
+    if len(text) == 7 and text.startswith("#"):
+        try:
+            int(text[1:], 16)
+            return text
+        except ValueError:
+            pass
+    return fallback
 
 
 def normalise_regions(value):

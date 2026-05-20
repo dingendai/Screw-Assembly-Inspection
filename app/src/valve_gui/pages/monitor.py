@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+import cv2
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
@@ -12,11 +13,13 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QCheckBox,
     QVBoxLayout,
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, apply_frame_transform
+from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
+from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
@@ -64,6 +67,8 @@ class MonitorPage(QWidget):
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
         self.model_label.setObjectName("mutedText")
+        self.region_overlay_box = QCheckBox("顯示指定範圍")
+        self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
         self.continuous_button = QPushButton("連續檢測")
         self.continuous_button.setCheckable(True)
         self.continuous_button.setObjectName("continuousButton")
@@ -88,6 +93,7 @@ class MonitorPage(QWidget):
         side_layout = QVBoxLayout(side)
         side_layout.addWidget(self.operator_label)
         side_layout.addWidget(self.model_label)
+        side_layout.addWidget(self.region_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
         side_layout.addWidget(self.result_label)
@@ -124,6 +130,9 @@ class MonitorPage(QWidget):
         layout.addWidget(side, 0)
 
     def refresh(self):
+        self.region_overlay_box.blockSignals(True)
+        self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
+        self.region_overlay_box.blockSignals(False)
         self.operator_label.setText(
             f"操作者：{self.state.operator_name or '--'}"
             f" / 角色：{role_label(self.state.operator_role, self.state.role_labels)}"
@@ -202,7 +211,67 @@ class MonitorPage(QWidget):
             )
             self.last_frames[config.slot] = frame
             display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
-            view.set_frame(display_frame if display_frame is not None else frame, input_fps=source.input_fps)
+            view.set_frame(
+                self.frame_with_region_overlay(config, display_frame if display_frame is not None else frame),
+                input_fps=source.input_fps,
+            )
+
+    def toggle_region_overlay(self):
+        self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
+        save_app_config(self.state)
+
+    def frame_with_region_overlay(self, config, frame):
+        if not self.state.region_overlay.show_on_monitor:
+            return frame
+        if not getattr(config, "region_detection_enabled", False):
+            return frame
+        if not config.detection_regions and not config.exclusion_regions:
+            return frame
+        annotated = frame.copy()
+        height, width = annotated.shape[:2]
+        self.draw_region_list(
+            annotated,
+            config.detection_regions,
+            self.hex_to_bgr(self.state.region_overlay.detection_color),
+            "ROI",
+            width,
+            height,
+        )
+        self.draw_region_list(
+            annotated,
+            config.exclusion_regions,
+            self.hex_to_bgr(self.state.region_overlay.exclusion_color),
+            "EX",
+            width,
+            height,
+        )
+        return annotated
+
+    def draw_region_list(self, frame, regions, color, label, width, height):
+        for index, region in enumerate(regions, start=1):
+            x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                frame,
+                f"{label} {index}",
+                (x1 + 6, max(18, y1 + 22)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                color,
+                2,
+            )
+
+    def hex_to_bgr(self, value):
+        text = str(value).strip().lstrip("#")
+        if len(text) != 6:
+            text = "22c55e"
+        try:
+            red = int(text[0:2], 16)
+            green = int(text[2:4], 16)
+            blue = int(text[4:6], 16)
+        except ValueError:
+            red, green, blue = 34, 197, 94
+        return blue, green, red
 
     def inspect_once(self):
         self.continuous_button.setEnabled(False)
@@ -296,7 +365,8 @@ class MonitorPage(QWidget):
         for slot, frame in annotated_frames.items():
             view = view_by_slot.get(slot)
             if view:
-                view.set_frame(frame)
+                config = next((config for config, _view in self.views if config.slot == slot), None)
+                view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)
 
     def record_detection(self, inference):
         active = ",".join(

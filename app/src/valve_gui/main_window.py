@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login, True),
             ("settings", "相機設定", self.show_settings, True),
-            ("regions", "範圍設定", self.show_region_settings, True),
+            ("regions", "指定範圍監視", self.show_region_settings, True),
             ("decision", "判定設定", self.show_decision_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
         if not self.require_login():
             return
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色無法進入範圍設定。")
+            QMessageBox.warning(self, "權限不足", "目前角色無法進入指定範圍監視。")
             self.show_monitor()
             return
         self.release_all_hardware()
