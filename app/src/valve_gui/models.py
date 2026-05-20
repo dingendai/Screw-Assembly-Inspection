@@ -44,6 +44,8 @@ class RegionOverlayConfig:
     show_on_monitor: bool = True
     detection_color: str = "#22c55e"
     exclusion_color: str = "#ef4444"
+    yolo_color: str = "#22c55e"
+    yolo_model_colors: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

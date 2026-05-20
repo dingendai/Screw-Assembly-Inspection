@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
+from valve_gui.model_registry import ensure_model_configs
 
 
 class RegionCanvas(QLabel):
@@ -305,6 +306,7 @@ class RegionOverlaySettingsPage(QWidget):
         super().__init__()
         self.state = state
         self.on_changed = on_changed
+        self.model_color_buttons = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -334,6 +336,23 @@ class RegionOverlaySettingsPage(QWidget):
         exclusion_row.addStretch()
         group_layout.addLayout(exclusion_row)
 
+        yolo_group = QGroupBox("各 YOLO 模型方框顏色")
+        yolo_layout = QVBoxLayout(yolo_group)
+        for model in self.state.model_configs:
+            if not getattr(model, "enabled", True):
+                continue
+            row = QHBoxLayout()
+            row.addWidget(QLabel(model.name))
+            button = QPushButton()
+            button.clicked.connect(lambda _checked=False, name=model.name: self.choose_model_color(name))
+            self.model_color_buttons[model.name] = button
+            row.addWidget(button)
+            row.addStretch()
+            yolo_layout.addLayout(row)
+        if not self.model_color_buttons:
+            yolo_layout.addWidget(QLabel("目前沒有已啟用的 YOLO 模型。"))
+        group_layout.addWidget(yolo_group)
+
         layout.addWidget(group)
         layout.addStretch()
         self.refresh_buttons()
@@ -347,6 +366,15 @@ class RegionOverlaySettingsPage(QWidget):
         self.refresh_buttons()
         self.save_settings()
 
+    def choose_model_color(self, model_name):
+        current = QColor(self.yolo_color_for_model(model_name))
+        color = QColorDialog.getColor(current, self, "選擇 YOLO 模型方框顏色")
+        if not color.isValid():
+            return
+        self.state.region_overlay.yolo_model_colors[model_name] = color.name()
+        self.refresh_buttons()
+        self.save_settings()
+
     def save_settings(self):
         self.state.region_overlay.show_on_monitor = self.show_box.isChecked()
         save_app_config(self.state)
@@ -356,6 +384,14 @@ class RegionOverlaySettingsPage(QWidget):
     def refresh_buttons(self):
         self.apply_color_button(self.detection_button, self.state.region_overlay.detection_color)
         self.apply_color_button(self.exclusion_button, self.state.region_overlay.exclusion_color)
+        for model_name, button in self.model_color_buttons.items():
+            self.apply_color_button(button, self.yolo_color_for_model(model_name))
+
+    def yolo_color_for_model(self, model_name):
+        return self.state.region_overlay.yolo_model_colors.get(
+            model_name,
+            self.state.region_overlay.yolo_color,
+        )
 
     def apply_color_button(self, button, color):
         button.setText(color)
@@ -393,6 +429,7 @@ class RegionSettingsPage(QWidget):
 
     def refresh(self):
         self.stop()
+        ensure_model_configs(self.state)
         self.tabs.clear()
         self.editors = []
         for camera in self.state.inspection_cameras:

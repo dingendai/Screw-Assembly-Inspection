@@ -102,6 +102,11 @@ def load_app_config(state):
                 region_overlay.get("exclusion_color", state.region_overlay.exclusion_color),
                 state.region_overlay.exclusion_color,
             ),
+            yolo_color=normalise_color(
+                region_overlay.get("yolo_color", state.region_overlay.yolo_color),
+                state.region_overlay.yolo_color,
+            ),
+            yolo_model_colors=normalise_color_map(region_overlay.get("yolo_model_colors", {})),
         )
 
     cameras = data.get("inspection_cameras", [])
@@ -201,6 +206,20 @@ def normalise_color(value, fallback):
         except ValueError:
             pass
     return fallback
+
+
+def normalise_color_map(value):
+    if not isinstance(value, dict):
+        return {}
+    colors = {}
+    for name, color in value.items():
+        model_name = str(name).strip()
+        if not model_name:
+            continue
+        normalised = normalise_color(color, "")
+        if normalised:
+            colors[model_name] = normalised
+    return colors
 
 
 def normalise_regions(value):

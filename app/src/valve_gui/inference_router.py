@@ -114,7 +114,7 @@ class InferenceRouter:
             try:
                 results = yolo_model(frame, verbose=False)
                 result = results[0]
-                annotated = self.draw_yolo_annotations(display_frame.copy(), result)
+                annotated = self.draw_yolo_annotations(display_frame.copy(), result, model_config.name)
                 boxes = getattr(result, "boxes", None)
                 if boxes is not None and len(boxes) > 0:
                     confidence = float(boxes.conf.max().item())
@@ -129,7 +129,7 @@ class InferenceRouter:
         annotated = self.draw_placeholder_annotation(display_frame.copy(), slot, model_config.name, f"placeholder {confidence:.2f}")
         return annotated, confidence, 1, f"C{slot}->{model_config.name}: placeholder"
 
-    def draw_yolo_annotations(self, frame, result):
+    def draw_yolo_annotations(self, frame, result, model_name):
         boxes = getattr(result, "boxes", None)
         if boxes is None or len(boxes) == 0:
             return frame
@@ -141,7 +141,7 @@ class InferenceRouter:
             confidence = float(box.conf[0].detach().cpu().item()) if getattr(box, "conf", None) is not None else 0.0
             class_id = int(box.cls[0].detach().cpu().item()) if getattr(box, "cls", None) is not None else -1
             label = names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id)
-            color = (32, 190, 92)
+            color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
@@ -154,6 +154,27 @@ class InferenceRouter:
                 2,
             )
         return frame
+
+    def yolo_color_for_model(self, model_name):
+        overlay = self.state.region_overlay
+        model_colors = getattr(overlay, "yolo_model_colors", {})
+        if isinstance(model_colors, dict):
+            color = model_colors.get(model_name)
+            if color:
+                return color
+        return getattr(overlay, "yolo_color", "#22c55e")
+
+    def hex_to_bgr(self, value):
+        text = str(value).strip().lstrip("#")
+        if len(text) != 6:
+            text = "22c55e"
+        try:
+            red = int(text[0:2], 16)
+            green = int(text[2:4], 16)
+            blue = int(text[4:6], 16)
+        except ValueError:
+            red, green, blue = 34, 197, 94
+        return blue, green, red
 
     def decision_rule_for(self, slot, model_name):
         default_threshold = getattr(self.state.decision, "pass_confidence_threshold", 0.5)
@@ -198,14 +219,15 @@ class InferenceRouter:
         y1 = max(20, height // 5)
         x2 = min(width - 20, x1 + width // 2)
         y2 = min(height - 20, y1 + height // 3)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (32, 190, 92), 3)
+        color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
         cv2.putText(
             frame,
             f"C{slot} {model_name}",
             (x1, max(24, y1 - 12)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.75,
-            (32, 190, 92),
+            color,
             2,
         )
         cv2.putText(
@@ -214,7 +236,7 @@ class InferenceRouter:
             (x1, min(height - 18, y2 + 30)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.65,
-            (32, 190, 92),
+            color,
             2,
         )
         return frame
