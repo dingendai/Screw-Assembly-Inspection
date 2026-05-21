@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import ensure_model_configs
+from valve_gui.model_registry import camera_model_names, ensure_model_configs
 
 
 class RegionCanvas(QLabel):
@@ -89,7 +89,17 @@ class RegionCanvas(QLabel):
         for index, region in enumerate(regions, start=1):
             rect = self.region_to_widget_rect(region)
             painter.drawRect(rect)
-            painter.drawText(rect.adjusted(6, 6, -6, -6), Qt.AlignmentFlag.AlignTop, f"{label} {index}")
+            painter.drawText(
+                rect.adjusted(6, 6, -6, -6),
+                Qt.AlignmentFlag.AlignTop,
+                self.format_region_label(label, index, region),
+            )
+
+    def format_region_label(self, label, index, region):
+        model_names = region.get("model_names", [])
+        if not model_names:
+            return f"{label} {index}"
+        return f"{label} {index}: {', '.join(model_names)}"
 
     def draw_drag_rect(self, painter):
         color = QColor("#22c55e") if self.mode == "include" else QColor("#ef4444")
@@ -154,6 +164,8 @@ class CameraRegionEditor(QWidget):
         self.camera_config = camera_config
         self.state = state
         self.source = None
+        self.model_boxes = {}
+        self.loading_model_selection = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -189,11 +201,21 @@ class CameraRegionEditor(QWidget):
         mode_buttons.addWidget(self.exclude_button)
         side_layout.addLayout(mode_buttons)
 
-        self.region_table = QTableWidget(0, 5)
-        self.region_table.setHorizontalHeaderLabels(["類型", "X", "Y", "W", "H"])
+        self.region_table = QTableWidget(0, 6)
+        self.region_table.setHorizontalHeaderLabels(["Type", "X", "Y", "W", "H", "Models"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
         side_layout.addWidget(self.region_table, 1)
+
+        self.model_group = QGroupBox("Region models")
+        self.model_layout = QVBoxLayout(self.model_group)
+        self.model_hint = QLabel("Select a region, then choose one or more models. Empty means all models.")
+        self.model_hint.setWordWrap(True)
+        self.model_hint.setObjectName("mutedText")
+        self.model_layout.addWidget(self.model_hint)
+        self.refresh_model_checkboxes()
+        side_layout.addWidget(self.model_group)
 
         actions = QHBoxLayout()
         self.delete_button = QPushButton("刪除選取")
@@ -219,6 +241,7 @@ class CameraRegionEditor(QWidget):
         self.include_button.setEnabled(enabled)
         self.exclude_button.setEnabled(enabled)
         self.region_table.setEnabled(enabled)
+        self.model_group.setEnabled(enabled)
         self.delete_button.setEnabled(enabled)
         self.clear_button.setEnabled(enabled)
 
@@ -264,30 +287,99 @@ class CameraRegionEditor(QWidget):
         )
         self.canvas.set_frame(frame)
 
-    def refresh_region_table(self):
+    def available_region_models(self):
+        assigned = camera_model_names(self.camera_config)
+        if assigned:
+            return assigned
+        return [model.name for model in self.state.model_configs if getattr(model, "enabled", True)]
+
+    def refresh_model_checkboxes(self):
+        for box in self.model_boxes.values():
+            box.setParent(None)
+        self.model_boxes = {}
+        for model_name in self.available_region_models():
+            box = QCheckBox(model_name)
+            box.stateChanged.connect(self.save_selected_region_models)
+            self.model_boxes[model_name] = box
+            self.model_layout.addWidget(box)
+        if not self.model_boxes:
+            self.model_layout.addWidget(QLabel("No enabled models."))
+
+    def selected_region(self):
+        row = self.region_table.currentRow()
+        if row < 0:
+            return None
+        item = self.region_table.item(row, 0)
+        if not item:
+            return None
+        kind, index = item.data(Qt.ItemDataRole.UserRole)
+        regions = self.camera_config.detection_regions if kind == "include" else self.camera_config.exclusion_regions
+        if index < 0 or index >= len(regions):
+            return None
+        return regions[index]
+
+    def load_selected_region_models(self):
+        region = self.selected_region()
+        selected_models = set(region.get("model_names", [])) if region else set()
+        self.loading_model_selection = True
+        for model_name, box in self.model_boxes.items():
+            box.setChecked(model_name in selected_models)
+        self.loading_model_selection = False
+
+    def save_selected_region_models(self, _state=None):
+        if self.loading_model_selection:
+            return
+        region = self.selected_region()
+        if region is None:
+            return
+        region["model_names"] = [
+            model_name
+            for model_name, box in self.model_boxes.items()
+            if box.isChecked()
+        ]
+        self.refresh_region_table(keep_selection=True)
+        self.canvas.repaint_frame()
+
+    def format_region_models(self, region):
+        model_names = region.get("model_names", [])
+        return ", ".join(model_names) if model_names else "All"
+
+    def refresh_region_table(self, keep_selection=False):
+        selected = None
+        if keep_selection:
+            current = self.region_table.item(self.region_table.currentRow(), 0)
+            if current:
+                selected = current.data(Qt.ItemDataRole.UserRole)
         rows = []
         for index, region in enumerate(self.camera_config.detection_regions):
-            rows.append(("辨識", index, region))
+            rows.append(("include", index, region))
         for index, region in enumerate(self.camera_config.exclusion_regions):
-            rows.append(("排除", index, region))
+            rows.append(("exclude", index, region))
         self.region_table.setRowCount(0)
         for row_index, (kind, source_index, region) in enumerate(rows):
             self.region_table.insertRow(row_index)
-            type_item = QTableWidgetItem(kind)
+            type_item = QTableWidgetItem("ROI" if kind == "include" else "Exclude")
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
             self.region_table.setItem(row_index, 1, QTableWidgetItem(f"{region['x']:.3f}"))
             self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['y']:.3f}"))
             self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['w']:.3f}"))
             self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['h']:.3f}"))
+            self.region_table.setItem(row_index, 5, QTableWidgetItem(self.format_region_models(region)))
+            if selected == (kind, source_index):
+                self.region_table.selectRow(row_index)
+        if not keep_selection:
+            self.load_selected_region_models()
 
     def delete_selected_region(self):
         row = self.region_table.currentRow()
         if row < 0:
             return
         item = self.region_table.item(row, 0)
+        if not item:
+            return
         kind, index = item.data(Qt.ItemDataRole.UserRole)
-        if kind == "辨識":
+        if kind == "include":
             del self.camera_config.detection_regions[index]
         else:
             del self.camera_config.exclusion_regions[index]

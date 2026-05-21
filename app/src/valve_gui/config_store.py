@@ -242,5 +242,6 @@ def normalise_regions(value):
         height = max(0.0, min(1.0 - y, height))
         if width <= 0.001 or height <= 0.001:
             continue
-        regions.append({"x": x, "y": y, "w": width, "h": height})
+        model_names = normalise_model_names(item.get("model_names", []))
+        regions.append({"x": x, "y": y, "w": width, "h": height, "model_names": model_names})
     return regions

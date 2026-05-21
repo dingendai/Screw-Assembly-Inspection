@@ -43,6 +43,17 @@ def apply_region_mask(frame, detection_regions=None, exclusion_regions=None):
     return masked
 
 
+def region_applies_to_model(region, model_name):
+    model_names = region.get("model_names", [])
+    if not model_names:
+        return True
+    return model_name in model_names
+
+
+def regions_for_model(regions, model_name):
+    return [region for region in regions if region_applies_to_model(region, model_name)]
+
+
 def normalised_region_to_pixels(region, width, height):
     x = float(region.get("x", 0.0))
     y = float(region.get("y", 0.0))

@@ -253,13 +253,19 @@ class MonitorPage(QWidget):
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
                 frame,
-                f"{label} {index}",
+                self.format_region_label(label, index, region),
                 (x1 + 6, max(18, y1 + 22)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
                 color,
                 2,
             )
+
+    def format_region_label(self, label, index, region):
+        model_names = region.get("model_names", [])
+        if not model_names:
+            return f"{label} {index}"
+        return f"{label} {index}: {', '.join(model_names)}"
 
     def hex_to_bgr(self, value):
         text = str(value).strip().lstrip("#")
