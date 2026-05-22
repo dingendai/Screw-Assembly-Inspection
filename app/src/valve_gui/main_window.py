@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
         if self.state.sessions:
             self.state.sessions[0].logout_time = logout_time
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions)
+        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions, self.state.role_labels)
 
         self.release_all_hardware()
         self.state.operator_name = ""

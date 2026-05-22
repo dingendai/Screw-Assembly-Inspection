@@ -540,8 +540,6 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()
-        first_enabled = next((model for model in self.state.model_configs if model.enabled), None)
-        self.state.yolo_model_path = first_enabled.file_path if first_enabled else ""
         self.state.settings_applied = True
         save_app_config(self.state)
         self.stop_preview()

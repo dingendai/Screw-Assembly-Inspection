@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(python -c ' *)",
-      "Bash(.venvScriptspython.exe -c ' *)"
+      "Bash(.venvScriptspython.exe -c ' *)",
+      "Bash(py --version)",
+      "Bash(where python *)",
+      "Bash('C:\\\\Users\\\\guan0\\\\anaconda3\\\\python.exe' -c ' *)",
+      "Bash('.venv\\\\Scripts\\\\python.exe' -c ' *)"
     ]
   }
 }

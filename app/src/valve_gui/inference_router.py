@@ -175,16 +175,13 @@ class InferenceRouter:
         rules = getattr(self.state.decision, "model_rules", {})
         if not isinstance(rules, dict):
             return default_rule
-        rule = rules.get(self.decision_rule_key(slot, model_name), {})
+        rule = rules.get(_rule_key(slot, model_name), {})
         if not isinstance(rule, dict):
             return default_rule
         return {
             "confidence_threshold": rule.get("confidence_threshold", default_threshold),
             "required_object_count": rule.get("required_object_count", 1),
         }
-
-    def decision_rule_key(self, slot, model_name):
-        return _rule_key(slot, model_name)
 
     def clear_model_cache(self):
         self.loaded_models.clear()

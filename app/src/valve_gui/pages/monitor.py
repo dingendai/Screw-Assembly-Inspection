@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -55,11 +56,11 @@ class MonitorPage(QWidget):
         self.views = []
         self.last_frames = {}
         self.latest_annotated_frames = {}
-        self.last_detection_time = None
         self.continuous_detection = False
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.pending_detection_future = None
         self._single_worker = None
+        self._last_record_time: float = 0.0
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
@@ -181,6 +182,7 @@ class MonitorPage(QWidget):
     def start(self):
         continuous_requested = self.continuous_detection
         self.stop(reset_continuous=False)
+        self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.continuous_detection = continuous_requested
         self.refresh()
         errors = []
@@ -199,7 +201,9 @@ class MonitorPage(QWidget):
         self.detection_timer.stop()
         self.result_timer.stop()
         self.pending_detection_future = None
+        self.detection_executor.shutdown(wait=False)
         self.latest_annotated_frames = {}
+        self._last_record_time = 0.0
         if reset_continuous:
             self.continuous_button.blockSignals(True)
             self.continuous_button.setChecked(False)
@@ -343,7 +347,7 @@ class MonitorPage(QWidget):
         self.continuous_button.setEnabled(True)
         self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "連續檢測")
 
-    def detect_current_frames(self, record=False):
+    def detect_current_frames(self):
         if not self.state.is_logged_in:
             QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
             self.continuous_button.setChecked(False)
@@ -355,15 +359,10 @@ class MonitorPage(QWidget):
         if not self.views:
             self.start()
         frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
-        if self.continuous_detection and not record:
-            if self.pending_detection_future and not self.pending_detection_future.done():
-                return
-            self.pending_detection_future = self.detection_executor.submit(self.router.run, frames)
-            self.result_timer.start(30)
+        if self.pending_detection_future and not self.pending_detection_future.done():
             return
-
-        inference = self.router.run(frames)
-        self.apply_detection_result(inference, record=record)
+        self.pending_detection_future = self.detection_executor.submit(self.router.run, frames)
+        self.result_timer.start(30)
 
     def apply_pending_detection_result(self):
         if not self.pending_detection_future or not self.pending_detection_future.done():
@@ -405,6 +404,11 @@ class MonitorPage(QWidget):
                 view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)
 
     def record_detection(self, inference):
+        if self.continuous_detection:
+            now = time.time()
+            if now - self._last_record_time < 5.0:
+                return
+            self._last_record_time = now
         active = ",".join(
             f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
             for config, _ in self.views
