@@ -61,6 +61,8 @@ class MonitorPage(QWidget):
         self.pending_detection_future = None
         self._single_worker = None
         self._last_record_time: float = 0.0
+        self._source_by_slot: dict = {}
+        self._config_by_slot: dict = {}
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
@@ -192,6 +194,8 @@ class MonitorPage(QWidget):
                 errors.append(source.last_error)
             self.sources.append((config.slot, source))
         self.camera_status_label.setText("相機狀態：" + ("；".join(errors) if errors else "正常"))
+        self._source_by_slot = {slot: source for slot, source in self.sources}
+        self._config_by_slot = {config.slot: config for config, _ in self.views}
         self.frame_timer.start(33)
         if self.continuous_detection:
             self.detection_timer.start(500)
@@ -213,11 +217,12 @@ class MonitorPage(QWidget):
         for _, source in self.sources:
             source.release()
         self.sources = []
+        self._source_by_slot = {}
+        self._config_by_slot = {}
 
     def update_frames(self):
-        source_by_slot = {slot: source for slot, source in self.sources}
         for config, view in self.views:
-            source = source_by_slot.get(config.slot)
+            source = self._source_by_slot.get(config.slot)
             if not source:
                 continue
             frame = source.read()
@@ -390,7 +395,7 @@ class MonitorPage(QWidget):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
         self.show_annotated_frames(inference.annotated_frames)
-        if record or self.continuous_detection or inference.result == "NG":
+        if record or self.continuous_detection:
             self.record_detection(inference)
 
     def show_annotated_frames(self, annotated_frames):
@@ -400,7 +405,7 @@ class MonitorPage(QWidget):
         for slot, frame in annotated_frames.items():
             view = view_by_slot.get(slot)
             if view:
-                config = next((config for config, _view in self.views if config.slot == slot), None)
+                config = self._config_by_slot.get(slot)
                 view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)
 
     def record_detection(self, inference):

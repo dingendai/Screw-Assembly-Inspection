@@ -35,7 +35,7 @@ class InferenceRouter:
         confidences = []
         notes = []
         missing = []
-        rule_failures = []
+        failed_slots: set[int] = set()
 
         for camera in self.state.inspection_cameras:
             if not camera.enabled or camera.slot not in frames_by_slot:
@@ -87,11 +87,11 @@ class InferenceRouter:
                     f"標籤框 {object_count} (需求 = {required_count})"
                 )
                 if not model_pass:
-                    rule_failures.append(f"Camera {camera.slot}->{model.name}")
+                    failed_slots.add(camera.slot)
             annotated_frames[camera.slot] = annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
-                "result": "NG" if any(item.startswith(f"Camera {camera.slot}->") for item in rule_failures) else "PASS",
+                "result": "NG" if camera.slot in failed_slots else "PASS",
                 "confidence": camera_confidence,
                 "reasons": camera_reasons or ["沒有可用的模型結果"],
             }
@@ -106,7 +106,7 @@ class InferenceRouter:
             )
 
         confidence = min(confidences) if confidences else 0.0
-        result = "NG" if rule_failures or not confidences else "PASS"
+        result = "NG" if failed_slots or not confidences else "PASS"
         return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
 
     def run_single_model(self, frame, slot, model_config, display_frame=None):

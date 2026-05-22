@@ -773,14 +773,14 @@ class DecisionSettingsPage(QWidget):
         row = table.rowCount()
         table.insertRow(row)
         table.setRowHeight(row, self.RULE_ROW_HEIGHT)
-        rule = self.state.decision.model_rules.get(self.decision_rule_key(slot, model_name), {})
+        rule = self.state.decision.model_rules.get(_rule_key(slot, model_name), {})
         confidence = float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold))
         required_count = int(rule.get("required_object_count", 1))
         table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
         table.setItem(row, 1, QTableWidgetItem(model_name))
         table.setItem(row, 2, QTableWidgetItem(f"{confidence:.3f}"))
         table.setItem(row, 3, QTableWidgetItem(str(required_count)))
-        self.overview_rows[self.decision_rule_key(slot, model_name)] = {
+        self.overview_rows[_rule_key(slot, model_name)] = {
             "confidence": table.item(row, 2),
             "count": table.item(row, 3),
         }
@@ -790,7 +790,7 @@ class DecisionSettingsPage(QWidget):
         table.insertRow(row)
         table.setRowHeight(row, self.RULE_ROW_HEIGHT)
 
-        rule_key = self.decision_rule_key(slot, model_name)
+        rule_key = _rule_key(slot, model_name)
         rule = self.state.decision.model_rules.get(rule_key, {})
 
         table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
@@ -845,7 +845,7 @@ class DecisionSettingsPage(QWidget):
         self.state.decision.pass_confidence_threshold = self.global_threshold.value()
         rules = {}
         for row in self.rule_rows:
-            rules[self.decision_rule_key(row["slot"], row["model_name"])] = {
+            rules[_rule_key(row["slot"], row["model_name"])] = {
                 "confidence_threshold": row["confidence"].value(),
                 "required_object_count": int(row["count"].currentData()),
             }
@@ -855,14 +855,11 @@ class DecisionSettingsPage(QWidget):
 
     def sync_overview_table(self):
         for row in self.rule_rows:
-            overview = self.overview_rows.get(self.decision_rule_key(row["slot"], row["model_name"]))
+            overview = self.overview_rows.get(_rule_key(row["slot"], row["model_name"]))
             if not overview:
                 continue
             overview["confidence"].setText(f"{row['confidence'].value():.3f}")
             overview["count"].setText(str(int(row["count"].currentData())))
-
-    def decision_rule_key(self, slot, model_name):
-        return _rule_key(slot, model_name)
 
     def logout(self):
         if self.on_logout:
