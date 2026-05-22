@@ -86,7 +86,6 @@ class AppState:
     login_time: str = ""
     is_logged_in: bool = False
     settings_applied: bool = False
-    yolo_model_path: str = ""
     model_configs: list[ModelConfig] = field(default_factory=list)
     detected_cameras: list[int] = field(default_factory=list)
     inspection_cameras: list[CameraConfig] = field(

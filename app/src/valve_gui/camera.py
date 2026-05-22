@@ -2,6 +2,7 @@ import time
 
 import cv2
 import numpy as np
+from PyQt6.QtCore import QThread, pyqtSignal
 
 
 def apply_frame_transform(frame, flip_horizontal=False, flip_vertical=False, rotation_degrees=0):
@@ -144,3 +145,16 @@ def detect_camera_indexes(max_index=12):
                 found.append(index)
         capture.release()
     return found
+
+
+class CameraScanWorker(QThread):
+    """Runs detect_camera_indexes on a background thread to avoid blocking the UI."""
+    finished = pyqtSignal(list)
+
+    def __init__(self, max_index=12, parent=None):
+        super().__init__(parent)
+        self.max_index = max_index
+
+    def run(self):
+        found = detect_camera_indexes(self.max_index)
+        self.finished.emit(found)

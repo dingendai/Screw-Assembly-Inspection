@@ -36,6 +36,8 @@ class RegionCanvas(QLabel):
         self.image_rect = QRect()
         self.drag_start = None
         self.drag_current = None
+        self._cached_scaled: QPixmap | None = None
+        self._cached_widget_size = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(640, 420)
         self.setObjectName("cameraImage")
@@ -48,6 +50,7 @@ class RegionCanvas(QLabel):
         self.frame = frame
         height, width = frame.shape[:2]
         self.frame_size = (width, height)
+        self._cached_scaled = None
         self.repaint_frame()
 
     def repaint_frame(self):
@@ -55,15 +58,18 @@ class RegionCanvas(QLabel):
             self.clear()
             self.setText("No Signal")
             return
-        rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
-        height, width, channels = rgb.shape
-        image = QImage(rgb.data, width, height, channels * width, QImage.Format.Format_RGB888)
-        base = QPixmap.fromImage(image)
-        scaled = base.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+        current_size = (self.width(), self.height())
+        if self._cached_scaled is None or self._cached_widget_size != current_size:
+            rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            image = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+            self._cached_scaled = QPixmap.fromImage(image).scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._cached_widget_size = current_size
+        scaled = self._cached_scaled
         canvas = QPixmap(self.size())
         canvas.fill(QColor("#111827"))
         painter = QPainter(canvas)
@@ -155,6 +161,7 @@ class RegionCanvas(QLabel):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._cached_scaled = None
         self.repaint_frame()
 
 
@@ -172,7 +179,7 @@ class CameraRegionEditor(QWidget):
         layout.setSpacing(12)
 
         left = QVBoxLayout()
-        self.canvas = RegionCanvas(camera_config, self.refresh_region_table, self.state.region_overlay)
+        self.canvas = RegionCanvas(camera_config, self._on_region_added, self.state.region_overlay)
         left.addWidget(self.canvas, 1)
 
         side = QGroupBox("已標示區域")
@@ -231,10 +238,15 @@ class CameraRegionEditor(QWidget):
         self.refresh_region_table()
         self.update_region_controls_enabled()
 
+    def _on_region_added(self):
+        self.refresh_region_table()
+        save_app_config(self.state)
+
     def toggle_region_detection(self, _state=None):
         self.camera_config.region_detection_enabled = self.enable_box.isChecked()
         self.update_region_controls_enabled()
         self.canvas.repaint_frame()
+        save_app_config(self.state)
 
     def update_region_controls_enabled(self):
         enabled = self.enable_box.isChecked()
@@ -339,6 +351,7 @@ class CameraRegionEditor(QWidget):
         ]
         self.refresh_region_table(keep_selection=True)
         self.canvas.repaint_frame()
+        save_app_config(self.state)
 
     def format_region_models(self, region):
         model_names = region.get("model_names", [])
@@ -385,12 +398,14 @@ class CameraRegionEditor(QWidget):
             del self.camera_config.exclusion_regions[index]
         self.refresh_region_table()
         self.canvas.repaint_frame()
+        save_app_config(self.state)
 
     def clear_regions(self):
         self.camera_config.detection_regions = []
         self.camera_config.exclusion_regions = []
         self.refresh_region_table()
         self.canvas.repaint_frame()
+        save_app_config(self.state)
 
 
 class RegionOverlaySettingsPage(QWidget):

@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 import cv2
 
 from valve_gui.camera import apply_region_mask, regions_for_model
-from valve_gui.model_registry import camera_model_names, model_by_name
+from valve_gui.model_registry import camera_model_names
+from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
 
 
 @dataclass
@@ -23,6 +24,7 @@ class InferenceRouter:
         self.state = state
         self.loaded_models = {}
         self.ultralytics_available = None
+        self._load_errors = set()
 
     def run(self, frames_by_slot):
         if not frames_by_slot:
@@ -33,7 +35,8 @@ class InferenceRouter:
         confidences = []
         notes = []
         missing = []
-        rule_failures = []
+        failed_slots: set[int] = set()
+        models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
             if not camera.enabled or camera.slot not in frames_by_slot:
@@ -53,7 +56,7 @@ class InferenceRouter:
             camera_confidences = []
             camera_reasons = []
             for model_name in model_names:
-                model = model_by_name(self.state, model_name)
+                model = models_by_name.get(model_name)
                 if not model or not model.enabled:
                     missing.append(f"Camera {camera.slot}->{model_name}")
                     camera_confidences.append(0.0)
@@ -85,11 +88,11 @@ class InferenceRouter:
                     f"標籤框 {object_count} (需求 = {required_count})"
                 )
                 if not model_pass:
-                    rule_failures.append(f"Camera {camera.slot}->{model.name}")
+                    failed_slots.add(camera.slot)
             annotated_frames[camera.slot] = annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
-                "result": "NG" if any(item.startswith(f"Camera {camera.slot}->") for item in rule_failures) else "PASS",
+                "result": "NG" if camera.slot in failed_slots else "PASS",
                 "confidence": camera_confidence,
                 "reasons": camera_reasons or ["沒有可用的模型結果"],
             }
@@ -104,7 +107,7 @@ class InferenceRouter:
             )
 
         confidence = min(confidences) if confidences else 0.0
-        result = "NG" if rule_failures or not confidences else "PASS"
+        result = "NG" if failed_slots or not confidences else "PASS"
         return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
 
     def run_single_model(self, frame, slot, model_config, display_frame=None):
@@ -141,7 +144,7 @@ class InferenceRouter:
             confidence = float(box.conf[0].detach().cpu().item()) if getattr(box, "conf", None) is not None else 0.0
             class_id = int(box.cls[0].detach().cpu().item()) if getattr(box, "cls", None) is not None else -1
             label = names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id)
-            color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
+            color = hex_to_bgr(self.yolo_color_for_model(model_name))
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
@@ -164,18 +167,6 @@ class InferenceRouter:
                 return color
         return getattr(overlay, "yolo_color", "#22c55e")
 
-    def hex_to_bgr(self, value):
-        text = str(value).strip().lstrip("#")
-        if len(text) != 6:
-            text = "22c55e"
-        try:
-            red = int(text[0:2], 16)
-            green = int(text[2:4], 16)
-            blue = int(text[4:6], 16)
-        except ValueError:
-            red, green, blue = 34, 197, 94
-        return blue, green, red
-
     def decision_rule_for(self, slot, model_name):
         default_threshold = getattr(self.state.decision, "pass_confidence_threshold", 0.5)
         default_rule = {
@@ -185,7 +176,7 @@ class InferenceRouter:
         rules = getattr(self.state.decision, "model_rules", {})
         if not isinstance(rules, dict):
             return default_rule
-        rule = rules.get(self.decision_rule_key(slot, model_name), {})
+        rule = rules.get(_rule_key(slot, model_name), {})
         if not isinstance(rule, dict):
             return default_rule
         return {
@@ -193,24 +184,31 @@ class InferenceRouter:
             "required_object_count": rule.get("required_object_count", 1),
         }
 
-    def decision_rule_key(self, slot, model_name):
-        return f"{slot}::{model_name}"
+    def clear_model_cache(self):
+        self.loaded_models.clear()
+        self._load_errors.clear()
 
     def load_yolo_model(self, path):
         if not path:
             return None
         if path in self.loaded_models:
             return self.loaded_models[path]
+        if path in self._load_errors:
+            return None
         if self.ultralytics_available is False:
             return None
         try:
             from ultralytics import YOLO
 
             self.ultralytics_available = True
-            self.loaded_models[path] = YOLO(path)
-            return self.loaded_models[path]
-        except Exception:
+            model = YOLO(path)
+            self.loaded_models[path] = model
+            return model
+        except ImportError:
             self.ultralytics_available = False
+            return None
+        except Exception:
+            self._load_errors.add(path)
             return None
 
     def draw_placeholder_annotation(self, frame, slot, model_name, label):
@@ -219,7 +217,7 @@ class InferenceRouter:
         y1 = max(20, height // 5)
         x2 = min(width - 20, x1 + width // 2)
         y2 = min(height - 20, y1 + height // 3)
-        color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
+        color = hex_to_bgr(self.yolo_color_for_model(model_name))
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
         cv2.putText(
             frame,

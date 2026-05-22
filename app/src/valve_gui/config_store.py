@@ -10,6 +10,7 @@ from valve_gui.permissions import (
     default_role_labels,
     default_role_permissions,
 )
+from valve_gui.utils import hash_password
 
 
 def load_app_config(state):
@@ -142,6 +143,13 @@ def load_app_config(state):
         ]
 
 
+def _hashed_passwords(role_passwords):
+    return {
+        role: hash_password(pw) if pw and not pw.startswith("sha256:") else pw
+        for role, pw in role_passwords.items()
+    }
+
+
 def save_app_config(state):
     APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     data = {
@@ -151,7 +159,7 @@ def save_app_config(state):
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),
         "role_labels": state.role_labels,
-        "role_passwords": state.role_passwords,
+        "role_passwords": _hashed_passwords(state.role_passwords),
         "role_permissions": {
             role: sorted(permissions)
             for role, permissions in state.role_permissions.items()

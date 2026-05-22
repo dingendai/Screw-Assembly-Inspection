@@ -13,7 +13,7 @@ from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import DecisionSettingsPage, DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
-from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH
 from valve_gui.permissions import (
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
@@ -23,7 +23,7 @@ from valve_gui.permissions import (
     has_permission,
     role_label,
 )
-from valve_gui.storage import write_sessions_csv
+from valve_gui.storage import append_record_csv, write_sessions_csv
 
 
 class MainWindow(QMainWindow):
@@ -350,6 +350,7 @@ class MainWindow(QMainWindow):
 
     def after_settings(self):
         self.release_all_hardware()
+        self.monitor_page.router.clear_model_cache()
         self.apply_display_config()
         self.update_navigation()
         if has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
@@ -401,12 +402,11 @@ class MainWindow(QMainWindow):
     def add_record(self, record: InspectionRecord):
         self.state.records.insert(0, record)
         self.history_page.refresh()
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        append_record_csv(RECORDS_LOG_PATH, record)
 
     def release_inspection_hardware(self):
-        self.monitor_page.stop()
-        self.settings_page.stop_preview()
-        self.region_page.stop()
-        self.login_page.stop()
+        self.release_all_hardware()
 
     def release_all_hardware(self):
         self.monitor_page.stop()
@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
         if self.state.sessions:
             self.state.sessions[0].logout_time = logout_time
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions)
+        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions, self.state.role_labels)
 
         self.release_all_hardware()
         self.state.operator_name = ""
