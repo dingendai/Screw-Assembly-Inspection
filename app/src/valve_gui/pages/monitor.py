@@ -63,6 +63,7 @@ class MonitorPage(QWidget):
         self._last_record_time: float = 0.0
         self._source_by_slot: dict = {}
         self._config_by_slot: dict = {}
+        self._view_by_slot: dict = {}
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
@@ -196,6 +197,7 @@ class MonitorPage(QWidget):
         self.camera_status_label.setText("相機狀態：" + ("；".join(errors) if errors else "正常"))
         self._source_by_slot = {slot: source for slot, source in self.sources}
         self._config_by_slot = {config.slot: config for config, _ in self.views}
+        self._view_by_slot = {config.slot: view for config, view in self.views}
         self.frame_timer.start(33)
         if self.continuous_detection:
             self.detection_timer.start(500)
@@ -219,6 +221,7 @@ class MonitorPage(QWidget):
         self.sources = []
         self._source_by_slot = {}
         self._config_by_slot = {}
+        self._view_by_slot = {}
 
     def update_frames(self):
         for config, view in self.views:
@@ -401,9 +404,8 @@ class MonitorPage(QWidget):
     def show_annotated_frames(self, annotated_frames):
         if self.continuous_detection:
             self.latest_annotated_frames = dict(annotated_frames)
-        view_by_slot = {config.slot: view for config, view in self.views}
         for slot, frame in annotated_frames.items():
-            view = view_by_slot.get(slot)
+            view = self._view_by_slot.get(slot)
             if view:
                 config = self._config_by_slot.get(slot)
                 view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)

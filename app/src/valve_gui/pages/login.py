@@ -302,25 +302,8 @@ class LoginPage(QWidget):
         if not self.validate_password(role):
             return
         if role == ROLE_DEVELOPER:
-            self.state.operator_name = self.name_input.text().strip() or "Developer"
-            self.state.operator_role = role
-            self.state.operator_photo_path = ""
-            self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
-            self.state.is_logged_in = True
-            self.state.settings_applied = False
-            self.state.sessions.insert(
-                0,
-                OperatorSession(
-                    operator_name=self.state.operator_name,
-                    operator_role=role,
-                    login_time=self.state.login_time,
-                    photo_path="",
-                ),
-            )
-            self.password_input.clear()
-            self.on_login()
+            self._complete_login(self.name_input.text().strip() or "Developer", role, "")
             return
-
         name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "缺少資料", "請輸入操作者姓名。")
@@ -328,6 +311,9 @@ class LoginPage(QWidget):
         if not self.state.operator_photo_path:
             QMessageBox.warning(self, "缺少照片", "請先拍攝操作者照片後才能登入。")
             return
+        self._complete_login(name, role, self.state.operator_photo_path)
+
+    def _complete_login(self, name, role, photo_path):
         self.state.operator_name = name
         self.state.operator_role = role
         self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
@@ -337,9 +323,9 @@ class LoginPage(QWidget):
             0,
             OperatorSession(
                 operator_name=name,
-                operator_role=self.state.operator_role,
+                operator_role=role,
                 login_time=self.state.login_time,
-                photo_path=self.state.operator_photo_path,
+                photo_path=photo_path,
             ),
         )
         self.password_input.clear()

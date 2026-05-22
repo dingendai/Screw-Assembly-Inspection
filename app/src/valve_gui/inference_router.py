@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import cv2
 
 from valve_gui.camera import apply_region_mask, regions_for_model
-from valve_gui.model_registry import camera_model_names, model_by_name
+from valve_gui.model_registry import camera_model_names
 from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
 
 
@@ -36,6 +36,7 @@ class InferenceRouter:
         notes = []
         missing = []
         failed_slots: set[int] = set()
+        models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
             if not camera.enabled or camera.slot not in frames_by_slot:
@@ -55,7 +56,7 @@ class InferenceRouter:
             camera_confidences = []
             camera_reasons = []
             for model_name in model_names:
-                model = model_by_name(self.state, model_name)
+                model = models_by_name.get(model_name)
                 if not model or not model.enabled:
                     missing.append(f"Camera {camera.slot}->{model_name}")
                     camera_confidences.append(0.0)
