@@ -406,7 +406,7 @@ class MonitorPage(QWidget):
     def record_detection(self, inference):
         if self.continuous_detection:
             now = time.time()
-            if now - self._last_record_time < 5.0:
+            if inference.result != "NG" and now - self._last_record_time < 5.0:
                 return
             self._last_record_time = now
         active = ",".join(
