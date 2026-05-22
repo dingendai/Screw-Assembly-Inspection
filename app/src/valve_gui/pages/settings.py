@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, apply_frame_transform, detect_camera_indexes
+from valve_gui.camera import CameraScanWorker, VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
 from valve_gui.models import AppState, ModelConfig
@@ -33,6 +33,7 @@ from valve_gui.permissions import (
     PERMISSION_USE_SIMULATION,
     has_permission,
 )
+from valve_gui.utils import decision_rule_key as _rule_key
 from valve_gui.widgets import CameraView
 
 
@@ -58,6 +59,11 @@ class SettingsPage(QWidget):
         self.preview_views = []
         self.preview_timer = QTimer(self)
         self.preview_timer.timeout.connect(self.update_camera_previews)
+        self._preview_debounce = QTimer(self)
+        self._preview_debounce.setSingleShot(True)
+        self._preview_debounce.setInterval(400)
+        self._preview_debounce.timeout.connect(self.restart_preview)
+        self._scan_worker = None
 
         ensure_model_configs(self.state)
 
@@ -120,12 +126,12 @@ class SettingsPage(QWidget):
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
 
-            index.currentIndexChanged.connect(self.restart_preview)
-            enabled.stateChanged.connect(self.restart_preview)
-            flip_h.stateChanged.connect(self.restart_preview)
-            flip_v.stateChanged.connect(self.restart_preview)
-            rotation.currentTextChanged.connect(self.restart_preview)
-            model_list.itemChanged.connect(self.restart_preview)
+            index.currentIndexChanged.connect(self._queue_preview_restart)
+            enabled.stateChanged.connect(self._queue_preview_restart)
+            flip_h.stateChanged.connect(self._queue_preview_restart)
+            flip_v.stateChanged.connect(self._queue_preview_restart)
+            rotation.currentTextChanged.connect(self._queue_preview_restart)
+            model_list.itemChanged.connect(self._queue_preview_restart)
 
             camera_box = QGroupBox(f"Camera {config.slot}")
             card = QGridLayout(camera_box)
@@ -151,7 +157,7 @@ class SettingsPage(QWidget):
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
-        self.simulation_box.stateChanged.connect(self.restart_preview)
+        self.simulation_box.stateChanged.connect(self._queue_preview_restart)
 
         search_button = QPushButton("搜尋相機")
         search_button.clicked.connect(self.search_cameras)
@@ -185,7 +191,7 @@ class SettingsPage(QWidget):
         self.remove_model_button.clicked.connect(self.remove_selected_model)
         self.browse_model_button = QPushButton("選取模型檔案")
         self.browse_model_button.clicked.connect(self.browse_selected_model)
-        self.rescan_models_button = QPushButton("重新掃描 modles 模型")
+        self.rescan_models_button = QPushButton("重新掃描 models 模型")
         self.rescan_models_button.clicked.connect(self.rescan_models)
 
         actions = QHBoxLayout()
@@ -377,17 +383,28 @@ class SettingsPage(QWidget):
         self.state.model_configs = self.collect_model_configs()
         self.refresh_camera_model_combos()
 
+    def _queue_preview_restart(self):
+        self._preview_debounce.start()
+
     def search_cameras(self):
         self.release_external_cameras()
-        previous_simulation = self.simulation_box.isChecked()
+        self._previous_simulation = self.simulation_box.isChecked()
         self.simulation_box.setChecked(False)
-        found = detect_camera_indexes()
+        self.search_camera_button.setEnabled(False)
+        self.search_camera_button.setText("搜尋中…")
+        self._scan_worker = CameraScanWorker(parent=self)
+        self._scan_worker.finished.connect(self._on_camera_scan_done)
+        self._scan_worker.start()
+
+    def _on_camera_scan_done(self, found):
+        self.search_camera_button.setEnabled(True)
+        self.search_camera_button.setText("搜尋相機")
         self.state.detected_cameras = found
         if found:
             self.detected_label.setText("已找到相機索引：" + ", ".join(str(index) for index in found))
         else:
             self.detected_label.setText("未找到可讀取的相機，已保留目前設定。")
-            self.simulation_box.setChecked(previous_simulation)
+            self.simulation_box.setChecked(self._previous_simulation)
         self.refresh_camera_index_combos()
         self.restart_preview()
 
@@ -847,7 +864,7 @@ class DecisionSettingsPage(QWidget):
             overview["count"].setText(str(int(row["count"].currentData())))
 
     def decision_rule_key(self, slot, model_name):
-        return f"{slot}::{model_name}"
+        return _rule_key(slot, model_name)
 
     def logout(self):
         if self.on_logout:

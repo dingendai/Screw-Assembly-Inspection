@@ -17,10 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, detect_camera_indexes
+from valve_gui.camera import CameraScanWorker, VideoSource
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
 from valve_gui.permissions import ROLE_DEVELOPER, ROLE_OPERATOR, role_label, role_options
+from valve_gui.utils import verify_password
 from valve_gui.widgets import CameraView
 
 
@@ -37,6 +38,7 @@ class LoginPage(QWidget):
         self.last_frames = {}
         self.camera_visibility_checks = {}
         self.visible_camera_indexes = set()
+        self._scan_worker = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_previews)
 
@@ -134,8 +136,17 @@ class LoginPage(QWidget):
 
     def scan_cameras(self):
         self.stop()
-        self.state.detected_cameras = detect_camera_indexes()
-        if not self.state.detected_cameras:
+        self.scan_button.setEnabled(False)
+        self.scan_button.setText("搜尋中…")
+        self._scan_worker = CameraScanWorker(parent=self)
+        self._scan_worker.finished.connect(self._on_scan_done)
+        self._scan_worker.start()
+
+    def _on_scan_done(self, found):
+        self.scan_button.setEnabled(True)
+        self.scan_button.setText("搜尋可用相機")
+        self.state.detected_cameras = found
+        if not found:
             QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，可勾選模擬影像測試。")
         self.populate_camera_indexes(self.state.operator_camera_index)
         self.start_preview()
@@ -280,8 +291,8 @@ class LoginPage(QWidget):
         field.setVisible(visible)
 
     def validate_password(self, role):
-        expected = self.state.role_passwords.get(role, "")
-        if expected and self.password_input.text() != expected:
+        stored = self.state.role_passwords.get(role, "")
+        if stored and not verify_password(self.password_input.text(), stored):
             QMessageBox.warning(self, "登入密鑰錯誤", f"{role_label(role, self.state.role_labels)}密鑰不正確。")
             return False
         return True

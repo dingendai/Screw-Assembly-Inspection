@@ -5,6 +5,7 @@ import cv2
 
 from valve_gui.camera import apply_region_mask, regions_for_model
 from valve_gui.model_registry import camera_model_names, model_by_name
+from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
 
 
 @dataclass
@@ -23,6 +24,7 @@ class InferenceRouter:
         self.state = state
         self.loaded_models = {}
         self.ultralytics_available = None
+        self._load_errors = set()
 
     def run(self, frames_by_slot):
         if not frames_by_slot:
@@ -141,7 +143,7 @@ class InferenceRouter:
             confidence = float(box.conf[0].detach().cpu().item()) if getattr(box, "conf", None) is not None else 0.0
             class_id = int(box.cls[0].detach().cpu().item()) if getattr(box, "cls", None) is not None else -1
             label = names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id)
-            color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
+            color = hex_to_bgr(self.yolo_color_for_model(model_name))
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
@@ -164,18 +166,6 @@ class InferenceRouter:
                 return color
         return getattr(overlay, "yolo_color", "#22c55e")
 
-    def hex_to_bgr(self, value):
-        text = str(value).strip().lstrip("#")
-        if len(text) != 6:
-            text = "22c55e"
-        try:
-            red = int(text[0:2], 16)
-            green = int(text[2:4], 16)
-            blue = int(text[4:6], 16)
-        except ValueError:
-            red, green, blue = 34, 197, 94
-        return blue, green, red
-
     def decision_rule_for(self, slot, model_name):
         default_threshold = getattr(self.state.decision, "pass_confidence_threshold", 0.5)
         default_rule = {
@@ -194,23 +184,33 @@ class InferenceRouter:
         }
 
     def decision_rule_key(self, slot, model_name):
-        return f"{slot}::{model_name}"
+        return _rule_key(slot, model_name)
+
+    def clear_model_cache(self):
+        self.loaded_models.clear()
+        self._load_errors.clear()
 
     def load_yolo_model(self, path):
         if not path:
             return None
         if path in self.loaded_models:
             return self.loaded_models[path]
+        if path in self._load_errors:
+            return None
         if self.ultralytics_available is False:
             return None
         try:
             from ultralytics import YOLO
 
             self.ultralytics_available = True
-            self.loaded_models[path] = YOLO(path)
-            return self.loaded_models[path]
-        except Exception:
+            model = YOLO(path)
+            self.loaded_models[path] = model
+            return model
+        except ImportError:
             self.ultralytics_available = False
+            return None
+        except Exception:
+            self._load_errors.add(path)
             return None
 
     def draw_placeholder_annotation(self, frame, slot, model_name, label):
@@ -219,7 +219,7 @@ class InferenceRouter:
         y1 = max(20, height // 5)
         x2 = min(width - 20, x1 + width // 2)
         y2 = min(height - 20, y1 + height // 3)
-        color = self.hex_to_bgr(self.yolo_color_for_model(model_name))
+        color = hex_to_bgr(self.yolo_color_for_model(model_name))
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
         cv2.putText(
             frame,

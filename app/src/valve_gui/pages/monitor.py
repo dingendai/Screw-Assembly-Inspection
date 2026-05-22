@@ -2,9 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import cv2
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -24,7 +23,25 @@ from valve_gui.inference_router import InferenceRouter
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
 from valve_gui.permissions import role_label
+from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
+
+
+class _DetectionWorker(QThread):
+    finished = pyqtSignal(object)
+    errored = pyqtSignal(str)
+
+    def __init__(self, router, frames, parent=None):
+        super().__init__(parent)
+        self.router = router
+        self.frames = frames
+
+    def run(self):
+        try:
+            result = self.router.run(self.frames)
+            self.finished.emit(result)
+        except Exception as exc:
+            self.errored.emit(str(exc))
 
 
 class MonitorPage(QWidget):
@@ -42,6 +59,7 @@ class MonitorPage(QWidget):
         self.continuous_detection = False
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.pending_detection_future = None
+        self._single_worker = None
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
@@ -232,7 +250,7 @@ class MonitorPage(QWidget):
         self.draw_region_list(
             annotated,
             config.detection_regions,
-            self.hex_to_bgr(self.state.region_overlay.detection_color),
+            hex_to_bgr(self.state.region_overlay.detection_color),
             "ROI",
             width,
             height,
@@ -240,7 +258,7 @@ class MonitorPage(QWidget):
         self.draw_region_list(
             annotated,
             config.exclusion_regions,
-            self.hex_to_bgr(self.state.region_overlay.exclusion_color),
+            hex_to_bgr(self.state.region_overlay.exclusion_color),
             "EX",
             width,
             height,
@@ -267,32 +285,44 @@ class MonitorPage(QWidget):
             return f"{label} {index}"
         return f"{label} {index}: {', '.join(model_names)}"
 
-    def hex_to_bgr(self, value):
-        text = str(value).strip().lstrip("#")
-        if len(text) != 6:
-            text = "22c55e"
-        try:
-            red = int(text[0:2], 16)
-            green = int(text[2:4], 16)
-            blue = int(text[4:6], 16)
-        except ValueError:
-            red, green, blue = 34, 197, 94
-        return blue, green, red
-
     def inspect_once(self):
+        if self._single_worker and self._single_worker.isRunning():
+            return
+        if not self.state.is_logged_in:
+            QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
+            return
+        if not self.state.settings_applied:
+            QMessageBox.warning(self, "尚未套用設定", "請先在相機設定畫面套用設定。")
+            return
+        if not self.views:
+            self.start()
+        frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
+        self.inspect_button.setEnabled(False)
         self.continuous_button.setEnabled(False)
         self.inspect_button.setObjectName("activeDetectionButton")
         self.inspect_button.style().unpolish(self.inspect_button)
         self.inspect_button.style().polish(self.inspect_button)
-        QApplication.processEvents()
-        try:
-            self.detect_current_frames(record=True)
-        finally:
-            self.inspect_button.setObjectName("primaryButton")
-            self.inspect_button.style().unpolish(self.inspect_button)
-            self.inspect_button.style().polish(self.inspect_button)
-            if not self.continuous_detection:
-                self.continuous_button.setEnabled(True)
+        self._single_worker = _DetectionWorker(self.router, frames, self)
+        self._single_worker.finished.connect(self._on_single_detection_done)
+        self._single_worker.errored.connect(self._on_single_detection_error)
+        self._single_worker.start()
+
+    def _on_single_detection_done(self, inference):
+        self.apply_detection_result(inference, record=True)
+        self._restore_inspect_button()
+
+    def _on_single_detection_error(self, error_msg):
+        self.set_result("NG", 0.0)
+        self.set_reason_cards({0: {"result": "NG", "confidence": 0.0, "reasons": [f"檢測錯誤：{error_msg}"]}})
+        self._restore_inspect_button()
+
+    def _restore_inspect_button(self):
+        self.inspect_button.setObjectName("primaryButton")
+        self.inspect_button.style().unpolish(self.inspect_button)
+        self.inspect_button.style().polish(self.inspect_button)
+        self.inspect_button.setEnabled(True)
+        if not self.continuous_detection:
+            self.continuous_button.setEnabled(True)
 
     def toggle_continuous_detection(self, checked):
         self.continuous_detection = checked
