@@ -44,3 +44,6 @@ app/src/inspection_data/operator_photos/*
 .DS_Store
 Thumbs.db
 .vscode/
+
+# txt
+file.txt
