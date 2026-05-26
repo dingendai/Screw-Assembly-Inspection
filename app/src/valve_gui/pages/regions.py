@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -102,10 +103,12 @@ class RegionCanvas(QLabel):
             )
 
     def format_region_label(self, label, index, region):
+        roi_id = region.get("roi_id")
         model_names = region.get("model_names", [])
-        if not model_names:
-            return f"{label} {index}"
-        return f"{label} {index}: {', '.join(model_names)}"
+        base = f"#{roi_id}" if roi_id is not None else f"{label} {index}"
+        if model_names:
+            return f"{base}: {', '.join(model_names)}"
+        return base
 
     def draw_drag_rect(self, painter):
         color = QColor("#22c55e") if self.mode == "include" else QColor("#ef4444")
@@ -208,12 +211,22 @@ class CameraRegionEditor(QWidget):
         mode_buttons.addWidget(self.exclude_button)
         side_layout.addLayout(mode_buttons)
 
-        self.region_table = QTableWidget(0, 6)
-        self.region_table.setHorizontalHeaderLabels(["Type", "X", "Y", "W", "H", "Models"])
+        self.region_table = QTableWidget(0, 7)
+        self.region_table.setHorizontalHeaderLabels(["Type", "ROI ID", "X", "Y", "W", "H", "Models"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
         side_layout.addWidget(self.region_table, 1)
+
+        roi_id_row = QHBoxLayout()
+        roi_id_row.addWidget(QLabel("ROI 編號（0=不共用）"))
+        self.roi_id_spin = QSpinBox()
+        self.roi_id_spin.setRange(0, 99)
+        self.roi_id_spin.setSpecialValueText("—")
+        self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
+        roi_id_row.addWidget(self.roi_id_spin)
+        roi_id_row.addStretch()
+        side_layout.addLayout(roi_id_row)
 
         self.model_group = QGroupBox("Region models")
         self.model_layout = QVBoxLayout(self.model_group)
@@ -336,6 +349,7 @@ class CameraRegionEditor(QWidget):
         self.loading_model_selection = True
         for model_name, box in self.model_boxes.items():
             box.setChecked(model_name in selected_models)
+        self.roi_id_spin.setValue(region.get("roi_id") or 0 if region else 0)
         self.loading_model_selection = False
 
     def save_selected_region_models(self, _state=None):
@@ -349,6 +363,8 @@ class CameraRegionEditor(QWidget):
             for model_name, box in self.model_boxes.items()
             if box.isChecked()
         ]
+        rid = self.roi_id_spin.value()
+        region["roi_id"] = rid if rid > 0 else None
         self.refresh_region_table(keep_selection=True)
         self.canvas.repaint_frame()
         save_app_config(self.state)
@@ -374,11 +390,13 @@ class CameraRegionEditor(QWidget):
             type_item = QTableWidgetItem("ROI" if kind == "include" else "Exclude")
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
-            self.region_table.setItem(row_index, 1, QTableWidgetItem(f"{region['x']:.3f}"))
-            self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['y']:.3f}"))
-            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['w']:.3f}"))
-            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['h']:.3f}"))
-            self.region_table.setItem(row_index, 5, QTableWidgetItem(self.format_region_models(region)))
+            roi_id = region.get("roi_id")
+            self.region_table.setItem(row_index, 1, QTableWidgetItem(f"#{roi_id}" if roi_id is not None else "—"))
+            self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['x']:.3f}"))
+            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['y']:.3f}"))
+            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['w']:.3f}"))
+            self.region_table.setItem(row_index, 5, QTableWidgetItem(f"{region['h']:.3f}"))
+            self.region_table.setItem(row_index, 6, QTableWidgetItem(self.format_region_models(region)))
             if selected == (kind, source_index):
                 self.region_table.selectRow(row_index)
         if not keep_selection:

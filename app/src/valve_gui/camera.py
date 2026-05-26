@@ -67,6 +67,35 @@ def normalised_region_to_pixels(region, width, height):
     return x1, y1, x2, y2
 
 
+def bbox_center_in_region(bbox_xyxy, region, frame_w, frame_h) -> bool:
+    cx = (bbox_xyxy[0] + bbox_xyxy[2]) / 2
+    cy = (bbox_xyxy[1] + bbox_xyxy[3]) / 2
+    x1, y1, x2, y2 = normalised_region_to_pixels(region, frame_w, frame_h)
+    return x1 <= cx <= x2 and y1 <= cy <= y2
+
+
+def roi_id_detections(detection_regions, yolo_boxes_xyxy, frame_w, frame_h) -> dict:
+    """
+    For each roi_id found in detection_regions, return whether any YOLO bbox
+    center falls within any region bearing that roi_id.
+    Regions without roi_id are skipped.
+    """
+    result: dict[int, bool] = {}
+    for region in detection_regions:
+        rid = region.get("roi_id")
+        if rid is None:
+            continue
+        if rid not in result:
+            result[rid] = False
+        if result[rid]:
+            continue
+        for box in yolo_boxes_xyxy:
+            if bbox_center_in_region(box, region, frame_w, frame_h):
+                result[rid] = True
+                break
+    return result
+
+
 class VideoSource:
     def __init__(self, label: str, index: int, simulate: bool):
         self.label = label

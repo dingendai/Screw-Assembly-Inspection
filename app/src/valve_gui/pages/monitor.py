@@ -85,6 +85,11 @@ class MonitorPage(QWidget):
         self.reason_layout = QVBoxLayout(self.reason_list)
         self.reason_layout.setContentsMargins(0, 0, 0, 0)
         self.reason_layout.setSpacing(8)
+        self.roi_section = QGroupBox("ROI 物件確認狀態")
+        self.roi_section_layout = QVBoxLayout(self.roi_section)
+        self.roi_section_layout.setContentsMargins(8, 8, 8, 8)
+        self.roi_section_layout.setSpacing(4)
+        self.roi_section.setVisible(False)
         self.operator_label = QLabel()
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
@@ -123,6 +128,7 @@ class MonitorPage(QWidget):
         side_layout.addWidget(self.camera_status_label)
         side_layout.addWidget(QLabel("相機檢測狀態"))
         side_layout.addWidget(self.reason_list)
+        side_layout.addWidget(self.roi_section)
         side_layout.addStretch()
 
         bottom_controls = QVBoxLayout()
@@ -292,6 +298,9 @@ class MonitorPage(QWidget):
             )
 
     def format_region_label(self, label, index, region):
+        roi_id = region.get("roi_id")
+        if roi_id is not None:
+            return f"#{roi_id}"
         model_names = region.get("model_names", [])
         if not model_names:
             return f"{label} {index}"
@@ -397,6 +406,7 @@ class MonitorPage(QWidget):
     def apply_detection_result(self, inference, record=False):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
+        self.set_roi_confirmations(inference.roi_confirmations)
         self.show_annotated_frames(inference.annotated_frames)
         if record or self.continuous_detection:
             self.record_detection(inference)
@@ -441,6 +451,32 @@ class MonitorPage(QWidget):
 
     def set_ng_reason(self, inference):
         self.set_reason_cards(inference.camera_results)
+
+    def set_roi_confirmations(self, roi_confirmations):
+        while self.roi_section_layout.count():
+            item = self.roi_section_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+        if not roi_confirmations:
+            self.roi_section.setVisible(False)
+            return
+        self.roi_section.setVisible(True)
+        for rid in sorted(roi_confirmations):
+            info = roi_confirmations[rid]
+            confirmed = info["confirmed"]
+            votes = info["votes"]
+            total = info["total"]
+            card = QFrame()
+            card.setObjectName("reasonPassBox" if confirmed else "reasonNgBox")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 4, 8, 4)
+            icon = "✓" if confirmed else "✗"
+            status = "確認" if confirmed else "未確認"
+            label = QLabel(f"ROI #{rid}  {icon} {status}  ( {votes} / {total} )")
+            label.setObjectName("reasonTitle")
+            card_layout.addWidget(label)
+            self.roi_section_layout.addWidget(card)
 
     def set_reason_cards(self, camera_results):
         self.clear_reason_cards()
