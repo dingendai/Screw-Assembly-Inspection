@@ -28,6 +28,9 @@ from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
 
 
+MAX_GUI_FRAME_DIMENSION = 960
+
+
 class _DetectionWorker(QThread):
     finished = pyqtSignal(object)
     errored = pyqtSignal(str)
@@ -239,18 +242,32 @@ class MonitorPage(QWidget):
                 view.set_message(source.last_error or "沒有相機影像。", is_error=True)
                 self.camera_status_label.setText(f"相機狀態：{source.last_error or '沒有相機影像。'}")
                 continue
-            frame = apply_frame_transform(
+            model_frame = apply_frame_transform(
                 frame,
                 flip_horizontal=config.flip_horizontal,
                 flip_vertical=config.flip_vertical,
                 rotation_degrees=config.rotation_degrees,
             )
-            self.last_frames[config.slot] = frame
+            # Model input keeps the camera-provided resolution. GUI compression
+            # happens only after inference/overlay rendering.
+            self.last_frames[config.slot] = model_frame
             display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
             view.set_frame(
-                self.frame_with_region_overlay(config, display_frame if display_frame is not None else frame),
+                self.display_frame_for(config, display_frame if display_frame is not None else model_frame),
                 input_fps=source.input_fps,
             )
+
+    def display_frame_for(self, config, frame):
+        return self.compress_frame_for_gui(self.frame_with_region_overlay(config, frame))
+
+    def compress_frame_for_gui(self, frame):
+        height, width = frame.shape[:2]
+        longest_edge = max(width, height)
+        if longest_edge <= MAX_GUI_FRAME_DIMENSION:
+            return frame
+        scale = MAX_GUI_FRAME_DIMENSION / longest_edge
+        size = (max(1, int(width * scale)), max(1, int(height * scale)))
+        return cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
 
     def toggle_region_overlay(self):
         self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
@@ -418,7 +435,7 @@ class MonitorPage(QWidget):
             view = self._view_by_slot.get(slot)
             if view:
                 config = self._config_by_slot.get(slot)
-                view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)
+                view.set_frame(self.display_frame_for(config, frame) if config else self.compress_frame_for_gui(frame))
 
     def record_detection(self, inference):
         if self.continuous_detection:
