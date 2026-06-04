@@ -26,11 +26,18 @@ from valve_gui.model_registry import camera_model_names, ensure_model_configs
 
 
 class RegionCanvas(QLabel):
-    def __init__(self, camera_config, on_regions_changed=None, overlay_config=None):
+    def __init__(
+        self,
+        camera_config,
+        on_regions_changed=None,
+        overlay_config=None,
+        region_defaults_provider=None,
+    ):
         super().__init__("No Signal")
         self.camera_config = camera_config
         self.on_regions_changed = on_regions_changed
         self.overlay_config = overlay_config
+        self.region_defaults_provider = region_defaults_provider
         self.mode = "include"
         self.frame = None
         self.frame_size = None
@@ -154,6 +161,8 @@ class RegionCanvas(QLabel):
         self.drag_start = None
         self.drag_current = None
         if region:
+            if self.region_defaults_provider:
+                region.update(self.region_defaults_provider() or {})
             if self.mode == "include":
                 self.camera_config.detection_regions.append(region)
             else:
@@ -182,7 +191,12 @@ class CameraRegionEditor(QWidget):
         layout.setSpacing(12)
 
         left = QVBoxLayout()
-        self.canvas = RegionCanvas(camera_config, self._on_region_added, self.state.region_overlay)
+        self.canvas = RegionCanvas(
+            camera_config,
+            self._on_region_added,
+            self.state.region_overlay,
+            self.new_region_defaults,
+        )
         left.addWidget(self.canvas, 1)
 
         side = QGroupBox("已標示區域")
@@ -230,7 +244,9 @@ class CameraRegionEditor(QWidget):
 
         self.model_group = QGroupBox("Region models")
         self.model_layout = QVBoxLayout(self.model_group)
-        self.model_hint = QLabel("Select a region, then choose one or more models. Empty means all models.")
+        self.model_hint = QLabel(
+            "Choose one or more models first, then draw a region. Empty means all models."
+        )
         self.model_hint.setWordWrap(True)
         self.model_hint.setObjectName("mutedText")
         self.model_layout.addWidget(self.model_hint)
@@ -252,7 +268,7 @@ class CameraRegionEditor(QWidget):
         self.update_region_controls_enabled()
 
     def _on_region_added(self):
-        self.refresh_region_table()
+        self.refresh_region_table(keep_selection=True)
         save_app_config(self.state)
 
     def toggle_region_detection(self, _state=None):
@@ -330,6 +346,19 @@ class CameraRegionEditor(QWidget):
         if not self.model_boxes:
             self.model_layout.addWidget(QLabel("No enabled models."))
 
+    def checked_region_model_names(self):
+        return [
+            model_name
+            for model_name, box in self.model_boxes.items()
+            if box.isChecked()
+        ]
+
+    def new_region_defaults(self):
+        defaults = {"model_names": self.checked_region_model_names()}
+        rid = self.roi_id_spin.value()
+        defaults["roi_id"] = rid if rid > 0 else None
+        return defaults
+
     def selected_region(self):
         row = self.region_table.currentRow()
         if row < 0:
@@ -347,9 +376,10 @@ class CameraRegionEditor(QWidget):
         region = self.selected_region()
         selected_models = set(region.get("model_names", [])) if region else set()
         self.loading_model_selection = True
-        for model_name, box in self.model_boxes.items():
-            box.setChecked(model_name in selected_models)
-        self.roi_id_spin.setValue(region.get("roi_id") or 0 if region else 0)
+        if region:
+            for model_name, box in self.model_boxes.items():
+                box.setChecked(model_name in selected_models)
+            self.roi_id_spin.setValue(region.get("roi_id") or 0)
         self.loading_model_selection = False
 
     def save_selected_region_models(self, _state=None):
@@ -358,11 +388,7 @@ class CameraRegionEditor(QWidget):
         region = self.selected_region()
         if region is None:
             return
-        region["model_names"] = [
-            model_name
-            for model_name, box in self.model_boxes.items()
-            if box.isChecked()
-        ]
+        region["model_names"] = self.checked_region_model_names()
         rid = self.roi_id_spin.value()
         region["roi_id"] = rid if rid > 0 else None
         self.refresh_region_table(keep_selection=True)
