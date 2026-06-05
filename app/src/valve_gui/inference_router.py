@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from valve_gui.camera import apply_region_mask, regions_for_model
+from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
 from valve_gui.model_registry import camera_model_names
 from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
 
@@ -15,6 +15,7 @@ class InferenceResult:
     note: str
     annotated_frames: dict[int, object] = field(default_factory=dict)
     camera_results: dict[int, dict] = field(default_factory=dict)
+    roi_confirmations: dict[int, dict] = field(default_factory=dict)
 
 
 class InferenceRouter:
@@ -36,6 +37,7 @@ class InferenceRouter:
         notes = []
         missing = []
         failed_slots: set[int] = set()
+        all_roi_votes: dict[int, dict] = {}
         models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
@@ -55,6 +57,7 @@ class InferenceRouter:
             annotated = display_frame.copy()
             camera_confidences = []
             camera_reasons = []
+            camera_roi_detected: dict[int, bool] = {}
             for model_name in model_names:
                 model = models_by_name.get(model_name)
                 if not model or not model.enabled:
@@ -63,18 +66,25 @@ class InferenceRouter:
                     camera_reasons.append(f"{model_name}: 模型未啟用或不存在")
                     continue
                 inference_frame = display_frame
+                model_detection_regions = []
                 if getattr(camera, "region_detection_enabled", False):
+                    model_detection_regions = regions_for_model(camera.detection_regions, model.name)
                     inference_frame = apply_region_mask(
                         display_frame,
-                        regions_for_model(camera.detection_regions, model.name),
+                        model_detection_regions,
                         regions_for_model(camera.exclusion_regions, model.name),
                     )
-                annotated, confidence, object_count, note = self.run_single_model(
+                annotated, confidence, object_count, note, yolo_boxes_xyxy = self.run_single_model(
                     inference_frame,
                     camera.slot,
                     model,
                     display_frame=annotated,
                 )
+                if getattr(camera, "region_detection_enabled", False) and model_detection_regions:
+                    h, w = display_frame.shape[:2]
+                    per_roi = roi_id_detections(model_detection_regions, yolo_boxes_xyxy, w, h)
+                    for rid, detected in per_roi.items():
+                        camera_roi_detected[rid] = camera_roi_detected.get(rid, False) or detected
                 rule = self.decision_rule_for(camera.slot, model.name)
                 threshold = float(rule.get("confidence_threshold", 0.5))
                 required_count = int(rule.get("required_object_count", 1))
@@ -89,6 +99,15 @@ class InferenceRouter:
                 )
                 if not model_pass:
                     failed_slots.add(camera.slot)
+
+            for rid, detected in camera_roi_detected.items():
+                if rid not in all_roi_votes:
+                    all_roi_votes[rid] = {"votes": 0, "total": 0, "camera_slots": []}
+                all_roi_votes[rid]["total"] += 1
+                all_roi_votes[rid]["camera_slots"].append(camera.slot)
+                if detected:
+                    all_roi_votes[rid]["votes"] += 1
+
             annotated_frames[camera.slot] = annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
@@ -97,6 +116,16 @@ class InferenceRouter:
                 "reasons": camera_reasons or ["沒有可用的模型結果"],
             }
 
+        roi_confirmations = {
+            rid: {
+                "confirmed": info["votes"] > info["total"] / 2,
+                "votes": info["votes"],
+                "total": info["total"],
+                "camera_slots": info["camera_slots"],
+            }
+            for rid, info in all_roi_votes.items()
+        }
+
         if missing:
             return InferenceResult(
                 "NG",
@@ -104,11 +133,12 @@ class InferenceRouter:
                 "Missing model assignment: " + ", ".join(missing),
                 annotated_frames,
                 camera_results,
+                roi_confirmations,
             )
 
         confidence = min(confidences) if confidences else 0.0
         result = "NG" if failed_slots or not confidences else "PASS"
-        return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results)
+        return InferenceResult(result, confidence, "；".join(notes), annotated_frames, camera_results, roi_confirmations)
 
     def run_single_model(self, frame, slot, model_config, display_frame=None):
         display_frame = frame if display_frame is None else display_frame
@@ -122,15 +152,16 @@ class InferenceRouter:
                 if boxes is not None and len(boxes) > 0:
                     confidence = float(boxes.conf.max().item())
                     count = len(boxes)
-                    return annotated, confidence, count, f"C{slot}->{model_config.name}: {count} object(s)"
-                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: no object"
+                    yolo_boxes_xyxy = [box.xyxy[0].detach().cpu().tolist() for box in boxes]
+                    return annotated, confidence, count, f"C{slot}->{model_config.name}: {count} object(s)", yolo_boxes_xyxy
+                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: no object", []
             except Exception as exc:
                 annotated = self.draw_placeholder_annotation(display_frame.copy(), slot, model_config.name, f"YOLO error: {exc}")
-                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: YOLO error"
+                return annotated, 0.0, 0, f"C{slot}->{model_config.name}: YOLO error", []
 
         confidence = random.uniform(0.82, 0.96)
         annotated = self.draw_placeholder_annotation(display_frame.copy(), slot, model_config.name, f"placeholder {confidence:.2f}")
-        return annotated, confidence, 1, f"C{slot}->{model_config.name}: placeholder"
+        return annotated, confidence, 1, f"C{slot}->{model_config.name}: placeholder", []
 
     def draw_yolo_annotations(self, frame, result, model_name):
         boxes = getattr(result, "boxes", None)
