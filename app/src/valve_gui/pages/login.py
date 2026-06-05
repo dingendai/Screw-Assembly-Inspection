@@ -17,10 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, detect_camera_indexes
+from valve_gui.camera import CameraScanWorker, VideoSource
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
 from valve_gui.permissions import ROLE_DEVELOPER, ROLE_OPERATOR, role_label, role_options
+from valve_gui.utils import verify_password
 from valve_gui.widgets import CameraView
 
 
@@ -37,6 +38,7 @@ class LoginPage(QWidget):
         self.last_frames = {}
         self.camera_visibility_checks = {}
         self.visible_camera_indexes = set()
+        self._scan_worker = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_previews)
 
@@ -134,8 +136,17 @@ class LoginPage(QWidget):
 
     def scan_cameras(self):
         self.stop()
-        self.state.detected_cameras = detect_camera_indexes()
-        if not self.state.detected_cameras:
+        self.scan_button.setEnabled(False)
+        self.scan_button.setText("搜尋中…")
+        self._scan_worker = CameraScanWorker(parent=self)
+        self._scan_worker.finished.connect(self._on_scan_done)
+        self._scan_worker.start()
+
+    def _on_scan_done(self, found):
+        self.scan_button.setEnabled(True)
+        self.scan_button.setText("搜尋可用相機")
+        self.state.detected_cameras = found
+        if not found:
             QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，可勾選模擬影像測試。")
         self.populate_camera_indexes(self.state.operator_camera_index)
         self.start_preview()
@@ -280,8 +291,8 @@ class LoginPage(QWidget):
         field.setVisible(visible)
 
     def validate_password(self, role):
-        expected = self.state.role_passwords.get(role, "")
-        if expected and self.password_input.text() != expected:
+        stored = self.state.role_passwords.get(role, "")
+        if stored and not verify_password(self.password_input.text(), stored):
             QMessageBox.warning(self, "登入密鑰錯誤", f"{role_label(role, self.state.role_labels)}密鑰不正確。")
             return False
         return True
@@ -291,25 +302,8 @@ class LoginPage(QWidget):
         if not self.validate_password(role):
             return
         if role == ROLE_DEVELOPER:
-            self.state.operator_name = self.name_input.text().strip() or "Developer"
-            self.state.operator_role = role
-            self.state.operator_photo_path = ""
-            self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
-            self.state.is_logged_in = True
-            self.state.settings_applied = False
-            self.state.sessions.insert(
-                0,
-                OperatorSession(
-                    operator_name=self.state.operator_name,
-                    operator_role=role,
-                    login_time=self.state.login_time,
-                    photo_path="",
-                ),
-            )
-            self.password_input.clear()
-            self.on_login()
+            self._complete_login(self.name_input.text().strip() or "Developer", role, "")
             return
-
         name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "缺少資料", "請輸入操作者姓名。")
@@ -317,6 +311,9 @@ class LoginPage(QWidget):
         if not self.state.operator_photo_path:
             QMessageBox.warning(self, "缺少照片", "請先拍攝操作者照片後才能登入。")
             return
+        self._complete_login(name, role, self.state.operator_photo_path)
+
+    def _complete_login(self, name, role, photo_path):
         self.state.operator_name = name
         self.state.operator_role = role
         self.state.login_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
@@ -326,9 +323,9 @@ class LoginPage(QWidget):
             0,
             OperatorSession(
                 operator_name=name,
-                operator_role=self.state.operator_role,
+                operator_role=role,
                 login_time=self.state.login_time,
-                photo_path=self.state.operator_photo_path,
+                photo_path=photo_path,
             ),
         )
         self.password_input.clear()

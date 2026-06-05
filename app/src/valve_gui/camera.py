@@ -2,6 +2,7 @@ import time
 
 import cv2
 import numpy as np
+from PyQt6.QtCore import QThread, pyqtSignal
 
 
 def apply_frame_transform(frame, flip_horizontal=False, flip_vertical=False, rotation_degrees=0):
@@ -20,6 +21,50 @@ def apply_frame_transform(frame, flip_horizontal=False, flip_vertical=False, rot
     elif rotation == 270:
         frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
     return frame
+
+
+def apply_region_mask(frame, detection_regions=None, exclusion_regions=None):
+    detection_regions = detection_regions or []
+    exclusion_regions = exclusion_regions or []
+    if not detection_regions and not exclusion_regions:
+        return frame
+
+    height, width = frame.shape[:2]
+    if detection_regions:
+        masked = np.zeros_like(frame)
+        for region in detection_regions:
+            x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+            masked[y1:y2, x1:x2] = frame[y1:y2, x1:x2]
+    else:
+        masked = frame.copy()
+
+    for region in exclusion_regions:
+        x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+        masked[y1:y2, x1:x2] = 0
+    return masked
+
+
+def region_applies_to_model(region, model_name):
+    model_names = region.get("model_names", [])
+    if not model_names:
+        return True
+    return model_name in model_names
+
+
+def regions_for_model(regions, model_name):
+    return [region for region in regions if region_applies_to_model(region, model_name)]
+
+
+def normalised_region_to_pixels(region, width, height):
+    x = float(region.get("x", 0.0))
+    y = float(region.get("y", 0.0))
+    w = float(region.get("w", 0.0))
+    h = float(region.get("h", 0.0))
+    x1 = max(0, min(width, int(x * width)))
+    y1 = max(0, min(height, int(y * height)))
+    x2 = max(x1, min(width, int((x + w) * width)))
+    y2 = max(y1, min(height, int((y + h) * height)))
+    return x1, y1, x2, y2
 
 
 class VideoSource:
@@ -100,3 +145,16 @@ def detect_camera_indexes(max_index=12):
                 found.append(index)
         capture.release()
     return found
+
+
+class CameraScanWorker(QThread):
+    """Runs detect_camera_indexes on a background thread to avoid blocking the UI."""
+    finished = pyqtSignal(list)
+
+    def __init__(self, max_index=12, parent=None):
+        super().__init__(parent)
+        self.max_index = max_index
+
+    def run(self):
+        found = detect_camera_indexes(self.max_index)
+        self.finished.emit(found)

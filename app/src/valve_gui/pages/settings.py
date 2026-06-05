@@ -3,9 +3,11 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -20,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, apply_frame_transform, detect_camera_indexes
+from valve_gui.camera import CameraScanWorker, VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
 from valve_gui.models import AppState, ModelConfig
@@ -31,6 +33,7 @@ from valve_gui.permissions import (
     PERMISSION_USE_SIMULATION,
     has_permission,
 )
+from valve_gui.utils import decision_rule_key as _rule_key
 from valve_gui.widgets import CameraView
 
 
@@ -56,6 +59,11 @@ class SettingsPage(QWidget):
         self.preview_views = []
         self.preview_timer = QTimer(self)
         self.preview_timer.timeout.connect(self.update_camera_previews)
+        self._preview_debounce = QTimer(self)
+        self._preview_debounce.setSingleShot(True)
+        self._preview_debounce.setInterval(400)
+        self._preview_debounce.timeout.connect(self.restart_preview)
+        self._scan_worker = None
 
         ensure_model_configs(self.state)
 
@@ -118,12 +126,12 @@ class SettingsPage(QWidget):
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
 
-            index.currentIndexChanged.connect(self.restart_preview)
-            enabled.stateChanged.connect(self.restart_preview)
-            flip_h.stateChanged.connect(self.restart_preview)
-            flip_v.stateChanged.connect(self.restart_preview)
-            rotation.currentTextChanged.connect(self.restart_preview)
-            model_list.itemChanged.connect(self.restart_preview)
+            index.currentIndexChanged.connect(self._queue_preview_restart)
+            enabled.stateChanged.connect(self._queue_preview_restart)
+            flip_h.stateChanged.connect(self._queue_preview_restart)
+            flip_v.stateChanged.connect(self._queue_preview_restart)
+            rotation.currentTextChanged.connect(self._queue_preview_restart)
+            model_list.itemChanged.connect(self._queue_preview_restart)
 
             camera_box = QGroupBox(f"Camera {config.slot}")
             card = QGridLayout(camera_box)
@@ -149,7 +157,7 @@ class SettingsPage(QWidget):
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
-        self.simulation_box.stateChanged.connect(self.restart_preview)
+        self.simulation_box.stateChanged.connect(self._queue_preview_restart)
 
         search_button = QPushButton("搜尋相機")
         search_button.clicked.connect(self.search_cameras)
@@ -183,7 +191,7 @@ class SettingsPage(QWidget):
         self.remove_model_button.clicked.connect(self.remove_selected_model)
         self.browse_model_button = QPushButton("選取模型檔案")
         self.browse_model_button.clicked.connect(self.browse_selected_model)
-        self.rescan_models_button = QPushButton("重新掃描 modles 模型")
+        self.rescan_models_button = QPushButton("重新掃描 models 模型")
         self.rescan_models_button.clicked.connect(self.rescan_models)
 
         actions = QHBoxLayout()
@@ -375,17 +383,28 @@ class SettingsPage(QWidget):
         self.state.model_configs = self.collect_model_configs()
         self.refresh_camera_model_combos()
 
+    def _queue_preview_restart(self):
+        self._preview_debounce.start()
+
     def search_cameras(self):
         self.release_external_cameras()
-        previous_simulation = self.simulation_box.isChecked()
+        self._previous_simulation = self.simulation_box.isChecked()
         self.simulation_box.setChecked(False)
-        found = detect_camera_indexes()
+        self.search_camera_button.setEnabled(False)
+        self.search_camera_button.setText("搜尋中…")
+        self._scan_worker = CameraScanWorker(parent=self)
+        self._scan_worker.finished.connect(self._on_camera_scan_done)
+        self._scan_worker.start()
+
+    def _on_camera_scan_done(self, found):
+        self.search_camera_button.setEnabled(True)
+        self.search_camera_button.setText("搜尋相機")
         self.state.detected_cameras = found
         if found:
             self.detected_label.setText("已找到相機索引：" + ", ".join(str(index) for index in found))
         else:
             self.detected_label.setText("未找到可讀取的相機，已保留目前設定。")
-            self.simulation_box.setChecked(previous_simulation)
+            self.simulation_box.setChecked(self._previous_simulation)
         self.refresh_camera_index_combos()
         self.restart_preview()
 
@@ -521,8 +540,6 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()
-        first_enabled = next((model for model in self.state.model_configs if model.enabled), None)
-        self.state.yolo_model_path = first_enabled.file_path if first_enabled else ""
         self.state.settings_applied = True
         save_app_config(self.state)
         self.stop_preview()
@@ -619,6 +636,230 @@ class DisplaySettingsPage(QWidget):
         custom = self.display_mode.currentData() == "custom"
         self.display_width.setEnabled(custom)
         self.display_height.setEnabled(custom)
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
+class DecisionSettingsPage(QWidget):
+    RULE_ROW_HEIGHT = 45
+
+    def __init__(self, state: AppState, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_logout = on_logout
+        self.rule_rows = []
+        self.overview_rows = {}
+        self.loading_rules = False
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.timeout.connect(self.autosave_decision_settings)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        title = QLabel("判定設定")
+        title.setObjectName("pageTitle")
+        header.addWidget(title)
+        header.addStretch()
+
+        layout.addLayout(header)
+        layout.addWidget(self.build_decision_group(), 1)
+
+    def build_decision_group(self):
+        group = QGroupBox("PASS / NG 條件")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+
+        global_row = QHBoxLayout()
+        global_row.addWidget(QLabel("全域 PASS 信心值門檻"))
+        self.global_threshold = QDoubleSpinBox()
+        self.global_threshold.setRange(0.0, 1.0)
+        self.global_threshold.setSingleStep(0.05)
+        self.global_threshold.setDecimals(3)
+        self.global_threshold.valueChanged.connect(self.queue_auto_save)
+        global_row.addWidget(self.global_threshold)
+        global_row.addStretch()
+
+        self.model_tabs = QTabWidget()
+
+        layout.addLayout(global_row)
+        layout.addWidget(self.model_tabs, 1)
+        return group
+
+    def refresh(self):
+        ensure_model_configs(self.state)
+        self.loading_rules = True
+        self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
+        self.load_rule_table()
+        self.loading_rules = False
+
+    def load_rule_table(self):
+        self.rule_rows = []
+        self.overview_rows = {}
+        self.model_tabs.clear()
+        grouped_rules = {}
+        all_rules = []
+        for camera in self.state.inspection_cameras:
+            if not camera.enabled:
+                continue
+            for model_name in camera_model_names(camera):
+                grouped_rules.setdefault(model_name, []).append(camera.slot)
+                all_rules.append((camera.slot, model_name))
+
+        if not grouped_rules:
+            empty_page = QWidget()
+            empty_layout = QVBoxLayout(empty_page)
+            empty_label = QLabel("目前沒有啟用的 Camera / 模型判定規則。")
+            empty_label.setObjectName("mutedText")
+            empty_layout.addWidget(empty_label)
+            empty_layout.addStretch()
+            self.model_tabs.addTab(empty_page, "未設定")
+            return
+
+        overview_page = QWidget()
+        overview_layout = QVBoxLayout(overview_page)
+        overview_table = self.create_overview_table()
+        overview_layout.addWidget(overview_table)
+        for slot, model_name in sorted(all_rules, key=lambda item: (item[0], item[1])):
+            self.add_overview_row(overview_table, slot, model_name)
+        self.model_tabs.addTab(overview_page, "一覽表")
+
+        for model_name in sorted(grouped_rules):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            table = self.create_rule_table()
+            page_layout.addWidget(table)
+            for slot in sorted(grouped_rules[model_name]):
+                self.add_rule_row(table, slot, model_name)
+            self.model_tabs.addTab(page, model_name)
+
+    def create_rule_table(self, show_model=False):
+        table = QTableWidget(0, 4 if show_model else 3)
+        if show_model:
+            table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
+        else:
+            table.setHorizontalHeaderLabels(["畫面", "信心值閥值", "必須偵測標籤框數"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        if show_model:
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        else:
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.setAlternatingRowColors(True)
+        return table
+
+    def create_overview_table(self):
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        return table
+
+    def add_overview_row(self, table, slot, model_name):
+        row = table.rowCount()
+        table.insertRow(row)
+        table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+        rule = self.state.decision.model_rules.get(_rule_key(slot, model_name), {})
+        confidence = float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold))
+        required_count = int(rule.get("required_object_count", 1))
+        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
+        table.setItem(row, 1, QTableWidgetItem(model_name))
+        table.setItem(row, 2, QTableWidgetItem(f"{confidence:.3f}"))
+        table.setItem(row, 3, QTableWidgetItem(str(required_count)))
+        self.overview_rows[_rule_key(slot, model_name)] = {
+            "confidence": table.item(row, 2),
+            "count": table.item(row, 3),
+        }
+
+    def add_rule_row(self, table, slot, model_name, show_model=False):
+        row = table.rowCount()
+        table.insertRow(row)
+        table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+
+        rule_key = _rule_key(slot, model_name)
+        rule = self.state.decision.model_rules.get(rule_key, {})
+
+        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
+        confidence_column = 1
+        count_column = 2
+        if show_model:
+            table.setItem(row, 1, QTableWidgetItem(model_name))
+            confidence_column = 2
+            count_column = 3
+
+        confidence = QDoubleSpinBox()
+        confidence.setRange(0.0, 1.0)
+        confidence.setSingleStep(0.05)
+        confidence.setDecimals(3)
+        confidence.setValue(float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold)))
+        confidence.valueChanged.connect(self.queue_auto_save)
+        table.setCellWidget(row, confidence_column, confidence)
+
+        count = QComboBox()
+        for value in range(0, 21):
+            count.addItem(str(value), value)
+        required_count = int(rule.get("required_object_count", 1))
+        if count.findData(required_count) < 0:
+            count.addItem(str(required_count), required_count)
+        count.setCurrentIndex(count.findData(required_count))
+        count.currentIndexChanged.connect(self.queue_auto_save)
+        table.setCellWidget(row, count_column, count)
+
+        self.rule_rows.append(
+            {
+                "slot": slot,
+                "model_name": model_name,
+                "confidence": confidence,
+                "count": count,
+            }
+        )
+
+    def queue_auto_save(self):
+        if self.loading_rules:
+            return
+        self.sync_overview_table()
+        self.autosave_timer.start(300)
+
+    def autosave_decision_settings(self):
+        self.persist_decision_settings()
+
+    def save_decision_settings(self):
+        self.persist_decision_settings()
+        QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
+
+    def persist_decision_settings(self):
+        self.state.decision.pass_confidence_threshold = self.global_threshold.value()
+        rules = {}
+        for row in self.rule_rows:
+            rules[_rule_key(row["slot"], row["model_name"])] = {
+                "confidence_threshold": row["confidence"].value(),
+                "required_object_count": int(row["count"].currentData()),
+            }
+        self.state.decision.model_rules = rules
+        self.sync_overview_table()
+        save_app_config(self.state)
+
+    def sync_overview_table(self):
+        for row in self.rule_rows:
+            overview = self.overview_rows.get(_rule_key(row["slot"], row["model_name"]))
+            if not overview:
+                continue
+            overview["confidence"].setText(f"{row['confidence'].value():.3f}")
+            overview["count"].setText(str(int(row["count"].currentData())))
 
     def logout(self):
         if self.on_logout:

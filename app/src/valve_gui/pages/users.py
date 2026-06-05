@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.config_store import save_app_config
 from valve_gui.models import AppState, UserAccount
+from valve_gui.utils import hash_password
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
     PERMISSION_LABELS,
@@ -49,6 +50,7 @@ class UserManagementPage(QWidget):
         self.on_saved = on_saved
         self.on_logout = on_logout
         self._loading = False
+        self._preserved_hashes = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -154,7 +156,13 @@ class UserManagementPage(QWidget):
 
     def refresh(self):
         self._loading = True
-        self.set_password_text(self.developer_password, self.state.role_passwords.get(ROLE_DEVELOPER, ""))
+        self._preserved_hashes = {}
+        dev_pw = self.state.role_passwords.get(ROLE_DEVELOPER, "")
+        if dev_pw.startswith("sha256:"):
+            self._preserved_hashes[ROLE_DEVELOPER] = dev_pw
+            self.set_password_text(self.developer_password, "")
+        else:
+            self.set_password_text(self.developer_password, dev_pw)
         self.load_roles()
         self.load_users()
         self._loading = False
@@ -166,11 +174,17 @@ class UserManagementPage(QWidget):
         for role, label in self.state.role_labels.items():
             if role == ROLE_DEVELOPER:
                 continue
+            stored_pw = self.state.role_passwords.get(role, "")
+            if stored_pw.startswith("sha256:"):
+                self._preserved_hashes[role] = stored_pw
+                display_pw = ""
+            else:
+                display_pw = stored_pw
             self.add_role_row(
                 role=role,
                 label=label,
                 permissions=self.state.role_permissions.get(role, set()),
-                password=self.state.role_passwords.get(role, ""),
+                password=display_pw,
             )
         self.update_rank_numbers()
 
@@ -544,15 +558,22 @@ class UserManagementPage(QWidget):
         QMessageBox.information(self, "儲存完成", "用戶、角色位階與畫面權限設定已更新。")
         self.refresh()
 
+    def _resolve_password(self, role, plain_text):
+        """Return the password to store: hash new input, or keep existing hash if field left blank."""
+        if plain_text:
+            return hash_password(plain_text)
+        return self._preserved_hashes.get(role, "")
+
     def collect_roles(self):
-        developer_password = self.password_text(self.developer_password)
-        if not developer_password:
+        developer_password_text = self.password_text(self.developer_password)
+        resolved_dev_pw = self._resolve_password(ROLE_DEVELOPER, developer_password_text)
+        if not resolved_dev_pw:
             QMessageBox.warning(self, "資料錯誤", "Developer 登入密鑰不可空白。")
             return None
 
         role_labels = {ROLE_DEVELOPER: role_label(ROLE_DEVELOPER)}
         role_permissions = {ROLE_DEVELOPER: set(ROLE_PERMISSIONS[ROLE_DEVELOPER])}
-        role_passwords = {ROLE_DEVELOPER: developer_password}
+        role_passwords = {ROLE_DEVELOPER: resolved_dev_pw}
         role_keys = {ROLE_DEVELOPER}
 
         for row in range(self.role_table.rowCount()):
@@ -574,7 +595,7 @@ class UserManagementPage(QWidget):
 
             role_keys.add(role)
             role_labels[role] = label or role
-            role_passwords[role] = self.role_password_at(row)
+            role_passwords[role] = self._resolve_password(role, self.role_password_at(row))
             role_permissions[role] = self.permission_set_at(row)
 
         if len(role_keys) == 1:

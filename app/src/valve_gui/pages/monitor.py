@@ -1,9 +1,11 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QTimer
+import cv2
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -11,16 +13,36 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QCheckBox,
     QVBoxLayout,
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, apply_frame_transform
+from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
+from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
 from valve_gui.permissions import role_label
+from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
+
+
+class _DetectionWorker(QThread):
+    finished = pyqtSignal(object)
+    errored = pyqtSignal(str)
+
+    def __init__(self, router, frames, parent=None):
+        super().__init__(parent)
+        self.router = router
+        self.frames = frames
+
+    def run(self):
+        try:
+            result = self.router.run(self.frames)
+            self.finished.emit(result)
+        except Exception as exc:
+            self.errored.emit(str(exc))
 
 
 class MonitorPage(QWidget):
@@ -33,10 +55,15 @@ class MonitorPage(QWidget):
         self.sources = []
         self.views = []
         self.last_frames = {}
-        self.last_detection_time = None
+        self.latest_annotated_frames = {}
         self.continuous_detection = False
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.pending_detection_future = None
+        self._single_worker = None
+        self._last_record_time: float = 0.0
+        self._source_by_slot: dict = {}
+        self._config_by_slot: dict = {}
+        self._view_by_slot: dict = {}
         self.frame_timer = QTimer(self)
         self.frame_timer.timeout.connect(self.update_frames)
         self.detection_timer = QTimer(self)
@@ -53,13 +80,17 @@ class MonitorPage(QWidget):
         self.confidence_label.setObjectName("mutedText")
         self.camera_status_label = QLabel("相機狀態：--")
         self.camera_status_label.setObjectName("mutedText")
-        self.ng_reason_label = QLabel("尚未檢測")
-        self.ng_reason_label.setObjectName("ngReasonBox")
-        self.ng_reason_label.setWordWrap(True)
+        self.reason_cards = {}
+        self.reason_list = QWidget()
+        self.reason_layout = QVBoxLayout(self.reason_list)
+        self.reason_layout.setContentsMargins(0, 0, 0, 0)
+        self.reason_layout.setSpacing(8)
         self.operator_label = QLabel()
         self.operator_label.setObjectName("mutedText")
         self.model_label = QLabel()
         self.model_label.setObjectName("mutedText")
+        self.region_overlay_box = QCheckBox("顯示指定範圍")
+        self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
         self.continuous_button = QPushButton("連續檢測")
         self.continuous_button.setCheckable(True)
         self.continuous_button.setObjectName("continuousButton")
@@ -84,13 +115,14 @@ class MonitorPage(QWidget):
         side_layout = QVBoxLayout(side)
         side_layout.addWidget(self.operator_label)
         side_layout.addWidget(self.model_label)
+        side_layout.addWidget(self.region_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
         side_layout.addWidget(self.result_label)
         side_layout.addWidget(self.confidence_label)
         side_layout.addWidget(self.camera_status_label)
-        side_layout.addWidget(QLabel("NG 原因"))
-        side_layout.addWidget(self.ng_reason_label)
+        side_layout.addWidget(QLabel("相機檢測狀態"))
+        side_layout.addWidget(self.reason_list)
         side_layout.addStretch()
 
         bottom_controls = QVBoxLayout()
@@ -120,6 +152,9 @@ class MonitorPage(QWidget):
         layout.addWidget(side, 0)
 
     def refresh(self):
+        self.region_overlay_box.blockSignals(True)
+        self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
+        self.region_overlay_box.blockSignals(False)
         self.operator_label.setText(
             f"操作者：{self.state.operator_name or '--'}"
             f" / 角色：{role_label(self.state.operator_role, self.state.role_labels)}"
@@ -150,6 +185,7 @@ class MonitorPage(QWidget):
     def start(self):
         continuous_requested = self.continuous_detection
         self.stop(reset_continuous=False)
+        self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.continuous_detection = continuous_requested
         self.refresh()
         errors = []
@@ -159,6 +195,9 @@ class MonitorPage(QWidget):
                 errors.append(source.last_error)
             self.sources.append((config.slot, source))
         self.camera_status_label.setText("相機狀態：" + ("；".join(errors) if errors else "正常"))
+        self._source_by_slot = {slot: source for slot, source in self.sources}
+        self._config_by_slot = {config.slot: config for config, _ in self.views}
+        self._view_by_slot = {config.slot: view for config, view in self.views}
         self.frame_timer.start(33)
         if self.continuous_detection:
             self.detection_timer.start(500)
@@ -168,6 +207,9 @@ class MonitorPage(QWidget):
         self.detection_timer.stop()
         self.result_timer.stop()
         self.pending_detection_future = None
+        self.detection_executor.shutdown(wait=False)
+        self.latest_annotated_frames = {}
+        self._last_record_time = 0.0
         if reset_continuous:
             self.continuous_button.blockSignals(True)
             self.continuous_button.setChecked(False)
@@ -177,11 +219,13 @@ class MonitorPage(QWidget):
         for _, source in self.sources:
             source.release()
         self.sources = []
+        self._source_by_slot = {}
+        self._config_by_slot = {}
+        self._view_by_slot = {}
 
     def update_frames(self):
-        source_by_slot = {slot: source for slot, source in self.sources}
         for config, view in self.views:
-            source = source_by_slot.get(config.slot)
+            source = self._source_by_slot.get(config.slot)
             if not source:
                 continue
             frame = source.read()
@@ -196,22 +240,101 @@ class MonitorPage(QWidget):
                 rotation_degrees=config.rotation_degrees,
             )
             self.last_frames[config.slot] = frame
-            view.set_frame(frame, input_fps=source.input_fps)
+            display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
+            view.set_frame(
+                self.frame_with_region_overlay(config, display_frame if display_frame is not None else frame),
+                input_fps=source.input_fps,
+            )
+
+    def toggle_region_overlay(self):
+        self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
+        save_app_config(self.state)
+
+    def frame_with_region_overlay(self, config, frame):
+        if not self.state.region_overlay.show_on_monitor:
+            return frame
+        if not getattr(config, "region_detection_enabled", False):
+            return frame
+        if not config.detection_regions and not config.exclusion_regions:
+            return frame
+        annotated = frame.copy()
+        height, width = annotated.shape[:2]
+        self.draw_region_list(
+            annotated,
+            config.detection_regions,
+            hex_to_bgr(self.state.region_overlay.detection_color),
+            "ROI",
+            width,
+            height,
+        )
+        self.draw_region_list(
+            annotated,
+            config.exclusion_regions,
+            hex_to_bgr(self.state.region_overlay.exclusion_color),
+            "EX",
+            width,
+            height,
+        )
+        return annotated
+
+    def draw_region_list(self, frame, regions, color, label, width, height):
+        for index, region in enumerate(regions, start=1):
+            x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                frame,
+                self.format_region_label(label, index, region),
+                (x1 + 6, max(18, y1 + 22)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                color,
+                2,
+            )
+
+    def format_region_label(self, label, index, region):
+        model_names = region.get("model_names", [])
+        if not model_names:
+            return f"{label} {index}"
+        return f"{label} {index}: {', '.join(model_names)}"
 
     def inspect_once(self):
+        if self._single_worker and self._single_worker.isRunning():
+            return
+        if not self.state.is_logged_in:
+            QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
+            return
+        if not self.state.settings_applied:
+            QMessageBox.warning(self, "尚未套用設定", "請先在相機設定畫面套用設定。")
+            return
+        if not self.views:
+            self.start()
+        frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
+        self.inspect_button.setEnabled(False)
         self.continuous_button.setEnabled(False)
         self.inspect_button.setObjectName("activeDetectionButton")
         self.inspect_button.style().unpolish(self.inspect_button)
         self.inspect_button.style().polish(self.inspect_button)
-        QApplication.processEvents()
-        try:
-            self.detect_current_frames(record=True)
-        finally:
-            self.inspect_button.setObjectName("primaryButton")
-            self.inspect_button.style().unpolish(self.inspect_button)
-            self.inspect_button.style().polish(self.inspect_button)
-            if not self.continuous_detection:
-                self.continuous_button.setEnabled(True)
+        self._single_worker = _DetectionWorker(self.router, frames, self)
+        self._single_worker.finished.connect(self._on_single_detection_done)
+        self._single_worker.errored.connect(self._on_single_detection_error)
+        self._single_worker.start()
+
+    def _on_single_detection_done(self, inference):
+        self.apply_detection_result(inference, record=True)
+        self._restore_inspect_button()
+
+    def _on_single_detection_error(self, error_msg):
+        self.set_result("NG", 0.0)
+        self.set_reason_cards({0: {"result": "NG", "confidence": 0.0, "reasons": [f"檢測錯誤：{error_msg}"]}})
+        self._restore_inspect_button()
+
+    def _restore_inspect_button(self):
+        self.inspect_button.setObjectName("primaryButton")
+        self.inspect_button.style().unpolish(self.inspect_button)
+        self.inspect_button.style().polish(self.inspect_button)
+        self.inspect_button.setEnabled(True)
+        if not self.continuous_detection:
+            self.continuous_button.setEnabled(True)
 
     def toggle_continuous_detection(self, checked):
         self.continuous_detection = checked
@@ -219,18 +342,20 @@ class MonitorPage(QWidget):
         if self.continuous_detection:
             if not self.sources:
                 self.start()
+            self.latest_annotated_frames = {}
             self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
             self.result_timer.stop()
             self.pending_detection_future = None
+            self.latest_annotated_frames = {}
 
     def update_detection_controls(self):
         self.inspect_button.setVisible(not self.continuous_detection)
         self.continuous_button.setEnabled(True)
         self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "連續檢測")
 
-    def detect_current_frames(self, record=False):
+    def detect_current_frames(self):
         if not self.state.is_logged_in:
             QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
             self.continuous_button.setChecked(False)
@@ -242,15 +367,10 @@ class MonitorPage(QWidget):
         if not self.views:
             self.start()
         frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
-        if self.continuous_detection and not record:
-            if self.pending_detection_future and not self.pending_detection_future.done():
-                return
-            self.pending_detection_future = self.detection_executor.submit(self.router.run, frames)
-            self.result_timer.start(30)
+        if self.pending_detection_future and not self.pending_detection_future.done():
             return
-
-        inference = self.router.run(frames)
-        self.apply_detection_result(inference, record=record)
+        self.pending_detection_future = self.detection_executor.submit(self.router.run, frames)
+        self.result_timer.start(30)
 
     def apply_pending_detection_result(self):
         if not self.pending_detection_future or not self.pending_detection_future.done():
@@ -261,8 +381,16 @@ class MonitorPage(QWidget):
         try:
             inference = future.result()
         except Exception as exc:
-            self.ng_reason_label.setText(f"背景檢測錯誤：{exc}")
             self.set_result("NG", 0.0)
+            self.set_reason_cards(
+                {
+                    0: {
+                        "result": "NG",
+                        "confidence": 0.0,
+                        "reasons": [f"背景檢測錯誤：{exc}"],
+                    }
+                }
+            )
             return
         self.apply_detection_result(inference, record=False)
 
@@ -270,17 +398,24 @@ class MonitorPage(QWidget):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
         self.show_annotated_frames(inference.annotated_frames)
-        if record or inference.result == "NG":
+        if record or self.continuous_detection:
             self.record_detection(inference)
 
     def show_annotated_frames(self, annotated_frames):
-        view_by_slot = {config.slot: view for config, view in self.views}
+        if self.continuous_detection:
+            self.latest_annotated_frames = dict(annotated_frames)
         for slot, frame in annotated_frames.items():
-            view = view_by_slot.get(slot)
+            view = self._view_by_slot.get(slot)
             if view:
-                view.set_frame(frame)
+                config = self._config_by_slot.get(slot)
+                view.set_frame(self.frame_with_region_overlay(config, frame) if config else frame)
 
     def record_detection(self, inference):
+        if self.continuous_detection:
+            now = time.time()
+            if inference.result != "NG" and now - self._last_record_time < 5.0:
+                return
+            self._last_record_time = now
         active = ",".join(
             f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
             for config, _ in self.views
@@ -305,17 +440,49 @@ class MonitorPage(QWidget):
         self.confidence_label.setText(f"Confidence: {confidence:.3f}")
 
     def set_ng_reason(self, inference):
-        note = inference.note.strip() if inference.note else ""
-        if inference.result == "PASS":
-            self.ng_reason_label.setText("目前判定為 PASS，無 NG 原因。")
+        self.set_reason_cards(inference.camera_results)
+
+    def set_reason_cards(self, camera_results):
+        self.clear_reason_cards()
+        if not camera_results:
+            self.add_reason_card("尚未檢測", "WAITING", ["尚未取得檢測結果"], 0.0)
             return
 
-        reasons = []
-        if inference.confidence < 0.5:
-            reasons.append(f"信心值低於門檻：{inference.confidence:.3f} < 0.500")
-        if note:
-            reasons.append(note)
-        self.ng_reason_label.setText("；".join(reasons) if reasons else "系統判定為 NG，未提供詳細原因。")
+        for slot in sorted(camera_results):
+            result_info = camera_results[slot]
+            title = "系統" if slot == 0 else f"Camera {slot}"
+            self.add_reason_card(
+                title,
+                result_info.get("result", "NG"),
+                result_info.get("reasons", []),
+                float(result_info.get("confidence", 0.0)),
+            )
+
+    def clear_reason_cards(self):
+        while self.reason_layout.count():
+            item = self.reason_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+        self.reason_cards = {}
+
+    def add_reason_card(self, title, result, reasons, confidence):
+        card = QFrame()
+        card.setObjectName("reasonPassBox" if result == "PASS" else "reasonNgBox")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        header = QLabel(f"{title}: {result}  Confidence: {confidence:.3f}")
+        header.setObjectName("reasonTitle")
+        layout.addWidget(header)
+
+        bullet_text = "\n".join(f"- {reason}" for reason in reasons) if reasons else "- 無詳細原因"
+        detail = QLabel(bullet_text)
+        detail.setWordWrap(True)
+        layout.addWidget(detail)
+
+        self.reason_layout.addWidget(card)
 
     def logout(self):
         self.stop()

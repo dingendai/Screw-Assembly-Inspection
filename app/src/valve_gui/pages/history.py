@@ -169,5 +169,5 @@ class HistoryPage(QWidget):
         default_path = DATA_DIR / f"operator_sessions_{datetime.now():%Y%m%d_%H%M%S}.csv"
         path, _ = QFileDialog.getSaveFileName(self, "匯出登入紀錄 CSV", str(default_path), "CSV Files (*.csv)")
         if path:
-            write_sessions_csv(path, self.state.sessions)
+            write_sessions_csv(path, self.state.sessions, self.state.role_labels)
             QMessageBox.information(self, "匯出完成", f"已匯出：{path}")

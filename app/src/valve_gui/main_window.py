@@ -10,9 +10,10 @@ from valve_gui.models import AppState, InspectionRecord
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
-from valve_gui.pages.settings import DisplaySettingsPage, SettingsPage
+from valve_gui.pages.regions import RegionSettingsPage
+from valve_gui.pages.settings import DecisionSettingsPage, DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
-from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH
 from valve_gui.permissions import (
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
@@ -22,7 +23,7 @@ from valve_gui.permissions import (
     has_permission,
     role_label,
 )
-from valve_gui.storage import write_sessions_csv
+from valve_gui.storage import append_record_csv, write_sessions_csv
 
 
 class MainWindow(QMainWindow):
@@ -52,12 +53,16 @@ class MainWindow(QMainWindow):
         )
         self.history_page = HistoryPage(self.state)
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
+        self.decision_page = DecisionSettingsPage(self.state, self.logout)
+        self.region_page = RegionSettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.display_page)
+        self.stack.addWidget(self.decision_page)
+        self.stack.addWidget(self.region_page)
         self.stack.addWidget(self.user_page)
         self.setCentralWidget(self.stack)
 
@@ -115,6 +120,8 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login, True),
             ("settings", "相機設定", self.show_settings, True),
+            ("regions", "指定範圍監視", self.show_region_settings, True),
+            ("decision", "判定設定", self.show_decision_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
@@ -155,6 +162,20 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["decision"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
+        self.actions["regions"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["display"].setVisible(True)
         self.actions["monitor"].setVisible(
             logged_in
@@ -182,6 +203,8 @@ class MainWindow(QMainWindow):
         page_actions = {
             self.login_page: "login",
             self.settings_page: "settings",
+            self.region_page: "regions",
+            self.decision_page: "decision",
             self.monitor_page: "monitor",
             self.history_page: "history",
             self.display_page: "display",
@@ -211,6 +234,18 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.settings_page.apply
+        if (
+            current == self.decision_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.decision_page.save_decision_settings
+        if (
+            current == self.region_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.region_page.save_region_settings
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -267,6 +302,28 @@ class MainWindow(QMainWindow):
         self.display_page.refresh()
         self.stack.setCurrentWidget(self.display_page)
 
+    def show_decision_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色無法進入判定設定。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.decision_page.refresh()
+        self.stack.setCurrentWidget(self.decision_page)
+
+    def show_region_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色無法進入指定範圍監視。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.region_page.refresh()
+        self.stack.setCurrentWidget(self.region_page)
+
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
             self.state.settings_applied = True
@@ -293,6 +350,7 @@ class MainWindow(QMainWindow):
 
     def after_settings(self):
         self.release_all_hardware()
+        self.monitor_page.router.clear_model_cache()
         self.apply_display_config()
         self.update_navigation()
         if has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
@@ -344,15 +402,16 @@ class MainWindow(QMainWindow):
     def add_record(self, record: InspectionRecord):
         self.state.records.insert(0, record)
         self.history_page.refresh()
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        append_record_csv(RECORDS_LOG_PATH, record)
 
     def release_inspection_hardware(self):
-        self.monitor_page.stop()
-        self.settings_page.stop_preview()
-        self.login_page.stop()
+        self.release_all_hardware()
 
     def release_all_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
+        self.region_page.stop()
         self.login_page.stop()
 
     def logout(self):
@@ -367,7 +426,7 @@ class MainWindow(QMainWindow):
         if self.state.sessions:
             self.state.sessions[0].logout_time = logout_time
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions)
+        write_sessions_csv(SESSION_LOG_PATH, self.state.sessions, self.state.role_labels)
 
         self.release_all_hardware()
         self.state.operator_name = ""

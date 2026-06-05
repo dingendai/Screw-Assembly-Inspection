@@ -9,9 +9,9 @@ APP_SRC_DIR = ROOT_DIR / "app" / "src"
 if str(APP_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(APP_SRC_DIR))
 
-from valve_gui.main_window import MainWindow
-from valve_gui.paths import DATA_DIR
-from valve_gui.styles import apply_styles
+from valve_gui.main_window import MainWindow # type: ignore
+from valve_gui.paths import DATA_DIR # type: ignore
+from valve_gui.styles import apply_styles # type: ignore
 
 
 def main():

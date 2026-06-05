@@ -13,6 +13,9 @@ class CameraConfig:
     rotation_degrees: int = 0
     assigned_model_name: str = ""
     assigned_model_names: list[str] = field(default_factory=list)
+    region_detection_enabled: bool = False
+    detection_regions: list[dict] = field(default_factory=list)
+    exclusion_regions: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -28,6 +31,21 @@ class DisplayConfig:
     mode: str = "auto"
     width: int = 1440
     height: int = 900
+
+
+@dataclass
+class DecisionConfig:
+    pass_confidence_threshold: float = 0.5
+    model_rules: dict[str, dict] = field(default_factory=dict)
+
+
+@dataclass
+class RegionOverlayConfig:
+    show_on_monitor: bool = True
+    detection_color: str = "#22c55e"
+    exclusion_color: str = "#ef4444"
+    yolo_color: str = "#22c55e"
+    yolo_model_colors: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -68,7 +86,6 @@ class AppState:
     login_time: str = ""
     is_logged_in: bool = False
     settings_applied: bool = False
-    yolo_model_path: str = ""
     model_configs: list[ModelConfig] = field(default_factory=list)
     detected_cameras: list[int] = field(default_factory=list)
     inspection_cameras: list[CameraConfig] = field(
@@ -77,6 +94,8 @@ class AppState:
     operator_camera_index: int = 4
     use_simulation: bool = True
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
+    region_overlay: RegionOverlayConfig = field(default_factory=RegionOverlayConfig)
     role_labels: dict[str, str] = field(default_factory=default_role_labels)
     role_passwords: dict[str, str] = field(default_factory=default_role_passwords)
     role_permissions: dict[str, set[str]] = field(default_factory=default_role_permissions)
