@@ -13,7 +13,7 @@ from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import DecisionSettingsPage, DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
-from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import (
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
@@ -23,7 +23,7 @@ from valve_gui.permissions import (
     has_permission,
     role_label,
 )
-from valve_gui.storage import append_record_csv, write_sessions_csv
+from valve_gui.storage import append_record_csv, write_sessions_csv, write_user_records_csv
 
 
 class MainWindow(QMainWindow):
@@ -405,6 +405,20 @@ class MainWindow(QMainWindow):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
 
+    def save_user_records(self, when):
+        name = self.state.operator_name.strip()
+        if not name:
+            return
+        user_records = [
+            record for record in self.state.records if record.operator_name == name
+        ]
+        if not user_records:
+            return
+        USER_RECORDS_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = "".join(c for c in name if c not in '\\/:*?"<>|').strip() or "user"
+        path = USER_RECORDS_DIR / f"{safe_name} {when:%Y%m%d%H%M}.csv"
+        write_user_records_csv(path, user_records, self.state.role_labels)
+
     def release_inspection_hardware(self):
         self.release_all_hardware()
 
@@ -422,11 +436,13 @@ class MainWindow(QMainWindow):
             self.update_apply_settings_button()
             return
 
-        logout_time = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+        now = datetime.now()
+        logout_time = f"{now:%Y-%m-%d %H:%M:%S}"
         if self.state.sessions:
             self.state.sessions[0].logout_time = logout_time
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         write_sessions_csv(SESSION_LOG_PATH, self.state.sessions, self.state.role_labels)
+        self.save_user_records(now)
 
         self.release_all_hardware()
         self.state.operator_name = ""

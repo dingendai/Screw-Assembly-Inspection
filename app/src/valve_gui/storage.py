@@ -24,6 +24,23 @@ def write_sessions_csv(path, sessions, role_labels=None):
             ])
 
 
+def write_user_records_csv(path, records, role_labels=None):
+    with open(path, "w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.writer(file)
+        writer.writerow(["時間", "操作者", "角色", "結果", "工件", "相機", "信心度", "備註"])
+        for record in records:
+            writer.writerow([
+                record.timestamp,
+                record.operator_name,
+                role_label(record.operator_role, role_labels),
+                record.result,
+                record.part_id,
+                record.active_cameras,
+                record.confidence,
+                record.note,
+            ])
+
+
 def append_record_csv(path, record):
     path = Path(path)
     write_header = not path.exists() or path.stat().st_size == 0
