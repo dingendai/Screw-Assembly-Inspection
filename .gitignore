@@ -50,3 +50,9 @@ file.txt
 
 # Claude
 .Claude
+
+# exe file
+build
+dist
+pyinstaller_hooks
+screw_inspection.spec
