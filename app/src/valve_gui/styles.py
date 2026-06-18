@@ -1,14 +1,14 @@
 from PyQt6.QtWidgets import QApplication
 
 
-def apply_styles(app: QApplication):
-    app.setStyleSheet(
-        """
+def apply_styles(app: QApplication, font_size: int = 14):
+    font_size = max(10, min(28, int(font_size)))
+    stylesheet = """
         QMainWindow, QWidget {
             background: #f5f7f8;
             color: #172026;
             font-family: "Microsoft JhengHei UI", "Segoe UI", Arial;
-            font-size: 14px;
+            font-size: __FONT_SIZE__px;
         }
         QToolBar {
             background: #ffffff;
@@ -167,6 +167,15 @@ def apply_styles(app: QApplication):
         #activeDetectionButton:hover {
             background: #f59e0b;
         }
+        #continuousButton {
+            background: #176b5d;
+            color: #ffffff;
+            border: 1px solid #176b5d;
+            font-weight: 700;
+        }
+        #continuousButton:hover {
+            background: #135b50;
+        }
         #continuousButton:checked {
             background: #176b5d;
             color: #ffffff;
@@ -272,4 +281,4 @@ def apply_styles(app: QApplication):
             font-weight: 700;
         }
         """
-    )
+    app.setStyleSheet(stylesheet.replace("__FONT_SIZE__", str(font_size)))

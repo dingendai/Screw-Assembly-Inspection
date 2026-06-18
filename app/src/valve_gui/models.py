@@ -31,6 +31,7 @@ class DisplayConfig:
     mode: str = "auto"
     width: int = 1440
     height: int = 900
+    font_size: int = 14
 
 
 @dataclass

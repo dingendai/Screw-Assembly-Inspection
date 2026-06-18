@@ -80,6 +80,7 @@ def load_app_config(state):
             mode=mode,
             width=int(display.get("width", state.display.width)),
             height=int(display.get("height", state.display.height)),
+            font_size=max(10, min(28, int(display.get("font_size", state.display.font_size)))),
         )
 
     decision = data.get("decision", {})

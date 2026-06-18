@@ -1,5 +1,23 @@
 import sys
+import os
 from pathlib import Path
+
+
+def _bootstrap_frozen_qt() -> None:
+    if not getattr(sys, "frozen", False):
+        return
+
+    base_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    qt_bin_dir = base_dir / "PyQt6" / "Qt6" / "bin"
+    if not qt_bin_dir.is_dir():
+        return
+
+    os.environ["PATH"] = str(qt_bin_dir) + os.pathsep + os.environ.get("PATH", "")
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(str(qt_bin_dir))
+
+
+_bootstrap_frozen_qt()
 
 from PyQt6.QtWidgets import QApplication
 

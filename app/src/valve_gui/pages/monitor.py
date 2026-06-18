@@ -95,8 +95,13 @@ class MonitorPage(QWidget):
         self.roi_section.setVisible(False)
         self.operator_label = QLabel()
         self.operator_label.setObjectName("mutedText")
+        self.operator_label.setVisible(False)
         self.model_label = QLabel()
         self.model_label.setObjectName("mutedText")
+        self.model_label.setVisible(False)
+        self.info_toggle_button = QPushButton("顯示資訊")
+        self.info_toggle_button.setCheckable(True)
+        self.info_toggle_button.toggled.connect(self.toggle_info_labels)
         self.region_overlay_box = QCheckBox("顯示指定範圍")
         self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
         self.continuous_button = QPushButton("連續檢測")
@@ -116,11 +121,11 @@ class MonitorPage(QWidget):
         self.start_button = start_button
         self.stop_button = stop_button
         self.inspect_button = QPushButton("單次檢測")
-        self.inspect_button.setObjectName("primaryButton")
         self.inspect_button.clicked.connect(self.inspect_once)
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
+        side_layout.addWidget(self.info_toggle_button)
         side_layout.addWidget(self.operator_label)
         side_layout.addWidget(self.model_label)
         side_layout.addWidget(self.region_overlay_box)
@@ -159,6 +164,11 @@ class MonitorPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(self.grid_holder, 1)
         layout.addWidget(side, 0)
+
+    def toggle_info_labels(self, checked):
+        self.operator_label.setVisible(checked)
+        self.model_label.setVisible(checked)
+        self.info_toggle_button.setText("隱藏資訊" if checked else "顯示資訊")
 
     def refresh(self):
         self.region_overlay_box.blockSignals(True)
