@@ -596,6 +596,11 @@ class DisplaySettingsPage(QWidget):
         self.display_height.setSingleStep(20)
         self.display_height.setSuffix(" px")
 
+        self.display_font_size = QSpinBox()
+        self.display_font_size.setRange(10, 28)
+        self.display_font_size.setSingleStep(1)
+        self.display_font_size.setSuffix(" px")
+
         hint = QLabel("全螢幕會自動使用目前螢幕；非全螢幕可自動最大化或指定寬高。")
         hint.setObjectName("mutedText")
 
@@ -605,7 +610,9 @@ class DisplaySettingsPage(QWidget):
         form.addWidget(self.display_width, 1, 1)
         form.addWidget(QLabel("高度"), 1, 2)
         form.addWidget(self.display_height, 1, 3)
-        form.addWidget(hint, 2, 0, 1, 4)
+        form.addWidget(QLabel("字體大小"), 2, 0)
+        form.addWidget(self.display_font_size, 2, 1)
+        form.addWidget(hint, 3, 0, 1, 4)
         self.load_display_controls()
         return group
 
@@ -616,6 +623,7 @@ class DisplaySettingsPage(QWidget):
         self.state.display.mode = self.display_mode.currentData()
         self.state.display.width = self.display_width.value()
         self.state.display.height = self.display_height.value()
+        self.state.display.font_size = self.display_font_size.value()
         save_app_config(self.state)
         if self.on_display_change:
             self.on_display_change()
@@ -630,6 +638,7 @@ class DisplaySettingsPage(QWidget):
         self.display_mode.blockSignals(False)
         self.display_width.setValue(self.state.display.width)
         self.display_height.setValue(self.state.display.height)
+        self.display_font_size.setValue(self.state.display.font_size)
         self.update_display_size_controls()
 
     def update_display_size_controls(self):

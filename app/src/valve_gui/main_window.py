@@ -23,6 +23,7 @@ from valve_gui.permissions import (
     has_permission,
     role_label,
 )
+from valve_gui.styles import apply_styles
 from valve_gui.storage import append_record_csv, write_sessions_csv, write_user_records_csv
 
 
@@ -31,6 +32,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.state = AppState()
         load_app_config(self.state)
+        apply_styles(QApplication.instance(), self.state.display.font_size)
         ensure_model_configs(self.state)
         self.setWindowTitle("Gas Valve Vision Inspection System")
         self.setMinimumSize(640, 480)
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
         self.apply_display_config(show_window=True)
 
     def apply_display_config(self, show_window=False):
+        apply_styles(QApplication.instance(), self.state.display.font_size)
         mode = self.state.display.mode
         if mode == "fullscreen":
             self.showFullScreen()
