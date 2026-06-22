@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { h, toast } from "../app.js";
+import { h, toast, setCleanup } from "../app.js";
 
 export async function renderSettings(view) {
   let cfg;
@@ -40,6 +40,14 @@ export async function renderSettings(view) {
     } catch (e) { toast("儲存失敗：" + e.message, "error"); }
   }
 
+  // Live preview of a chosen running slot (reflects last-saved config).
+  const previewImg = h("img", { alt: "preview",
+    style: "width:360px; aspect-ratio:4/3; object-fit:contain; background:#000; border:1px solid var(--border); border-radius:8px; display:block" });
+  const previewSel = h("select", {}, ...cfg.cameras.filter((c) => c.enabled).map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
+  function loadPreview() { if (previewSel.value) previewImg.src = `/api/stream/${previewSel.value}`; }
+  previewSel.addEventListener("change", loadPreview);
+  setCleanup(() => { previewImg.src = ""; });
+
   view.append(h("div", { class: "card" },
     h("h2", {}, "相機設定"),
     h("div", { class: "row" },
@@ -49,9 +57,13 @@ export async function renderSettings(view) {
       detectedLabel
     ),
     h("div", { class: "table-wrap", style: "margin-top:12px" }, camTable),
+    h("div", { class: "row", style: "margin-top:12px; align-items:flex-start" },
+      h("div", { class: "col" }, h("label", {}, "即時預覽（目前套用中的設定）"), previewSel, previewImg)),
+    h("p", { class: "muted" }, "預覽顯示的是目前已套用的相機；變更 device/翻轉等需按下方儲存後才會反映。"),
     h("div", { class: "row", style: "margin-top:12px" },
       h("button", { class: "btn btn-success", onclick: saveCameras }, "儲存 / 套用相機設定"))
   ));
+  loadPreview();
 
   // ---------- models section ----------
   const modelsContainer = h("div", {});

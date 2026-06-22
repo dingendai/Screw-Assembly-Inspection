@@ -14,7 +14,7 @@ from valve_gui.model_registry import ensure_model_configs
 from valve_gui.models import AppState
 from valve_gui.paths import DATA_DIR
 
-from valve_web.camera_manager import CameraManager
+from valve_web.camera_manager import CameraManager, OperatorPreview
 
 
 class WebContext:
@@ -25,6 +25,7 @@ class WebContext:
         ensure_model_configs(self.state)
         self.router = InferenceRouter(self.state)
         self.cameras = CameraManager()
+        self.operator = OperatorPreview()
         # Continuous inspection bookkeeping (driven by the inspect router).
         self.continuous = False
         self.latest_result: dict | None = None

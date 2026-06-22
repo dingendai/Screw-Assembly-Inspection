@@ -1,12 +1,14 @@
 """Authentication endpoints (mirrors valve_gui LoginPage)."""
 
+import asyncio
 from datetime import datetime
 
 import cv2
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+import numpy as np
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 
-from valve_gui.camera import VideoSource
 from valve_gui.paths import PHOTOS_DIR
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
@@ -20,6 +22,7 @@ from valve_gui.utils import verify_password
 
 from valve_web import session
 from valve_web.deps import require_login
+from valve_web.overlay import encode_jpeg
 from valve_web.schemas import LoginRequest
 from valve_web.state import WebContext, get_context
 
@@ -61,6 +64,7 @@ def login(req: LoginRequest, response: Response):
 
     token = session.login(ctx.state, name, role, photo_path)
     response.set_cookie(key=session.COOKIE_NAME, value=token, httponly=True, samesite="lax")
+    ctx.operator.stop()
     ctx.cameras.restart(ctx.state)
     return _me_payload(ctx)
 
@@ -70,6 +74,7 @@ def logout(response: Response, valve_web_session: str | None = Cookie(default=No
     ctx = get_context()
     session.logout(ctx.state, valve_web_session)
     ctx.cameras.stop_all()
+    ctx.operator.stop()
     response.delete_cookie(key=session.COOKIE_NAME)
     return {"ok": True}
 
@@ -85,6 +90,7 @@ def _me_payload(ctx: WebContext) -> dict:
         "settings_applied": state.settings_applied,
         "is_developer": state.operator_role == ROLE_DEVELOPER,
         "permissions": _permission_map(ctx, state.operator_role),
+        "font_size": getattr(state.display, "font_size", 14),
     }
 
 
@@ -93,31 +99,69 @@ def me(ctx: WebContext = Depends(require_login)):
     return _me_payload(ctx)
 
 
-def _capture_operator_photo(index: int, simulate: bool) -> str:
-    source = VideoSource(f"OPERATOR {index}", index, simulate)
-    try:
-        frame = None
-        for _ in range(5):  # let the sensor warm up
-            frame = source.read()
-            if frame is not None:
-                break
-        if frame is None:
-            raise HTTPException(status_code=503, detail=source.last_error or "無法擷取操作者影像。")
-        PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
-        path = PHOTOS_DIR / f"operator_{datetime.now():%Y%m%d_%H%M%S}.jpg"
-        cv2.imwrite(str(path), frame)
-        return str(path)
-    finally:
-        source.release()
+# ---- operator camera preview (login page) ----
+
+@router.post("/operator/preview/start")
+def operator_preview_start():
+    """Open the operator camera for a live login-page preview (pre-login)."""
+    ctx = get_context()
+    ctx.cameras.stop_all()  # free inspection devices first
+    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+    return {"ok": True}
+
+
+@router.post("/operator/preview/stop")
+def operator_preview_stop():
+    get_context().operator.stop()
+    return {"ok": True}
+
+
+def _operator_placeholder(message: str):
+    frame = np.zeros((360, 480, 3), dtype=np.uint8)
+    frame[:] = (40, 40, 48)
+    cv2.putText(frame, message, (20, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+    return frame
+
+
+@router.get("/operator/stream")
+async def operator_stream(request: Request):
+    ctx = get_context()
+    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+
+    async def generate():
+        while not await request.is_disconnected():
+            frame = ctx.operator.latest()
+            if frame is None:
+                frame = _operator_placeholder("operator camera: no frame")
+            data = await run_in_threadpool(encode_jpeg, frame)
+            if data:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + data + b"\r\n"
+            await asyncio.sleep(0.06)
+
+    return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @router.post("/operator-photo")
 async def operator_photo():
-    """Capture one frame from the operator camera and save it (pre-login)."""
+    """Save a frame from the running operator preview (or open one transiently)."""
     ctx = get_context()
-    # Free any inspection workers first so the operator device isn't contended,
-    # and run the blocking capture off the event loop.
-    ctx.cameras.stop_all()
-    path = await run_in_threadpool(_capture_operator_photo, ctx.state.operator_camera_index, ctx.state.use_simulation)
+    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+
+    def _grab_and_save() -> str:
+        frame = None
+        for _ in range(15):  # wait for the preview worker to produce a frame
+            frame = ctx.operator.latest()
+            if frame is not None:
+                break
+            import time as _t
+            _t.sleep(0.05)
+        if frame is None:
+            raise HTTPException(status_code=503, detail=ctx.operator.last_error() or "無法擷取操作者影像。")
+        PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+        path = PHOTOS_DIR / f"operator_{datetime.now():%Y%m%d_%H%M%S}.jpg"
+        cv2.imwrite(str(path), frame)
+        return str(path)
+
+    path = await run_in_threadpool(_grab_and_save)
     ctx.state.operator_photo_path = path
     return {"photo_path": path}

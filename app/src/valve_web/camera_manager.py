@@ -71,6 +71,41 @@ class _SlotWorker:
             self._source = None
 
 
+class OperatorPreview:
+    """Single background worker for the operator camera (login-page preview).
+
+    Keeps one device open so the live preview and the photo capture share the
+    same frame source instead of fighting over the device.
+    """
+
+    def __init__(self):
+        self._worker: _SlotWorker | None = None
+        self._lock = threading.Lock()
+
+    def start(self, index: int, simulate: bool):
+        with self._lock:
+            if self._worker and self._worker.device_index == index and self._worker.simulate == simulate:
+                return
+            if self._worker:
+                self._worker.stop()
+            self._worker = _SlotWorker(0, index, simulate, {})
+            self._worker.start()
+
+    def latest(self):
+        with self._lock:
+            return self._worker.latest() if self._worker else None
+
+    def last_error(self) -> str:
+        with self._lock:
+            return self._worker.last_error if self._worker else ""
+
+    def stop(self):
+        with self._lock:
+            if self._worker:
+                self._worker.stop()
+                self._worker = None
+
+
 class CameraManager:
     """Owns the background capture workers for every enabled inspection slot."""
 

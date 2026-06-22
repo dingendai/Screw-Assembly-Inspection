@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { app, h, toast, refreshMe, navigate } from "../app.js";
+import { app, h, toast, refreshMe, navigate, setCleanup } from "../app.js";
 
 export async function renderLogin(view) {
   let roles = [];
@@ -19,17 +19,30 @@ export async function renderLogin(view) {
   const pwInput = h("input", { type: "password", placeholder: "密鑰（若有設定）" });
   const photoStatus = h("span", { class: "muted" }, "尚未拍照");
   const photoBtn = h("button", { class: "btn", onclick: capturePhoto }, "拍攝操作者照片");
+  const preview = h("img", { alt: "operator preview",
+    style: "width:320px; aspect-ratio:4/3; object-fit:contain; background:#000; border:1px solid var(--border); border-radius:8px; display:block" });
 
   const photoRow = h("div", { class: "col" },
-    h("label", {}, "操作者照片"),
+    h("label", {}, "操作者相機即時預覽"),
+    preview,
     h("div", { class: "row" }, photoBtn, photoStatus)
   );
 
   function isDeveloper() { return roleSel.value === DEVELOPER; }
+  function startPreview() {
+    preview.src = `/api/operator/stream?t=${Date.now()}`;
+  }
+  function stopPreview() {
+    preview.src = "";
+    api.post("/api/operator/preview/stop").catch(() => {});
+  }
   function syncVisibility() {
-    photoRow.classList.toggle("hidden", isDeveloper());
+    const dev = isDeveloper();
+    photoRow.classList.toggle("hidden", dev);
+    if (dev) stopPreview(); else startPreview();
   }
   roleSel.addEventListener("change", syncVisibility);
+  setCleanup(stopPreview);
 
   async function capturePhoto() {
     photoBtn.disabled = true;

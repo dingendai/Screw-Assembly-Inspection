@@ -5,6 +5,7 @@ import { renderHistory } from "./pages/history.js";
 import { renderSettings } from "./pages/settings.js";
 import { renderDecision } from "./pages/decision.js";
 import { renderRegions } from "./pages/regions.js";
+import { renderDisplay } from "./pages/display.js";
 import { renderUsers } from "./pages/users.js";
 
 export const app = { me: null, current: null };
@@ -47,9 +48,15 @@ const PAGES = {
   settings: { label: "相機 / 模型設定", perm: "open_settings", render: renderSettings },
   regions: { label: "指定範圍監視", perm: "open_settings", render: renderRegions },
   decision: { label: "判定設定", perm: "open_settings", render: renderDecision },
+  display: { label: "顯示設定", perm: "open_settings", render: renderDisplay },
   history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
   users: { label: "用戶管理", perm: "__developer__", render: renderUsers },
 };
+
+export function applyFontSize(px) {
+  const n = parseInt(px);
+  if (n >= 10 && n <= 28) document.body.style.fontSize = n + "px";
+}
 
 function canSee(page) {
   if (!app.me || !app.me.logged_in) return false;
@@ -113,6 +120,7 @@ function renderNav() {
 export async function refreshMe() {
   try {
     app.me = await api.get("/api/me");
+    if (app.me && app.me.font_size) applyFontSize(app.me.font_size);
   } catch {
     app.me = null;
   }

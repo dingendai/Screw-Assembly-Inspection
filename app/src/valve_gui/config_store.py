@@ -252,5 +252,14 @@ def normalise_regions(value):
         if width <= 0.001 or height <= 0.001:
             continue
         model_names = normalise_model_names(item.get("model_names", []))
-        regions.append({"x": x, "y": y, "w": width, "h": height, "model_names": model_names})
+        region = {"x": x, "y": y, "w": width, "h": height, "model_names": model_names}
+        roi_id = item.get("roi_id")
+        if roi_id is not None:
+            try:
+                roi_id_int = int(roi_id)
+            except (TypeError, ValueError):
+                roi_id_int = None
+            if roi_id_int:
+                region["roi_id"] = roi_id_int
+        regions.append(region)
     return regions

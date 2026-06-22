@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { h, toast } from "../app.js";
+import { h, toast, setCleanup } from "../app.js";
 
 export async function renderRegions(view) {
   let cfg;
@@ -12,6 +12,7 @@ export async function renderRegions(view) {
     exclusion_regions: (c.exclusion_regions || []).map((r) => ({ ...r })),
   }));
   const ov = cfg.region_overlay || {};
+  const modelNames = (cfg.models || []).map((m) => m.name);
 
   const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
   const enableBox = h("input", { type: "checkbox" });
@@ -25,18 +26,25 @@ export async function renderRegions(view) {
   function current() { return cams.find((c) => String(c.slot) === slotSel.value); }
   function listFor(cam) { return modeSel.value === "detection" ? cam.detection_regions : cam.exclusion_regions; }
 
+  let sized = false;
   function loadSnapshot() {
     const slot = slotSel.value;
+    sized = false;
+    // Live stream as the drawing backdrop (multipart fires load per frame).
     img.onload = () => {
-      canvas.width = img.clientWidth;
-      canvas.height = img.clientHeight;
-      redraw();
+      if (!sized && img.clientWidth) {
+        canvas.width = img.clientWidth;
+        canvas.height = img.clientHeight;
+        sized = true;
+        redraw();
+      }
     };
-    img.src = `/api/snapshot/${slot}?overlay=false&t=${Date.now()}`;
+    img.src = `/api/stream/${slot}`;
     const cam = current();
     enableBox.checked = !!cam.region_detection_enabled;
     renderList();
   }
+  setCleanup(() => { img.src = ""; });
 
   function redraw(preview) {
     const ctx = canvas.getContext("2d");
@@ -60,17 +68,39 @@ export async function renderRegions(view) {
     });
   }
 
+  function modelCheckboxes(region) {
+    if (!modelNames.length) return h("span", { class: "muted", style: "font-size:12px" }, "（無模型，套用全部）");
+    region.model_names = region.model_names || [];
+    return h("div", { style: "font-size:12px" }, ...modelNames.map((name) => {
+      const cb = h("input", { type: "checkbox" });
+      cb.checked = region.model_names.includes(name);
+      cb.addEventListener("change", () => {
+        const set = new Set(region.model_names);
+        if (cb.checked) set.add(name); else set.delete(name);
+        region.model_names = [...set];
+      });
+      return h("label", { style: "margin-right:10px" }, cb, " " + name);
+    }));
+  }
+
   function renderList() {
     regionList.innerHTML = "";
     const cam = current();
-    [["detection", "偵測區", cam.detection_regions], ["exclusion", "排除區", cam.exclusion_regions]].forEach(([kind, title, arr]) => {
+    [["detection", "偵測區 ROI", cam.detection_regions], ["exclusion", "排除區 EX", cam.exclusion_regions]].forEach(([kind, title, arr]) => {
       regionList.append(h("h4", {}, title));
       if (!arr.length) { regionList.append(h("p", { class: "muted" }, "（無）")); return; }
       arr.forEach((r, i) => {
-        regionList.append(h("div", { class: "row" },
+        const head = h("div", { class: "row" },
           h("span", { class: "pill" }, `${i + 1}: x${r.x.toFixed(2)} y${r.y.toFixed(2)} w${r.w.toFixed(2)} h${r.h.toFixed(2)}`),
-          h("button", { class: "btn", onclick: () => { arr.splice(i, 1); renderList(); redraw(); } }, "刪除")
-        ));
+          h("button", { class: "btn", onclick: () => { arr.splice(i, 1); renderList(); redraw(); } }, "刪除"));
+        const controls = h("div", { class: "row", style: "margin:4px 0 12px" });
+        if (kind === "detection") {
+          const roi = h("input", { type: "number", min: "0", max: "99", value: r.roi_id || 0, style: "width:70px" });
+          roi.addEventListener("change", () => { const v = parseInt(roi.value) || 0; r.roi_id = v > 0 ? v : undefined; });
+          controls.append(h("label", {}, "ROI 編號(0=不共用)"), roi);
+        }
+        controls.append(h("div", { class: "col" }, h("label", {}, "套用模型(不勾=全部)"), modelCheckboxes(r)));
+        regionList.append(h("div", {}, head, controls));
       });
     });
   }

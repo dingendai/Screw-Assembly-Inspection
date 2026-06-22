@@ -23,6 +23,7 @@ export async function renderMonitor(view) {
   const confLabel = h("div", { class: "muted", style: "text-align:center" }, "Confidence: --");
   const reasons = h("div", {});
   const roiBox = h("div", {});
+  const annotatedBox = h("div", {});
 
   const tiles = slots.map((slot) =>
     h("div", { class: "cam-tile" },
@@ -62,6 +63,20 @@ export async function renderMonitor(view) {
         roiBox.append(h("div", { class: "reason-box " + (info.confirmed ? "reason-pass" : "reason-ng") },
           `ROI ${rid}: ${info.confirmed ? "已確認" : "未確認"} (${info.votes}/${info.total})`));
       });
+    }
+    // Single-inspect returns annotated images; show them as thumbnails.
+    annotatedBox.innerHTML = "";
+    const ann = r.annotated || {};
+    const slots = Object.keys(ann);
+    if (slots.length) {
+      annotatedBox.append(h("h3", {}, "檢測標註"));
+      const grid = h("div", { style: "display:grid; gap:8px; grid-template-columns:repeat(auto-fit,minmax(140px,1fr))" });
+      slots.sort().forEach((slot) => {
+        grid.append(h("div", {},
+          h("div", { class: "muted", style: "font-size:12px" }, `C${slot}`),
+          h("img", { src: ann[slot], style: "width:100%; border:1px solid var(--border); border-radius:6px" })));
+      });
+      annotatedBox.append(grid);
     }
   }
 
@@ -110,7 +125,7 @@ export async function renderMonitor(view) {
     ),
     h("div", { class: "row", style: "align-items:flex-start" },
       h("div", { style: "flex:2; min-width:320px" }, grid),
-      h("div", { class: "card", style: "flex:1; min-width:280px" }, resultBig, confLabel, reasons, roiBox)
+      h("div", { class: "card", style: "flex:1; min-width:280px" }, resultBig, confLabel, reasons, roiBox, annotatedBox)
     )
   );
 }
