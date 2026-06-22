@@ -42,13 +42,14 @@ export async function renderSettings(view) {
 
   // Live preview of a chosen running slot (reflects last-saved config).
   const previewImg = h("img", { alt: "preview",
-    style: "width:360px; aspect-ratio:4/3; object-fit:contain; background:#000; border:1px solid var(--border); border-radius:8px; display:block" });
+    style: "width:100%; aspect-ratio:4/3; object-fit:contain; background:#000; border:1px solid var(--border); border-radius:10px; display:block" });
   const previewSel = h("select", {}, ...cfg.cameras.filter((c) => c.enabled).map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
   function loadPreview() { if (previewSel.value) previewImg.src = `/api/stream/${previewSel.value}`; }
   previewSel.addEventListener("change", loadPreview);
   setCleanup(() => { previewImg.src = ""; });
 
-  view.append(h("div", { class: "card" },
+  // Left = controls + camera table + save; Right = live preview.
+  const leftCol = h("div", { style: "flex:2; min-width:420px; display:flex; flex-direction:column; gap:14px" },
     h("h2", {}, "相機設定"),
     h("div", { class: "row" },
       h("label", {}, simBox, " 使用模擬相機"),
@@ -56,12 +57,19 @@ export async function renderSettings(view) {
       h("button", { class: "btn", onclick: scan }, "掃描相機"),
       detectedLabel
     ),
-    h("div", { class: "table-wrap", style: "margin-top:12px" }, camTable),
-    h("div", { class: "row", style: "margin-top:12px; align-items:flex-start" },
-      h("div", { class: "col" }, h("label", {}, "即時預覽（目前套用中的設定）"), previewSel, previewImg)),
-    h("p", { class: "muted" }, "預覽顯示的是目前已套用的相機；變更 device/翻轉等需按下方儲存後才會反映。"),
-    h("div", { class: "row", style: "margin-top:12px" },
+    h("div", { class: "table-wrap" }, camTable),
+    h("div", { class: "row" },
       h("button", { class: "btn btn-success", onclick: saveCameras }, "儲存 / 套用相機設定"))
+  );
+  const rightCol = h("div", { style: "flex:1; min-width:300px; display:flex; flex-direction:column; gap:8px" },
+    h("h2", {}, "即時預覽"),
+    previewSel,
+    previewImg,
+    h("p", { class: "muted" }, "顯示目前已套用的相機；變更 device/翻轉等需按左側儲存後才會反映。")
+  );
+
+  view.append(h("div", { class: "card" },
+    h("div", { class: "row", style: "align-items:flex-start; gap:24px" }, leftCol, rightCol)
   ));
   loadPreview();
 
