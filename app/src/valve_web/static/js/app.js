@@ -1,0 +1,125 @@
+import { api } from "./api.js";
+import { renderLogin } from "./pages/login.js";
+import { renderMonitor } from "./pages/monitor.js";
+import { renderHistory } from "./pages/history.js";
+import { renderSettings } from "./pages/settings.js";
+import { renderDecision } from "./pages/decision.js";
+import { renderRegions } from "./pages/regions.js";
+import { renderUsers } from "./pages/users.js";
+
+export const app = { me: null, current: null };
+
+// ---- small DOM + toast helpers (shared by all pages) ----
+export function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else if (k === "html") el.innerHTML = v;
+    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
+    else if (v === true) el.setAttribute(k, "");
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    el.append(c.nodeType ? c : document.createTextNode(c));
+  }
+  return el;
+}
+
+let toastTimer;
+export function toast(msg, kind = "") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast " + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 3200);
+}
+
+const PAGES = {
+  monitor: { label: "監視", perm: "open_monitor", render: renderMonitor },
+  settings: { label: "相機 / 模型設定", perm: "open_settings", render: renderSettings },
+  regions: { label: "指定範圍監視", perm: "open_settings", render: renderRegions },
+  decision: { label: "判定設定", perm: "open_settings", render: renderDecision },
+  history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
+  users: { label: "用戶管理", perm: "__developer__", render: renderUsers },
+};
+
+function canSee(page) {
+  if (!app.me || !app.me.logged_in) return false;
+  if (page.perm === "__developer__") return app.me.is_developer;
+  return !!(app.me.permissions && app.me.permissions[page.perm]);
+}
+
+export async function navigate(key) {
+  const view = document.getElementById("view");
+  view.innerHTML = "";
+  if (!app.me || !app.me.logged_in) {
+    app.current = "login";
+    renderLogin(view);
+    renderNav();
+    return;
+  }
+  const page = PAGES[key];
+  if (!page || !canSee(page)) {
+    // fall back to first visible page
+    key = Object.keys(PAGES).find((k) => canSee(PAGES[k]));
+    if (!key) { view.append(h("div", { class: "card" }, "目前角色沒有可用的頁面。")); return; }
+  }
+  app.current = key;
+  renderNav();
+  try {
+    await PAGES[key].render(view);
+  } catch (e) {
+    view.append(h("div", { class: "card" }, "載入失敗：" + e.message));
+  }
+}
+
+function renderNav() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = "";
+  const badge = document.getElementById("role-badge");
+  const logoutBtn = document.getElementById("logout-btn");
+  if (!app.me || !app.me.logged_in) {
+    badge.textContent = "未登入";
+    logoutBtn.classList.add("hidden");
+    return;
+  }
+  badge.textContent = `${app.me.operator_name} · ${app.me.role_label}`;
+  logoutBtn.classList.remove("hidden");
+  for (const [key, page] of Object.entries(PAGES)) {
+    if (!canSee(page)) continue;
+    nav.append(
+      h("button", {
+        class: "nav-btn" + (key === app.current ? " active" : ""),
+        onclick: () => navigate(key),
+      }, page.label)
+    );
+  }
+}
+
+export async function refreshMe() {
+  try {
+    app.me = await api.get("/api/me");
+  } catch {
+    app.me = null;
+  }
+}
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  try { await api.post("/api/logout"); } catch {}
+  app.me = null;
+  toast("已登出", "ok");
+  navigate("login");
+});
+
+async function boot() {
+  await refreshMe();
+  if (app.me && app.me.logged_in) {
+    const first = Object.keys(PAGES).find((k) => canSee(PAGES[k]));
+    navigate(first || "login");
+  } else {
+    navigate("login");
+  }
+}
+
+boot();
