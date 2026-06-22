@@ -71,7 +71,12 @@ export async function navigate(key) {
   if (!page || !canSee(page)) {
     // fall back to first visible page
     key = Object.keys(PAGES).find((k) => canSee(PAGES[k]));
-    if (!key) { view.append(h("div", { class: "card" }, "目前角色沒有可用的頁面。")); return; }
+    if (!key) {
+      app.current = null;
+      renderNav();
+      view.append(h("div", { class: "card" }, "目前角色沒有可用的頁面。"));
+      return;
+    }
   }
   app.current = key;
   renderNav();

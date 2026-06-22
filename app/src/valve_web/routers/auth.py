@@ -4,6 +4,7 @@ from datetime import datetime
 
 import cv2
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi.concurrency import run_in_threadpool
 
 from valve_gui.camera import VideoSource
 from valve_gui.paths import PHOTOS_DIR
@@ -92,12 +93,8 @@ def me(ctx: WebContext = Depends(require_login)):
     return _me_payload(ctx)
 
 
-@router.post("/operator-photo")
-def operator_photo():
-    """Capture one frame from the operator camera and save it (pre-login)."""
-    ctx = get_context()
-    index = ctx.state.operator_camera_index
-    source = VideoSource(f"OPERATOR {index}", index, ctx.state.use_simulation)
+def _capture_operator_photo(index: int, simulate: bool) -> str:
+    source = VideoSource(f"OPERATOR {index}", index, simulate)
     try:
         frame = None
         for _ in range(5):  # let the sensor warm up
@@ -109,7 +106,18 @@ def operator_photo():
         PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
         path = PHOTOS_DIR / f"operator_{datetime.now():%Y%m%d_%H%M%S}.jpg"
         cv2.imwrite(str(path), frame)
+        return str(path)
     finally:
         source.release()
-    ctx.state.operator_photo_path = str(path)
-    return {"photo_path": str(path)}
+
+
+@router.post("/operator-photo")
+async def operator_photo():
+    """Capture one frame from the operator camera and save it (pre-login)."""
+    ctx = get_context()
+    # Free any inspection workers first so the operator device isn't contended,
+    # and run the blocking capture off the event loop.
+    ctx.cameras.stop_all()
+    path = await run_in_threadpool(_capture_operator_photo, ctx.state.operator_camera_index, ctx.state.use_simulation)
+    ctx.state.operator_photo_path = path
+    return {"photo_path": path}

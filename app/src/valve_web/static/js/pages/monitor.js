@@ -27,22 +27,27 @@ export async function renderMonitor(view) {
   const tiles = slots.map((slot) =>
     h("div", { class: "cam-tile" },
       h("div", { class: "cam-title" }, `Camera ${slot}`),
-      h("img", { src: `/api/stream/${slot}?t=${Date.now()}`, alt: `camera ${slot}` })
+      // No cache-buster: MJPEG is a live stream; a ?t= query forces the browser
+      // to open a brand-new connection on every render and exhaust the per-host
+      // connection limit.
+      h("img", { src: `/api/stream/${slot}`, alt: `camera ${slot}` })
     )
   );
   const grid = h("div", { class: "grid-cams" }, ...(tiles.length ? tiles : [h("div", { class: "card" }, "沒有啟用的相機，請至『相機設定』啟用。")]));
+
+  const fmtConf = (v) => (typeof v === "number" ? v.toFixed(3) : "--");
 
   function applyResult(r) {
     if (!r || !r.result) return;
     resultBig.textContent = r.result;
     resultBig.className = "result-big " + (r.result === "PASS" ? "result-pass" : "result-ng");
-    confLabel.textContent = `Confidence: ${(r.confidence ?? 0).toFixed ? r.confidence.toFixed(3) : r.confidence}`;
+    confLabel.textContent = `Confidence: ${fmtConf(r.confidence)}`;
     reasons.innerHTML = "";
     const cams = r.camera_results || {};
     Object.keys(cams).sort().forEach((slot) => {
       const c = cams[slot];
       const box = h("div", { class: "reason-box " + (c.result === "PASS" ? "reason-pass" : "reason-ng") },
-        h("strong", {}, `Camera ${slot}: ${c.result} (${(c.confidence ?? 0).toFixed ? c.confidence.toFixed(3) : c.confidence})`),
+        h("strong", {}, `Camera ${slot}: ${c.result} (${fmtConf(c.confidence)})`),
         ...(c.reasons || []).map((x) => h("div", {}, "• " + x))
       );
       reasons.append(box);

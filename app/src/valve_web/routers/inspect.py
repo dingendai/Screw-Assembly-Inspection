@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api", tags=["inspect"])
 _monitor_dep = require_permission(PERMISSION_OPEN_MONITOR)
 _continuous_thread: threading.Thread | None = None
 _continuous_stop = threading.Event()
+_continuous_lock = threading.Lock()
 
 
 def _enabled_cameras(ctx: WebContext):
@@ -71,7 +72,7 @@ def _result_payload(inference, include_images: bool = True) -> dict:
     return payload
 
 
-def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool) -> dict:
+def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, include_images: bool = True) -> dict:
     ctx.cameras.ensure_started(ctx.state)
     frames = ctx.cameras.frames_by_slot()
     inference = ctx.router.run(frames)
@@ -86,7 +87,7 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool) -> di
                 ctx._last_record_time = now
         if do_record:
             _add_record(ctx, _record_from(ctx, inference, part_id))
-    payload = _result_payload(inference)
+    payload = _result_payload(inference, include_images=include_images)
     with ctx.lock:
         ctx.latest_result = payload
     return payload
@@ -108,9 +109,11 @@ def latest(ctx: WebContext = Depends(_monitor_dep)):
 
 
 def _continuous_loop(ctx: WebContext, part_id: str):
+    # Continuous mode is viewed live via the MJPEG stream (which uses the raw
+    # annotated frames), so we skip the costly base64 image encoding here.
     while not _continuous_stop.is_set():
         try:
-            _run_once(ctx, part_id, record=True, throttle=True)
+            _run_once(ctx, part_id, record=True, throttle=True, include_images=False)
         except Exception:
             pass
         _continuous_stop.wait(0.5)
@@ -119,23 +122,28 @@ def _continuous_loop(ctx: WebContext, part_id: str):
 @router.post("/inspect/continuous/start")
 def continuous_start(ctx: WebContext = Depends(_monitor_dep), part_id: str = ""):
     global _continuous_thread
-    if ctx.continuous:
-        return {"continuous": True}
-    _continuous_stop.clear()
-    ctx.continuous = True
-    _continuous_thread = threading.Thread(
-        target=_continuous_loop, args=(ctx, part_id), name="continuous-inspect", daemon=True
-    )
-    _continuous_thread.start()
+    with _continuous_lock:
+        if ctx.continuous and _continuous_thread and _continuous_thread.is_alive():
+            return {"continuous": True}
+        _continuous_stop.set()
+        if _continuous_thread and _continuous_thread.is_alive():
+            _continuous_thread.join(timeout=1.0)
+        _continuous_stop.clear()
+        ctx.continuous = True
+        _continuous_thread = threading.Thread(
+            target=_continuous_loop, args=(ctx, part_id), name="continuous-inspect", daemon=True
+        )
+        _continuous_thread.start()
     return {"continuous": True}
 
 
 @router.post("/inspect/continuous/stop")
 def continuous_stop(ctx: WebContext = Depends(_monitor_dep)):
     global _continuous_thread
-    _continuous_stop.set()
-    ctx.continuous = False
-    if _continuous_thread:
-        _continuous_thread.join(timeout=1.0)
-        _continuous_thread = None
+    with _continuous_lock:
+        _continuous_stop.set()
+        ctx.continuous = False
+        if _continuous_thread:
+            _continuous_thread.join(timeout=1.0)
+            _continuous_thread = None
     return {"continuous": False}
