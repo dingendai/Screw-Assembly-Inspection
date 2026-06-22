@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { h, toast } from "../app.js";
+import { h, toast, setCleanup } from "../app.js";
 
 let pollTimer = null;
 
@@ -9,6 +9,14 @@ export async function renderMonitor(view) {
   let status = { active_slots: [], status: {} };
   try { status = await api.get("/api/cameras/status"); } catch (e) { toast(e.message, "error"); }
   const slots = status.active_slots || [];
+
+  // Stop the poll timer, close MJPEG connections and halt any server-side
+  // continuous inspection when leaving this page.
+  setCleanup(() => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    view.querySelectorAll("img").forEach((im) => { im.src = ""; });
+    if (continuous) { api.post("/api/inspect/continuous/stop").catch(() => {}); }
+  });
 
   const partInput = h("input", { type: "text", placeholder: "工件編號（可留空自動產生）" });
   const resultBig = h("div", { class: "result-big result-wait" }, "WAITING");

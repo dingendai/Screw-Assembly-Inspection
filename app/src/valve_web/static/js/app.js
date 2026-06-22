@@ -9,6 +9,13 @@ import { renderUsers } from "./pages/users.js";
 
 export const app = { me: null, current: null };
 
+// Pages can register a teardown callback (stop timers, close MJPEG streams).
+let activeCleanup = null;
+export function setCleanup(fn) { activeCleanup = fn; }
+function runCleanup() {
+  if (activeCleanup) { try { activeCleanup(); } catch {} activeCleanup = null; }
+}
+
 // ---- small DOM + toast helpers (shared by all pages) ----
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -52,6 +59,7 @@ function canSee(page) {
 
 export async function navigate(key) {
   const view = document.getElementById("view");
+  runCleanup();
   view.innerHTML = "";
   if (!app.me || !app.me.logged_in) {
     app.current = "login";
