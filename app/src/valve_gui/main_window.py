@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPus
 from valve_gui.config_store import load_app_config
 from valve_gui.model_registry import ensure_model_configs
 from valve_gui.models import AppState, InspectionRecord
+from valve_gui.pages.help import HelpPage
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self.decision_page = DecisionSettingsPage(self.state, self.logout)
         self.region_page = RegionSettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
+        self.help_page = HelpPage()
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.monitor_page)
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.decision_page)
         self.stack.addWidget(self.region_page)
         self.stack.addWidget(self.user_page)
+        self.stack.addWidget(self.help_page)
         self.setCentralWidget(self.stack)
 
         self.actions = {}
@@ -129,6 +132,7 @@ class MainWindow(QMainWindow):
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
             ("users", "用戶管理", self.show_users, True),
+            ("help", "說明", self.show_help, True),
             ("logout", "登出", self.logout, False),
         ]
         for key, text, callback, checkable in action_specs:
@@ -191,6 +195,7 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions)
         )
         self.actions["users"].setVisible(logged_in and self.state.operator_role == ROLE_DEVELOPER)
+        self.actions["help"].setVisible(True)
         self.actions["logout"].setVisible(logged_in)
         self.login_page.exit_button.setVisible(not logged_in)
         if logged_in:
@@ -212,6 +217,7 @@ class MainWindow(QMainWindow):
             self.history_page: "history",
             self.display_page: "display",
             self.user_page: "users",
+            self.help_page: "help",
         }
         active_key = page_actions.get(self.stack.currentWidget())
         for key, action in self.actions.items():
@@ -397,6 +403,12 @@ class MainWindow(QMainWindow):
         self.release_all_hardware()
         self.user_page.refresh()
         self.stack.setCurrentWidget(self.user_page)
+
+    def show_help(self):
+        self.release_all_hardware()
+        self.help_page.refresh()
+        self.stack.setCurrentWidget(self.help_page)
+        self.update_apply_settings_button()
 
     def after_user_management_saved(self):
         self.login_page.refresh_role_options()
