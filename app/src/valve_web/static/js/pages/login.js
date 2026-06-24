@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { app, h, toast, refreshMe, navigate, setCleanup } from "../app.js";
+import { app, h, toast, refreshMe, navigate, setCleanup, syncThemeFromServer, applyFontSize } from "../app.js";
 
 // Per-role field rules:
 //   developer -> password only (no name, no photo)
@@ -17,6 +17,8 @@ export async function renderLogin(view) {
   catch (e) { view.append(h("div", { class: "card" }, "無法載入角色：" + e.message)); return; }
   const roles = data.roles || [];
   const DEVELOPER = data.developer_role || "developer";
+  if (data.theme) syncThemeFromServer(data.theme);
+  if (data.font_size) applyFontSize(data.font_size);
   let camIndex = data.operator_camera_index ?? 0;
   let photoPath = "";
 

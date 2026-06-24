@@ -42,6 +42,8 @@ def get_roles():
         "permission_labels": PERMISSION_LABELS,
         "developer_role": ROLE_DEVELOPER,
         "operator_camera_index": int(ctx.state.operator_camera_index),
+        "theme": getattr(ctx.state.display, "theme", "dark"),
+        "font_size": getattr(ctx.state.display, "font_size", 14),
     }
 
 
@@ -94,6 +96,7 @@ def _me_payload(ctx: WebContext) -> dict:
         "is_developer": state.operator_role == ROLE_DEVELOPER,
         "permissions": _permission_map(ctx, state.operator_role),
         "font_size": getattr(state.display, "font_size", 14),
+        "theme": getattr(state.display, "theme", "dark"),
     }
 
 

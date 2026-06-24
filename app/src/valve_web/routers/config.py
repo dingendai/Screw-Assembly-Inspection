@@ -21,7 +21,7 @@ from valve_gui.model_registry import discover_model_configs, ensure_model_config
 from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, RegionOverlayConfig
 from valve_gui.permissions import PERMISSION_OPEN_SETTINGS
 
-from valve_web.deps import require_permission
+from valve_web.deps import require_login, require_permission
 from valve_web.schemas import CamerasUpdate, DecisionUpdate, DisplayUpdate, ModelsUpdate, RegionsUpdate
 from valve_web.state import WebContext
 
@@ -140,14 +140,27 @@ def update_regions(req: RegionsUpdate, ctx: WebContext = Depends(_settings_dep))
 @router.put("/display")
 def update_display(req: DisplayUpdate, ctx: WebContext = Depends(_settings_dep)):
     mode = req.mode if req.mode in {"auto", "custom", "fullscreen"} else "auto"
+    theme = req.theme.strip().lower() if req.theme.strip().lower() in {"dark", "light"} else "dark"
     ctx.state.display = DisplayConfig(
         mode=mode,
         width=int(req.width),
         height=int(req.height),
-        font_size=max(10, min(28, int(req.font_size))),
+        font_size=max(12, min(40, int(req.font_size))),
+        theme=theme,
     )
     save_app_config(ctx.state)
     return _serialize(ctx)
+
+
+@router.post("/theme")
+def set_theme(theme: str, ctx: WebContext = Depends(require_login)):
+    """Persist just the theme (any logged-in user); leaves font size etc intact."""
+    value = theme.strip().lower()
+    if value not in {"dark", "light"}:
+        return {"theme": ctx.state.display.theme}
+    ctx.state.display.theme = value
+    save_app_config(ctx.state)
+    return {"theme": value}
 
 
 @router.post("/cameras/scan")

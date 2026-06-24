@@ -11,20 +11,27 @@ import { renderUsers } from "./pages/users.js";
 export const app = { me: null, current: null };
 
 // ---- theme (dark / light) ----
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
+export function applyTheme(theme) {
+  const t = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
   const btn = document.getElementById("theme-btn");
-  if (btn) btn.textContent = theme === "light" ? "☀️ 淺色" : "🌙 深色";
-  try { localStorage.setItem("valve_theme", theme); } catch {}
+  if (btn) btn.textContent = t === "light" ? "☀️ 淺色" : "🌙 深色";
+  try { localStorage.setItem("valve_theme", t); } catch {}
 }
+// Server theme is the source of truth (so the choice follows across devices);
+// localStorage just paints instantly before the first request returns.
+export function syncThemeFromServer(theme) { if (theme) applyTheme(theme); }
 function initTheme() {
   let theme = "dark";
   try { theme = localStorage.getItem("valve_theme") || "dark"; } catch {}
   applyTheme(theme);
   const btn = document.getElementById("theme-btn");
-  if (btn) btn.addEventListener("click", () => {
+  if (btn) btn.addEventListener("click", async () => {
     const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
     applyTheme(next);
+    if (app.me && app.me.logged_in) {
+      try { await api.post("/api/config/theme?theme=" + next); } catch {}
+    }
   });
 }
 
@@ -139,6 +146,7 @@ export async function refreshMe() {
   try {
     app.me = await api.get("/api/me");
     if (app.me && app.me.font_size) applyFontSize(app.me.font_size);
+    if (app.me && app.me.theme) syncThemeFromServer(app.me.theme);
   } catch {
     app.me = null;
   }

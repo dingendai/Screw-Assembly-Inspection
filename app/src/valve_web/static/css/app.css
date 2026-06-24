@@ -98,7 +98,7 @@ body::before {
   box-shadow: var(--glow-lime); border-color: transparent;
 }
 
-#view { padding: 26px; max-width: 1320px; margin: 0 auto; }
+#view { padding: 20px 28px; max-width: none; margin: 0; width: 100%; }
 
 /* ---------------- buttons ---------------- */
 .btn {

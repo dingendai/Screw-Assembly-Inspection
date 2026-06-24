@@ -76,11 +76,15 @@ def load_app_config(state):
         mode = str(display.get("mode", state.display.mode))
         if mode not in {"auto", "custom", "fullscreen"}:
             mode = "auto"
+        theme = str(display.get("theme", state.display.theme)).strip().lower()
+        if theme not in {"dark", "light"}:
+            theme = "dark"
         state.display = DisplayConfig(
             mode=mode,
             width=int(display.get("width", state.display.width)),
             height=int(display.get("height", state.display.height)),
-            font_size=max(10, min(28, int(display.get("font_size", state.display.font_size)))),
+            font_size=max(12, min(40, int(display.get("font_size", state.display.font_size)))),
+            theme=theme,
         )
 
     decision = data.get("decision", {})
