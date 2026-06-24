@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { h, toast, setCleanup } from "../app.js";
+import { createDecisionSettingsCard } from "./decision.js";
 
 export async function renderRegions(view) {
   let cfg;
@@ -13,6 +14,10 @@ export async function renderRegions(view) {
   }));
   const ov = cfg.region_overlay || {};
   const modelNames = (cfg.models || []).map((m) => m.name);
+  const decisionPanel = createDecisionSettingsCard(cfg, {
+    title: "判定設定",
+    buttonText: "儲存判定設定",
+  });
 
   const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
   const enableBox = h("input", { type: "checkbox" });
@@ -157,7 +162,11 @@ export async function renderRegions(view) {
         exclusion_color: excColor.value,
       },
     };
-    try { await api.put("/api/config/regions", payload); toast("區域設定已儲存", "ok"); }
+    try {
+      await decisionPanel.save();
+      await api.put("/api/config/regions", payload);
+      toast("指定範圍與判定設定已儲存", "ok");
+    }
     catch (e) { toast(e.message, "error"); }
   }
 
@@ -180,7 +189,8 @@ export async function renderRegions(view) {
         h("div", { class: "col" }, h("label", {}, "排除區顏色"), excColor)
       ),
       h("div", { class: "row", style: "margin-top:12px" }, h("button", { class: "btn btn-success", onclick: save }, "儲存區域設定"))
-    )
+    ),
+    decisionPanel.card
   );
 
   loadSnapshot();
