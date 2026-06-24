@@ -9,6 +9,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
+from valve_gui.camera import detect_camera_indexes
 from valve_gui.paths import PHOTOS_DIR
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
@@ -39,6 +40,8 @@ def get_roles():
     return {
         "roles": [{"value": value, "label": label} for value, label in role_options(ctx.state.role_labels)],
         "permission_labels": PERMISSION_LABELS,
+        "developer_role": ROLE_DEVELOPER,
+        "operator_camera_index": int(ctx.state.operator_camera_index),
     }
 
 
@@ -101,12 +104,26 @@ def me(ctx: WebContext = Depends(require_login)):
 
 # ---- operator camera preview (login page) ----
 
+def _operator_index(ctx, index: int | None) -> int:
+    return int(index) if index is not None else int(ctx.state.operator_camera_index)
+
+
+@router.get("/operator/cameras")
+async def operator_cameras():
+    """Scan for connected cameras so the login page can pick one (pre-login)."""
+    ctx = get_context()
+    ctx.cameras.stop_all()
+    ctx.operator.stop()
+    found = await run_in_threadpool(detect_camera_indexes, 12)
+    return {"cameras": found, "current": int(ctx.state.operator_camera_index)}
+
+
 @router.post("/operator/preview/start")
-def operator_preview_start():
-    """Open the operator camera for a live login-page preview (pre-login)."""
+def operator_preview_start(index: int | None = None):
+    """Open a chosen camera for a live login-page preview (pre-login)."""
     ctx = get_context()
     ctx.cameras.stop_all()  # free inspection devices first
-    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+    ctx.operator.start(_operator_index(ctx, index), ctx.state.use_simulation)
     return {"ok": True}
 
 
@@ -124,9 +141,9 @@ def _operator_placeholder(message: str):
 
 
 @router.get("/operator/stream")
-async def operator_stream(request: Request):
+async def operator_stream(request: Request, index: int | None = None):
     ctx = get_context()
-    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+    ctx.operator.start(_operator_index(ctx, index), ctx.state.use_simulation)
 
     async def generate():
         while not await request.is_disconnected():
@@ -142,10 +159,10 @@ async def operator_stream(request: Request):
 
 
 @router.post("/operator-photo")
-async def operator_photo():
+async def operator_photo(index: int | None = None):
     """Save a frame from the running operator preview (or open one transiently)."""
     ctx = get_context()
-    ctx.operator.start(ctx.state.operator_camera_index, ctx.state.use_simulation)
+    ctx.operator.start(_operator_index(ctx, index), ctx.state.use_simulation)
 
     def _grab_and_save() -> str:
         frame = None
