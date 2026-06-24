@@ -15,6 +15,18 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 def create_app() -> FastAPI:
     app = FastAPI(title="Screw Assembly Inspection - Web UI")
 
+    @app.middleware("http")
+    async def _no_cache_static(request, call_next):
+        # Always revalidate front-end assets so edits never get masked by a
+        # stale browser cache.
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith((".js", ".css", ".html")):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
     # Initialise the shared context (loads config, discovers models) at startup.
     @app.on_event("startup")
     def _startup():
