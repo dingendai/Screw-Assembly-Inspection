@@ -59,6 +59,24 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+// Centered modal dialog (for messages that should interrupt, e.g. login errors).
+export function showModal(message, kind = "") {
+  const old = document.getElementById("app-modal");
+  if (old) old.remove();
+  const icon = kind === "error" ? "⛔" : kind === "ok" ? "✅" : "ℹ️";
+  let overlay;
+  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Enter" || e.key === "Escape") close(); };
+  const box = h("div", { class: "modal-box " + kind },
+    h("div", { class: "modal-icon" }, icon),
+    h("div", { class: "modal-msg" }, message),
+    h("button", { class: "btn btn-primary", onclick: close }, "確定"));
+  overlay = h("div", { class: "modal-overlay", id: "app-modal", onclick: (e) => { if (e.target === overlay) close(); } }, box);
+  document.body.appendChild(overlay);
+  document.addEventListener("keydown", onKey);
+  box.querySelector("button").focus();
+}
+
 let toastTimer;
 export function toast(msg, kind = "") {
   const t = document.getElementById("toast");

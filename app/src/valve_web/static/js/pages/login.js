@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { app, h, toast, refreshMe, navigate, setCleanup, syncThemeFromServer, applyFontSize } from "../app.js";
+import { app, h, toast, showModal, refreshMe, navigate, setCleanup, syncThemeFromServer, applyFontSize } from "../app.js";
 
 // Per-role field rules:
 //   developer -> password only (no name, no photo)
@@ -96,8 +96,8 @@ export async function renderLogin(view) {
   async function submit() {
     const role = roleSel.value;
     const rule = ruleFor(role, DEVELOPER);
-    if (rule.name && !nameInput.value.trim()) { toast("請輸入操作者姓名", "error"); return; }
-    if (rule.photo && !photoPath) { toast("請先拍攝操作者照片", "error"); return; }
+    if (rule.name && !nameInput.value.trim()) { showModal("請輸入操作者姓名", "error"); return; }
+    if (rule.photo && !photoPath) { showModal("請先拍攝操作者照片", "error"); return; }
     try {
       app.me = await api.post("/api/login", {
         role,
@@ -108,7 +108,7 @@ export async function renderLogin(view) {
       await refreshMe();
       toast("登入成功", "ok");
       navigate("monitor");
-    } catch (e) { toast("登入失敗：" + e.message, "error"); }
+    } catch (e) { showModal("登入失敗：" + e.message, "error"); }
   }
   pwInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
   nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
