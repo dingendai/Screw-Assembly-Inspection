@@ -3,7 +3,6 @@ import { renderLogin } from "./pages/login.js";
 import { renderMonitor } from "./pages/monitor.js";
 import { renderHistory } from "./pages/history.js";
 import { renderSettings } from "./pages/settings.js";
-import { renderDecision } from "./pages/decision.js";
 import { renderRegions } from "./pages/regions.js";
 import { renderDisplay } from "./pages/display.js";
 import { renderUsers } from "./pages/users.js";
@@ -90,7 +89,6 @@ const PAGES = {
   monitor: { label: "監視", perm: "open_monitor", render: renderMonitor },
   settings: { label: "相機 / 模型設定", perm: "open_settings", render: renderSettings },
   regions: { label: "指定範圍監視", perm: "open_settings", render: renderRegions },
-  decision: { label: "判定設定", perm: "open_settings", render: renderDecision },
   display: { label: "顯示設定", perm: "open_settings", render: renderDisplay },
   history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
   users: { label: "用戶管理", perm: "__developer__", render: renderUsers },

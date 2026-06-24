@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, ensure_model_configs
+from valve_gui.pages.settings import DecisionSettingsPage
 
 
 class RegionCanvas(QLabel):
@@ -577,6 +578,7 @@ class RegionSettingsPage(QWidget):
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
+        self.decision_page = DecisionSettingsPage(self.state, self.logout)
 
     def refresh(self):
         self.stop()
@@ -588,6 +590,8 @@ class RegionSettingsPage(QWidget):
             self.editors.append(editor)
             self.tabs.addTab(editor, f"Camera {camera.slot}")
         self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
+        self.decision_page.refresh()
+        self.tabs.addTab(self.decision_page, "判定設定")
         self.start()
 
     def start(self):
@@ -610,6 +614,7 @@ class RegionSettingsPage(QWidget):
             editor.canvas.repaint_frame()
 
     def save_region_settings(self):
+        self.decision_page.persist_decision_settings()
         save_app_config(self.state)
         QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
 
