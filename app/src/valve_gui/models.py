@@ -32,6 +32,7 @@ class DisplayConfig:
     width: int = 1440
     height: int = 900
     font_size: int = 14
+    theme: str = "dark"  # web UI only; desktop GUI ignores this
 
 
 @dataclass
