@@ -10,6 +10,24 @@ import { renderUsers } from "./pages/users.js";
 
 export const app = { me: null, current: null };
 
+// ---- theme (dark / light) ----
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.getElementById("theme-btn");
+  if (btn) btn.textContent = theme === "light" ? "☀️ 淺色" : "🌙 深色";
+  try { localStorage.setItem("valve_theme", theme); } catch {}
+}
+function initTheme() {
+  let theme = "dark";
+  try { theme = localStorage.getItem("valve_theme") || "dark"; } catch {}
+  applyTheme(theme);
+  const btn = document.getElementById("theme-btn");
+  if (btn) btn.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    applyTheme(next);
+  });
+}
+
 // Pages can register a teardown callback (stop timers, close MJPEG streams).
 let activeCleanup = null;
 export function setCleanup(fn) { activeCleanup = fn; }
@@ -134,6 +152,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 });
 
 async function boot() {
+  initTheme();
   await refreshMe();
   if (app.me && app.me.logged_in) {
     const first = Object.keys(PAGES).find((k) => canSee(PAGES[k]));

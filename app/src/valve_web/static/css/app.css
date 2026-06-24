@@ -227,3 +227,61 @@ tr:hover td { background: rgba(34,211,238,.05); }
 @keyframes livepulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes alarm { 0%,100% { box-shadow: var(--glow-red); } 50% { box-shadow: 0 0 0 1px rgba(255,59,84,.6), 0 0 46px rgba(255,59,84,.55); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ===========================================================================
+   LIGHT THEME — applied via <html data-theme="light">
+   =========================================================================== */
+html[data-theme="light"] {
+  --bg-0: #e9eef5;
+  --bg-1: #ffffff;
+  --panel-solid: #ffffff;
+  --panel-2: #eef3f9;
+  --border: #d3dde9;
+  --border-glow: #9fbdd9;
+  --text: #16212f;
+  --muted: #5a6b7e;
+  --cyan: #0e7490;
+  --blue: #2563eb;
+  --danger: #dc2626;
+  --accent: #65a30d;
+  --accent-deep: #4d7c0f;
+  --glow-lime: 0 0 0 1px rgba(101,163,13,.35), 0 6px 18px rgba(101,163,13,.18);
+  --glow-red: 0 0 0 1px rgba(220,38,38,.3), 0 6px 18px rgba(220,38,38,.18);
+}
+html[data-theme="light"] body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(14,116,144,.07), transparent 60%),
+    radial-gradient(1000px 700px at -10% 110%, rgba(101,163,13,.08), transparent 55%),
+    linear-gradient(180deg, #f5f8fc, #e9eef5);
+}
+html[data-theme="light"] body::before {
+  background-image:
+    linear-gradient(rgba(0,0,0,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,.045) 1px, transparent 1px);
+}
+html[data-theme="light"] #topbar {
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,248,252,.9));
+  box-shadow: 0 1px 0 rgba(101,163,13,.15), 0 8px 24px rgba(20,40,60,.08);
+}
+html[data-theme="light"] .brand {
+  background: linear-gradient(90deg, #16212f, #3f6212 60%, #65a30d);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+html[data-theme="light"] .brand .tag { color: #fff; -webkit-text-fill-color: #fff; }
+html[data-theme="light"] .card {
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(245,248,252,.82));
+  box-shadow: 0 8px 24px rgba(20,40,60,.08);
+}
+html[data-theme="light"] input[type=text],
+html[data-theme="light"] input[type=password],
+html[data-theme="light"] input[type=number],
+html[data-theme="light"] select { background: #ffffff; }
+html[data-theme="light"] th { background: #eef3f9; }
+html[data-theme="light"] .nav-btn.active { color: #ffffff; }
+html[data-theme="light"] .btn-success { color: #ffffff; }
+html[data-theme="light"] .cam-tile .cam-title {
+  background: linear-gradient(180deg, #f5f8fc, #eef3f9); color: #4d7c0f;
+}
+html[data-theme="light"] .result-pass { color: #3f6212; }
+html[data-theme="light"] .result-ng { color: #b91c1c; }
+html[data-theme="light"] .toast { box-shadow: 0 12px 36px rgba(20,40,60,.18); }
