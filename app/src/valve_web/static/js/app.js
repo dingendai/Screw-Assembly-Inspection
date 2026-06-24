@@ -7,6 +7,7 @@ import { renderDecision } from "./pages/decision.js";
 import { renderRegions } from "./pages/regions.js";
 import { renderDisplay } from "./pages/display.js";
 import { renderUsers } from "./pages/users.js";
+import { renderHelp } from "./pages/help.js";
 
 export const app = { me: null, current: null };
 
@@ -94,6 +95,7 @@ const PAGES = {
   display: { label: "顯示設定", perm: "open_settings", render: renderDisplay },
   history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
   users: { label: "用戶管理", perm: "__developer__", render: renderUsers },
+  help: { label: "說明", perm: "__always__", render: renderHelp },
 };
 
 export function applyFontSize(px) {
@@ -103,6 +105,7 @@ export function applyFontSize(px) {
 
 function canSee(page) {
   if (!app.me || !app.me.logged_in) return false;
+  if (page.perm === "__always__") return true;
   if (page.perm === "__developer__") return app.me.is_developer;
   return !!(app.me.permissions && app.me.permissions[page.perm]);
 }
