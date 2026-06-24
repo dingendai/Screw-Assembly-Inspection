@@ -96,7 +96,7 @@ const PAGES = {
 
 export function applyFontSize(px) {
   const n = parseInt(px);
-  if (n >= 10 && n <= 28) document.body.style.fontSize = n + "px";
+  if (n >= 12 && n <= 40) document.body.style.fontSize = n + "px";
 }
 
 function canSee(page) {
