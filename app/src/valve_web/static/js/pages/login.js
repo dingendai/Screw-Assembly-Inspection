@@ -106,8 +106,8 @@ export async function renderLogin(view) {
         photo_path: rule.photo ? photoPath : "",
       });
       await refreshMe();
-      toast("登入成功", "ok");
       navigate("monitor");
+      showModal("登入成功", "ok");
     } catch (e) { showModal("登入失敗：" + e.message, "error"); }
   }
   pwInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
