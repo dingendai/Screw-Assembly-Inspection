@@ -116,8 +116,7 @@ export async function renderLogin(view) {
     h("div", { class: "col" }, h("label", {}, "角色"), roleSel),
     nameRow,
     pwRow,
-    h("div", { class: "row", style: "margin-top:6px" }, h("button", { class: "btn btn-success", onclick: submit }, "登入")),
-    h("p", { class: "muted" }, "開發者：密碼 0000，免姓名與照片；管理者：姓名+密碼；作業員：姓名+拍照，免密碼。")
+    h("div", { class: "row", style: "margin-top:6px" }, h("button", { class: "btn btn-success", onclick: submit }, "登入"))
   );
 
   view.append(h("div", { class: "card" },
