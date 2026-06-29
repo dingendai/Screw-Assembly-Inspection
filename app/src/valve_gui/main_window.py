@@ -4,6 +4,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize
 from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QWidget
 
+from valve_gui import qc_db
 from valve_gui.config_store import load_app_config
 from valve_gui.model_registry import ensure_model_configs
 from valve_gui.models import AppState, InspectionRecord
@@ -11,6 +12,8 @@ from valve_gui.pages.help import HelpPage
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
 from valve_gui.pages.monitor import MonitorPage
+from valve_gui.pages.qc_products import ProductMasterPage
+from valve_gui.pages.qc_stats import StatisticsPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import DisplaySettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
@@ -19,13 +22,15 @@ from valve_gui.permissions import (
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
     PERMISSION_OPEN_SETTINGS,
+    PERMISSION_QC_PRODUCT_MANAGE,
+    PERMISSION_QC_VIEW,
     ROLE_DEVELOPER,
     ROLE_OPERATOR,
     has_permission,
     role_label,
 )
 from valve_gui.styles import apply_styles
-from valve_gui.storage import append_record_csv, write_sessions_csv, write_user_records_csv
+from valve_gui.storage import append_record_csv, read_sessions_csv, write_sessions_csv, write_user_records_csv
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +38,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.state = AppState()
         load_app_config(self.state)
+        # 載回先前的登入紀錄，避免登出時整檔覆寫把歷史 sessions 洗掉。
+        self.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
         apply_styles(QApplication.instance(), self.state.display.font_size)
         ensure_model_configs(self.state)
         self.setWindowTitle("Gas Valve Vision Inspection System")
@@ -55,6 +62,8 @@ class MainWindow(QMainWindow):
             on_logout=self.logout,
         )
         self.history_page = HistoryPage(self.state)
+        self.qc_stats_page = StatisticsPage(self.state)
+        self.qc_products_page = ProductMasterPage(self.state)
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
         self.region_page = RegionSettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
@@ -63,6 +72,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.qc_stats_page)
+        self.stack.addWidget(self.qc_products_page)
         self.stack.addWidget(self.display_page)
         self.stack.addWidget(self.region_page)
         self.stack.addWidget(self.user_page)
@@ -128,6 +139,8 @@ class MainWindow(QMainWindow):
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
+            ("qc_stats", "品管統計", self.show_qc_stats, True),
+            ("qc_products", "品項主檔", self.show_qc_products, True),
             ("users", "用戶管理", self.show_users, True),
             ("help", "說明", self.show_help, True),
             ("logout", "登出", self.logout, False),
@@ -184,6 +197,16 @@ class MainWindow(QMainWindow):
             and settings_ready
             and has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions)
         )
+        self.actions["qc_stats"].setVisible(
+            logged_in
+            and settings_ready
+            and has_permission(self.state.operator_role, PERMISSION_QC_VIEW, self.state.role_permissions)
+        )
+        self.actions["qc_products"].setVisible(
+            logged_in
+            and settings_ready
+            and has_permission(self.state.operator_role, PERMISSION_QC_PRODUCT_MANAGE, self.state.role_permissions)
+        )
         self.actions["users"].setVisible(logged_in and self.state.operator_role == ROLE_DEVELOPER)
         self.actions["help"].setVisible(True)
         self.actions["logout"].setVisible(logged_in)
@@ -204,6 +227,8 @@ class MainWindow(QMainWindow):
             self.region_page: "regions",
             self.monitor_page: "monitor",
             self.history_page: "history",
+            self.qc_stats_page: "qc_stats",
+            self.qc_products_page: "qc_products",
             self.display_page: "display",
             self.user_page: "users",
             self.help_page: "help",
@@ -366,6 +391,28 @@ class MainWindow(QMainWindow):
         self.history_page.refresh()
         self.stack.setCurrentWidget(self.history_page)
 
+    def show_qc_stats(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_QC_VIEW, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入品管統計。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.qc_stats_page.refresh()
+        self.stack.setCurrentWidget(self.qc_stats_page)
+
+    def show_qc_products(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_QC_PRODUCT_MANAGE, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入品項主檔。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.qc_products_page.refresh()
+        self.stack.setCurrentWidget(self.qc_products_page)
+
     def show_users(self):
         if not self.require_login():
             return
@@ -388,9 +435,27 @@ class MainWindow(QMainWindow):
 
     def add_record(self, record: InspectionRecord):
         self.state.records.insert(0, record)
-        self.history_page.refresh()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
+        # SQLite 為歷史/品管查詢/統計的單一真相；CSV 暫時保留作過渡。
+        if record.result in ("PASS", "NG") and record.part_id.strip():
+            try:
+                qc_db.record_inspection(
+                    record.part_id.strip(),
+                    record.result,
+                    note=record.note,
+                    operator=record.operator_name,
+                    operator_role=record.operator_role,
+                    confidence=record.confidence,
+                    active_cameras=record.active_cameras,
+                    inspected_at=record.timestamp,
+                    session_id=self.state.current_work_session_id,
+                    source=getattr(record, "barcode_source", ""),
+                )
+            except Exception:
+                pass
+        # 寫入 SQLite 後再刷新歷史頁，剛存的紀錄才查得到。
+        self.history_page.refresh()
 
     def save_user_records(self, when):
         name = self.state.operator_name.strip()
@@ -427,6 +492,12 @@ class MainWindow(QMainWindow):
         logout_time = f"{now:%Y-%m-%d %H:%M:%S}"
         if self.state.sessions:
             self.state.sessions[0].logout_time = logout_time
+        # 結束工作時段（= 登出）。
+        try:
+            qc_db.end_work_session(self.state.current_work_session_id, logout_time)
+        except Exception:
+            pass
+        self.state.current_work_session_id = None
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         write_sessions_csv(SESSION_LOG_PATH, self.state.sessions, self.state.role_labels)
         self.save_user_records(now)

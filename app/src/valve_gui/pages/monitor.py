@@ -64,6 +64,8 @@ class MonitorPage(QWidget):
         self.pending_detection_future = None
         self._single_worker = None
         self._last_record_time: float = 0.0
+        self._last_barcode: str | None = None
+        self._last_barcode_source: str = ""
         self._source_by_slot: dict = {}
         self._config_by_slot: dict = {}
         self._view_by_slot: dict = {}
@@ -76,6 +78,8 @@ class MonitorPage(QWidget):
 
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
+        self.barcode_label = QLabel("讀到條碼：--")
+        self.barcode_label.setObjectName("mutedText")
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
@@ -131,6 +135,7 @@ class MonitorPage(QWidget):
         side_layout.addWidget(self.region_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
+        side_layout.addWidget(self.barcode_label)
         side_layout.addWidget(self.result_label)
         side_layout.addWidget(self.confidence_label)
         side_layout.addWidget(self.camera_status_label)
@@ -333,6 +338,12 @@ class MonitorPage(QWidget):
             return f"{label} {index}"
         return f"{label} {index}: {', '.join(model_names)}"
 
+    def update_barcode_label(self, text, source=""):
+        if text and source:
+            self.barcode_label.setText(f"讀到條碼：{text}（{source}）")
+        else:
+            self.barcode_label.setText(f"讀到條碼：{text or '--'}")
+
     def inspect_once(self):
         if self._single_worker and self._single_worker.isRunning():
             return
@@ -435,8 +446,19 @@ class MonitorPage(QWidget):
         self.set_ng_reason(inference)
         self.set_roi_confirmations(inference.roi_confirmations)
         self.show_annotated_frames(inference.annotated_frames)
+        self._last_barcode = getattr(inference, "barcode", None)
+        self._last_barcode_source = self._barcode_source_label(inference)
+        self.update_barcode_label(self._last_barcode, self._last_barcode_source)
         if record or self.continuous_detection:
             self.record_detection(inference)
+
+    @staticmethod
+    def _barcode_source_label(inference):
+        sources = getattr(inference, "barcode_sources", None) or []
+        if not sources:
+            return ""
+        first = sources[0]
+        return first.get("class") or first.get("model") or ""
 
     def show_annotated_frames(self, annotated_frames):
         if self.continuous_detection:
@@ -457,15 +479,27 @@ class MonitorPage(QWidget):
             f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
             for config, _ in self.views
         )
+        # 序號來源優先序：偵測到的標籤條碼 ▸ 手動輸入 ▸ 自動編號。
+        barcode = getattr(inference, "barcode", None)
+        if barcode:
+            part_id = barcode
+            source = self._barcode_source_label(inference) or "barcode"
+        elif self.part_id.text().strip():
+            part_id = self.part_id.text().strip()
+            source = "manual"
+        else:
+            part_id = f"PART-{datetime.now():%H%M%S}"
+            source = "auto"
         record = InspectionRecord(
             timestamp=f"{datetime.now():%Y-%m-%d %H:%M:%S}",
             operator_name=self.state.operator_name,
             operator_role=self.state.operator_role,
             result=inference.result,
-            part_id=self.part_id.text().strip() or f"PART-{datetime.now():%H%M%S}",
+            part_id=part_id,
             active_cameras=active,
             confidence=f"{inference.confidence:.3f}",
             note=inference.note,
+            barcode_source=source,
         )
         self.add_record(record)
 

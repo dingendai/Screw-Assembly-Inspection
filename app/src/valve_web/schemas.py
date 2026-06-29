@@ -34,6 +34,7 @@ class CameraModel(BaseModel):
     region_detection_enabled: bool = False
     detection_regions: list[dict] = Field(default_factory=list)
     exclusion_regions: list[dict] = Field(default_factory=list)
+    barcode_read_enabled: bool = False
 
 
 class CamerasUpdate(BaseModel):

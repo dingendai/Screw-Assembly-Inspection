@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -126,6 +127,9 @@ class SettingsPage(QWidget):
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
 
+            barcode = QCheckBox("啟用條碼辨識")
+            barcode.setChecked(config.barcode_read_enabled)
+
             index.currentIndexChanged.connect(self._queue_preview_restart)
             enabled.stateChanged.connect(self._queue_preview_restart)
             flip_h.stateChanged.connect(self._queue_preview_restart)
@@ -148,12 +152,15 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("旋轉"), 2, 0)
             card.addWidget(rotation, 2, 1, 1, 2)
 
-            card.addWidget(QLabel("指定模型"), 3, 0, 1, 3)
-            card.addWidget(model_list, 4, 0, 1, 3)
+            card.addWidget(QLabel("條碼"), 3, 0)
+            card.addWidget(barcode, 3, 1, 1, 2)
+
+            card.addWidget(QLabel("指定模型"), 4, 0, 1, 3)
+            card.addWidget(model_list, 5, 0, 1, 3)
             card.setColumnStretch(2, 1)
 
             camera_grid.addWidget(camera_box, row // 2, row % 2)
-            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation))
+            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation, barcode))
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
@@ -165,6 +172,13 @@ class SettingsPage(QWidget):
         self.detected_label = QLabel("尚未搜尋相機")
         self.detected_label.setObjectName("mutedText")
 
+        # 需要條碼辨識的標籤類別（逗號分隔）：偵測到這些 YOLO 類別才裁框解碼。
+        self.barcode_classes_input = QLineEdit(", ".join(self.state.barcode_label_classes))
+        self.barcode_classes_input.setPlaceholderText("例如：label, barcode（留空＝整張畫面解碼）")
+        barcode_row = QHBoxLayout()
+        barcode_row.addWidget(QLabel("需條碼辨識的標籤類別"))
+        barcode_row.addWidget(self.barcode_classes_input, 1)
+
         action_row = QHBoxLayout()
         action_row.addWidget(search_button)
         action_row.addStretch()
@@ -172,6 +186,7 @@ class SettingsPage(QWidget):
         layout.addLayout(camera_grid)
         layout.addLayout(action_row)
         layout.addWidget(self.simulation_box)
+        layout.addLayout(barcode_row)
         layout.addWidget(self.detected_label)
         return group
 
@@ -287,13 +302,15 @@ class SettingsPage(QWidget):
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
             enabled.setChecked(config.enabled)
             self.populate_camera_index_combo(index, config.device_index)
             self.populate_model_list(model_list, camera_model_names(config))
             flip_h.setChecked(config.flip_horizontal)
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
+            barcode.setChecked(config.barcode_read_enabled)
+        self.barcode_classes_input.setText(", ".join(self.state.barcode_label_classes))
         self.load_model_table()
         self.apply_role_permissions()
         self.restart_preview()
@@ -466,7 +483,7 @@ class SettingsPage(QWidget):
     def current_enabled_camera_rows(self):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
-            enabled, index, model_list, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
             if enabled.isChecked():
                 model_names = self.checked_model_names(model_list)
                 enabled_rows.append(
@@ -478,6 +495,7 @@ class SettingsPage(QWidget):
                         "flip_horizontal": flip_h.isChecked(),
                         "flip_vertical": flip_v.isChecked(),
                         "rotation_degrees": int(rotation.currentText()),
+                        "barcode_read_enabled": barcode.isChecked(),
                     }
                 )
         return enabled_rows
@@ -516,7 +534,7 @@ class SettingsPage(QWidget):
         enabled_count = 0
         missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
             config.enabled = enabled.isChecked()
             config.device_index = int(index.currentData())
             selected_models = self.checked_model_names(model_list)
@@ -524,6 +542,7 @@ class SettingsPage(QWidget):
             config.flip_horizontal = flip_h.isChecked()
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
+            config.barcode_read_enabled = barcode.isChecked()
             enabled_count += int(config.enabled)
             if config.enabled and not selected_models:
                 missing_model_slots.append(f"Camera {config.slot}")
@@ -540,6 +559,9 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = self.simulation_box.isChecked()
+        self.state.barcode_label_classes = [
+            name.strip() for name in self.barcode_classes_input.text().split(",") if name.strip()
+        ]
         self.state.settings_applied = True
         save_app_config(self.state)
         self.stop_preview()

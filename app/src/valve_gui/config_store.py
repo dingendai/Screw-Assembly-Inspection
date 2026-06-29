@@ -21,6 +21,7 @@ def load_app_config(state):
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
+    state.barcode_label_classes = normalise_model_names(data.get("barcode_label_classes", []))
     role_labels = data.get("role_labels", {})
     default_labels = default_role_labels()
     merged_labels = {ROLE_DEVELOPER: default_labels[ROLE_DEVELOPER]}
@@ -130,6 +131,7 @@ def load_app_config(state):
                 region_detection_enabled=bool(item.get("region_detection_enabled", False)),
                 detection_regions=normalise_regions(item.get("detection_regions", [])),
                 exclusion_regions=normalise_regions(item.get("exclusion_regions", [])),
+                barcode_read_enabled=bool(item.get("barcode_read_enabled", False)),
             )
             for index, item in enumerate(cameras)
         ]
@@ -160,6 +162,7 @@ def save_app_config(state):
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": state.use_simulation,
+        "barcode_label_classes": list(state.barcode_label_classes),
         "display": asdict(state.display),
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),

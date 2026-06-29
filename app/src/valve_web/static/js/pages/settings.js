@@ -24,7 +24,7 @@ export async function renderSettings(view) {
 
   const camRows = cfg.cameras.map((c) => buildCameraRow(c, modelNames));
   const camTable = h("table", {},
-    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "模型"].map((t) => h("th", {}, t)))),
+    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "條碼辨識", "模型"].map((t) => h("th", {}, t)))),
     h("tbody", {}, ...camRows.map((r) => r.tr))
   );
 
@@ -121,6 +121,7 @@ function buildCameraRow(c, modelNames) {
   const fv = h("input", { type: "checkbox" }); fv.checked = c.flip_vertical;
   const rot = h("select", {}, ...[0, 90, 180, 270].map((d) => h("option", { value: d }, d + "°")));
   rot.value = c.rotation_degrees;
+  const barcode = h("input", { type: "checkbox" }); barcode.checked = !!c.barcode_read_enabled;
   const assigned = new Set(c.assigned_model_names || []);
   const modelChecks = modelNames().map((name) => {
     const cb = h("input", { type: "checkbox" }); cb.checked = assigned.has(name);
@@ -132,7 +133,7 @@ function buildCameraRow(c, modelNames) {
   return {
     tr: h("tr", {},
       h("td", {}, enabled), h("td", {}, "C" + c.slot), h("td", {}, dev),
-      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot), h("td", {}, modelCell)),
+      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot), h("td", {}, barcode), h("td", {}, modelCell)),
     read: () => ({
       slot: c.slot,
       device_index: parseInt(dev.value) || 0,
@@ -140,6 +141,7 @@ function buildCameraRow(c, modelNames) {
       flip_horizontal: fh.checked,
       flip_vertical: fv.checked,
       rotation_degrees: parseInt(rot.value) || 0,
+      barcode_read_enabled: barcode.checked,
       assigned_model_names: modelChecks.map((l) => l.firstChild).filter((cb) => cb.checked).map((cb) => cb._name),
       region_detection_enabled: c.region_detection_enabled,
       detection_regions: c.detection_regions || [],

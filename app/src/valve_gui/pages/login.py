@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from valve_gui import qc_db
 from valve_gui.camera import CameraScanWorker, VideoSource
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
@@ -328,6 +329,13 @@ class LoginPage(QWidget):
                 photo_path=photo_path,
             ),
         )
+        # 開始一段工作時段（= 登入），檢驗紀錄會關聯到這個 session id。
+        try:
+            self.state.current_work_session_id = qc_db.start_work_session(
+                name, role, self.state.login_time
+            )
+        except Exception:
+            self.state.current_work_session_id = None
         self.password_input.clear()
         self.on_login()
 

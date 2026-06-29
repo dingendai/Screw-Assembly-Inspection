@@ -1,12 +1,39 @@
 import csv
 from pathlib import Path
 
+from valve_gui.models import OperatorSession
 from valve_gui.permissions import role_label
 
 _RECORD_HEADER = [
     "timestamp", "operator_name", "operator_role",
     "result", "part_id", "active_cameras", "confidence", "note",
 ]
+
+
+def read_sessions_csv(path):
+    """把登入/登出紀錄從 CSV 載回 OperatorSession 清單（newest-first，與寫入順序一致）。
+
+    啟動時呼叫，避免登出時整檔覆寫把先前執行的登入紀錄洗掉。
+    """
+    path = Path(path)
+    if not path.exists():
+        return []
+    sessions = []
+    with open(path, "r", newline="", encoding="utf-8-sig") as file:
+        for row in csv.DictReader(file):
+            name = (row.get("operator_name") or "").strip()
+            if not name:
+                continue
+            sessions.append(
+                OperatorSession(
+                    operator_name=name,
+                    operator_role=(row.get("operator_role") or "").strip(),
+                    login_time=row.get("login_time") or "",
+                    logout_time=row.get("logout_time") or "",
+                    photo_path=row.get("photo_path") or "",
+                )
+            )
+    return sessions
 
 
 def write_sessions_csv(path, sessions, role_labels=None):

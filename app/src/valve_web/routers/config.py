@@ -65,6 +65,7 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
                 region_detection_enabled=bool(item.region_detection_enabled),
                 detection_regions=normalise_regions([dict(r) for r in item.detection_regions]),
                 exclusion_regions=normalise_regions([dict(r) for r in item.exclusion_regions]),
+                barcode_read_enabled=bool(item.barcode_read_enabled),
             )
         )
     for camera in cameras:
