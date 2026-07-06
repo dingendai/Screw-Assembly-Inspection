@@ -17,8 +17,6 @@ class CameraView(QFrame):
         self._last_gui_frame_time = None
         self.title = QLabel(title)
         self.title.setObjectName("cameraTitle")
-        self.fps_label = QLabel("Input FPS: -- / GUI FPS: --")
-        self.fps_label.setObjectName("mutedText")
         self.image = QLabel("No Signal")
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image.setMinimumSize(280, 180)
@@ -28,7 +26,6 @@ class CameraView(QFrame):
         layout.setContentsMargins(10, 10, 10, 10)
         if show_info:
             layout.addWidget(self.title)
-            layout.addWidget(self.fps_label)
         layout.addWidget(self.image, 1)
 
     def set_frame(self, frame, input_fps=None):
@@ -60,8 +57,7 @@ class CameraView(QFrame):
 
     def update_fps_label(self):
         input_text = f"{self.input_fps:.1f}" if self.input_fps > 0 else "--"
-        gui_text = f"{self.gui_fps:.1f}" if self.gui_fps > 0 else "--"
-        self.fps_label.setText(f"Input FPS: {input_text} / GUI FPS: {gui_text}")
+        self.title.setText(f"{self.base_title}  FPS: {input_text}")
 
     def set_message(self, message: str, is_error: bool = False):
         self.image.clear()
