@@ -184,7 +184,7 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("條碼"), 3, 0)
             card.addWidget(barcode, 3, 1, 1, 2)
 
-            card.addWidget(QLabel("焦距"), 4, 0)
+            card.addWidget(QLabel("焦距方法"), 4, 0)
             card.addWidget(auto_focus, 4, 1)
             card.addWidget(manual_focus_mode, 4, 2)
             card.addWidget(QLabel("固定焦距"), 5, 0)
