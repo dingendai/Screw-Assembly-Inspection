@@ -884,6 +884,10 @@ class DecisionSettingsPage(QWidget):
         self.rule_rows = []
         self.overview_rows = {}
         self.loading_rules = False
+        self.camera_preview_views = {}
+        self.camera_preview_source = None
+        self.camera_preview_timer = QTimer(self)
+        self.camera_preview_timer.timeout.connect(self.update_camera_preview)
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
         self.autosave_timer.timeout.connect(self.autosave_decision_settings)
@@ -898,8 +902,13 @@ class DecisionSettingsPage(QWidget):
         header.addWidget(title)
         header.addStretch()
 
+        content = QHBoxLayout()
+        content.setSpacing(12)
+        content.addWidget(self.build_decision_group(), 1)
+        content.addWidget(self.build_camera_preview_group(), 1)
+
         layout.addLayout(header)
-        layout.addWidget(self.build_decision_group(), 1)
+        layout.addLayout(content, 1)
 
     def build_decision_group(self):
         group = QGroupBox("PASS / NG 條件")
@@ -922,12 +931,29 @@ class DecisionSettingsPage(QWidget):
         layout.addWidget(self.model_tabs, 1)
         return group
 
+    def build_camera_preview_group(self):
+        group = QGroupBox("相機影像")
+        layout = QVBoxLayout(group)
+        self.camera_preview_tabs = QTabWidget()
+        for camera in self.state.inspection_cameras:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(12, 12, 12, 12)
+            view = CameraView(f"Camera {camera.slot}")
+            page_layout.addWidget(view, 1)
+            self.camera_preview_views[camera.slot] = view
+            self.camera_preview_tabs.addTab(page, f"Camera {camera.slot}")
+        self.camera_preview_tabs.currentChanged.connect(self.update_camera_preview_tab)
+        layout.addWidget(self.camera_preview_tabs, 1)
+        return group
+
     def refresh(self):
         ensure_model_configs(self.state)
         self.loading_rules = True
         self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
         self.load_rule_table()
         self.loading_rules = False
+        self.update_camera_preview_tab(self.camera_preview_tabs.currentIndex())
 
     def load_rule_table(self):
         self.rule_rows = []
@@ -1093,6 +1119,53 @@ class DecisionSettingsPage(QWidget):
             overview["confidence"].setText(f"{row['confidence'].value():.3f}")
             overview["count"].setText(str(int(row["count"].currentData())))
 
+    def update_camera_preview_tab(self, index):
+        self.stop_camera_preview()
+        if index < 0 or index >= len(self.state.inspection_cameras):
+            return
+        camera = self.state.inspection_cameras[index]
+        view = self.camera_preview_views.get(camera.slot)
+        if not view:
+            return
+        source = VideoSource(
+            f"CAMERA {camera.slot}",
+            camera.device_index,
+            False,
+            getattr(camera, "focus_mode", "auto"),
+            getattr(camera, "manual_focus_value", 120),
+        )
+        self.camera_preview_source = (camera, source)
+        if source.has_error():
+            view.set_message(source.last_error, is_error=True)
+        self.camera_preview_timer.start(33)
+
+    def update_camera_preview(self):
+        if not self.camera_preview_source:
+            return
+        camera, source = self.camera_preview_source
+        view = self.camera_preview_views.get(camera.slot)
+        if not view:
+            return
+        frame = source.read()
+        if frame is None:
+            view.set_message(source.last_error or "沒有相機影像。", is_error=True)
+            return
+        frame = apply_frame_transform(
+            frame,
+            flip_horizontal=camera.flip_horizontal,
+            flip_vertical=camera.flip_vertical,
+            rotation_degrees=camera.rotation_degrees,
+        )
+        view.set_frame(frame, input_fps=source.input_fps)
+
+    def stop_camera_preview(self):
+        self.camera_preview_timer.stop()
+        if self.camera_preview_source:
+            _, source = self.camera_preview_source
+            source.release()
+            self.camera_preview_source = None
+
     def logout(self):
+        self.stop_camera_preview()
         if self.on_logout:
             self.on_logout()

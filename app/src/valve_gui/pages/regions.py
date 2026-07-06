@@ -7,9 +7,6 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QColorDialog,
-    QComboBox,
-    QDoubleSpinBox,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -26,7 +23,6 @@ from PyQt6.QtWidgets import (
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, ensure_model_configs
-from valve_gui.utils import decision_rule_key as _rule_key
 
 
 class RegionCanvas(QLabel):
@@ -189,8 +185,6 @@ class CameraRegionEditor(QWidget):
         self.source = None
         self.model_boxes = {}
         self.loading_model_selection = False
-        self.loading_decision_controls = False
-        self.decision_controls = {}
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -243,6 +237,7 @@ class CameraRegionEditor(QWidget):
         self.roi_id_spin = QSpinBox()
         self.roi_id_spin.setRange(0, 99)
         self.roi_id_spin.setSpecialValueText("—")
+        self.roi_id_spin.setValue(0)
         self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
         roi_id_row.addWidget(self.roi_id_spin)
         roi_id_row.addStretch()
@@ -258,7 +253,6 @@ class CameraRegionEditor(QWidget):
         self.model_layout.addWidget(self.model_hint)
         self.refresh_model_checkboxes()
         side_layout.addWidget(self.model_group)
-        side_layout.addWidget(self.build_decision_group())
 
         actions = QHBoxLayout()
         self.delete_button = QPushButton("刪除選取")
@@ -355,87 +349,6 @@ class CameraRegionEditor(QWidget):
         if not self.model_boxes:
             self.model_layout.addWidget(QLabel("No enabled models."))
 
-    def build_decision_group(self):
-        group = QGroupBox("判定設定")
-        layout = QVBoxLayout(group)
-        layout.setSpacing(8)
-
-        global_row = QHBoxLayout()
-        global_row.addWidget(QLabel("全域 PASS 信心值門檻"))
-        self.global_threshold = QDoubleSpinBox()
-        self.global_threshold.setRange(0.0, 1.0)
-        self.global_threshold.setSingleStep(0.05)
-        self.global_threshold.setDecimals(3)
-        self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
-        self.global_threshold.valueChanged.connect(self.persist_decision_settings)
-        global_row.addWidget(self.global_threshold)
-        global_row.addStretch()
-        layout.addLayout(global_row)
-
-        model_names = self.available_region_models()
-        if not model_names:
-            empty = QLabel("No enabled models.")
-            empty.setObjectName("mutedText")
-            layout.addWidget(empty)
-            return group
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(6)
-        grid.addWidget(QLabel("模型"), 0, 0)
-        grid.addWidget(QLabel("信心值閥值"), 0, 1)
-        grid.addWidget(QLabel("必須偵測標籤框數"), 0, 2)
-
-        self.loading_decision_controls = True
-        for row, model_name in enumerate(model_names, start=1):
-            rule = self.state.decision.model_rules.get(_rule_key(self.camera_config.slot, model_name), {})
-
-            confidence = QDoubleSpinBox()
-            confidence.setRange(0.0, 1.0)
-            confidence.setSingleStep(0.05)
-            confidence.setDecimals(3)
-            confidence.setValue(float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold)))
-            confidence.valueChanged.connect(self.persist_decision_settings)
-
-            count = QComboBox()
-            for value in range(0, 21):
-                count.addItem(str(value), value)
-            required_count = int(rule.get("required_object_count", 1))
-            if count.findData(required_count) < 0:
-                count.addItem(str(required_count), required_count)
-            count.setCurrentIndex(count.findData(required_count))
-            count.currentIndexChanged.connect(self.persist_decision_settings)
-
-            self.decision_controls[model_name] = {
-                "confidence": confidence,
-                "count": count,
-            }
-            grid.addWidget(QLabel(model_name), row, 0)
-            grid.addWidget(confidence, row, 1)
-            grid.addWidget(count, row, 2)
-        self.loading_decision_controls = False
-
-        layout.addLayout(grid)
-        return group
-
-    def persist_decision_settings(self, include_global=True):
-        if self.loading_decision_controls:
-            return
-        if include_global:
-            self.state.decision.pass_confidence_threshold = self.global_threshold.value()
-        rules = dict(self.state.decision.model_rules)
-        prefix = f"{self.camera_config.slot}::"
-        for key in list(rules):
-            if key.startswith(prefix):
-                del rules[key]
-        for model_name, controls in self.decision_controls.items():
-            rules[_rule_key(self.camera_config.slot, model_name)] = {
-                "confidence_threshold": controls["confidence"].value(),
-                "required_object_count": int(controls["count"].currentData()),
-            }
-        self.state.decision.model_rules = rules
-        save_app_config(self.state)
-
     def checked_region_model_names(self):
         return [
             model_name
@@ -470,6 +383,10 @@ class CameraRegionEditor(QWidget):
             for model_name, box in self.model_boxes.items():
                 box.setChecked(model_name in selected_models)
             self.roi_id_spin.setValue(region.get("roi_id") or 0)
+        else:
+            for box in self.model_boxes.values():
+                box.setChecked(False)
+            self.roi_id_spin.setValue(0)
         self.loading_model_selection = False
 
     def save_selected_region_models(self, _state=None):
@@ -700,8 +617,6 @@ class RegionSettingsPage(QWidget):
             editor.canvas.repaint_frame()
 
     def save_region_settings(self):
-        for editor in self.editors:
-            editor.persist_decision_settings(include_global=False)
         save_app_config(self.state)
         QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
 
