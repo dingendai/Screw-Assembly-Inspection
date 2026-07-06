@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import CameraScanWorker, VideoSource, apply_frame_transform
+from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
 from valve_gui.models import AppState, ModelConfig
@@ -62,7 +62,6 @@ class SettingsPage(QWidget):
         self._preview_debounce.setSingleShot(True)
         self._preview_debounce.setInterval(400)
         self._preview_debounce.timeout.connect(self.restart_preview)
-        self._scan_worker = None
 
         ensure_model_configs(self.state)
 
@@ -182,27 +181,7 @@ class SettingsPage(QWidget):
                 barcode, focus_mode, manual_focus, manual_focus_value,
             ))
 
-        search_button = QPushButton("搜尋相機")
-        search_button.clicked.connect(self.search_cameras)
-        self.search_camera_button = search_button
-        self.detected_label = QLabel("尚未搜尋相機")
-        self.detected_label.setObjectName("mutedText")
-
-        # 需要條碼辨識的標籤類別（逗號分隔）：偵測到這些 YOLO 類別才裁框解碼。
-        self.barcode_classes_input = QLineEdit(", ".join(self.state.barcode_label_classes))
-        self.barcode_classes_input.setPlaceholderText("例如：label, barcode（留空＝整張畫面解碼）")
-        barcode_row = QHBoxLayout()
-        barcode_row.addWidget(QLabel("需條碼辨識的標籤類別"))
-        barcode_row.addWidget(self.barcode_classes_input, 1)
-
-        action_row = QHBoxLayout()
-        action_row.addWidget(search_button)
-        action_row.addStretch()
-
         layout.addWidget(self.camera_tabs, 1)
-        layout.addLayout(action_row)
-        layout.addLayout(barcode_row)
-        layout.addWidget(self.detected_label)
         return group
 
     def build_preview_group(self):
@@ -300,7 +279,6 @@ class SettingsPage(QWidget):
             manual_focus_value.setText(str(manual_focus.value()))
             manual_focus.setEnabled(focus_mode.isChecked())
             manual_focus_value.setEnabled(focus_mode.isChecked())
-        self.barcode_classes_input.setText(", ".join(self.state.barcode_label_classes))
         self.apply_role_permissions()
         self.restart_preview()
 
@@ -309,25 +287,6 @@ class SettingsPage(QWidget):
 
     def _queue_preview_restart(self):
         self._preview_debounce.start()
-
-    def search_cameras(self):
-        self.release_external_cameras()
-        self.search_camera_button.setEnabled(False)
-        self.search_camera_button.setText("搜尋中…")
-        self._scan_worker = CameraScanWorker(parent=self)
-        self._scan_worker.finished.connect(self._on_camera_scan_done)
-        self._scan_worker.start()
-
-    def _on_camera_scan_done(self, found):
-        self.search_camera_button.setEnabled(True)
-        self.search_camera_button.setText("搜尋相機")
-        self.state.detected_cameras = found
-        if found:
-            self.detected_label.setText("已找到相機索引：" + ", ".join(str(index) for index in found))
-        else:
-            self.detected_label.setText("未找到可讀取的相機，已保留目前設定。")
-        self.refresh_camera_index_combos()
-        self.restart_preview()
 
     def restart_preview(self):
         self.stop_preview()
@@ -452,9 +411,6 @@ class SettingsPage(QWidget):
             return
 
         self.state.use_simulation = False
-        self.state.barcode_label_classes = [
-            name.strip() for name in self.barcode_classes_input.text().split(",") if name.strip()
-        ]
         self.state.settings_applied = True
         save_app_config(self.state)
         self.stop_preview()
