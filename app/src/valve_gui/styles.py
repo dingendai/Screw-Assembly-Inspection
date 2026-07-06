@@ -16,6 +16,9 @@ def apply_styles(app: QApplication, font_size: int = 14):
             spacing: 8px;
             padding: 8px;
         }
+        QToolBar QWidget {
+            background: #ffffff;
+        }
         QToolButton {
             padding: 8px 12px;
             border-radius: 6px;
