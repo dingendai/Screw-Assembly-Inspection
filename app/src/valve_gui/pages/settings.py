@@ -437,8 +437,6 @@ class SettingsPage(QWidget):
         if enter_monitor:
             self.stop_preview()
             self.on_apply()
-        else:
-            self.restart_preview()
         return True
 
     def persist_camera_settings(self):
