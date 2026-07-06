@@ -201,9 +201,9 @@ def apply_styles(app: QApplication, font_size: int = 14):
             color: #176b5d;
         }
         #cameraImage, #cameraError {
-            background: #11171c;
+            background: #ffffff;
             border-radius: 6px;
-            color: #9fb0b9;
+            color: #687981;
             min-height: 260px;
         }
         #cameraError {
