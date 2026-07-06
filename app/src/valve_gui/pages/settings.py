@@ -100,8 +100,10 @@ class SettingsPage(QWidget):
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
 
-            barcode = QCheckBox("啟用條碼辨識")
-            barcode.setChecked(config.barcode_read_enabled)
+            barcode_enabled = QCheckBox("啟動")
+            barcode_disabled = QCheckBox("停用")
+            barcode_enabled.setChecked(config.barcode_read_enabled)
+            barcode_disabled.setChecked(not config.barcode_read_enabled)
 
             auto_focus = QCheckBox("自動焦距")
             manual_focus_mode = QCheckBox("手動焦距")
@@ -152,6 +154,28 @@ class SettingsPage(QWidget):
                 update_focus_controls()
                 self._queue_preview_restart()
 
+            def set_barcode_enabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
+                if checked:
+                    disable_check.blockSignals(True)
+                    disable_check.setChecked(False)
+                    disable_check.blockSignals(False)
+                elif not disable_check.isChecked():
+                    enable_check.blockSignals(True)
+                    enable_check.setChecked(True)
+                    enable_check.blockSignals(False)
+                self._queue_preview_restart()
+
+            def set_barcode_disabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
+                if checked:
+                    enable_check.blockSignals(True)
+                    enable_check.setChecked(False)
+                    enable_check.blockSignals(False)
+                elif not enable_check.isChecked():
+                    disable_check.blockSignals(True)
+                    disable_check.setChecked(True)
+                    disable_check.blockSignals(False)
+                self._queue_preview_restart()
+
             update_focus_controls()
 
             index.currentIndexChanged.connect(self._queue_preview_restart)
@@ -159,6 +183,8 @@ class SettingsPage(QWidget):
             flip_h.stateChanged.connect(self._queue_preview_restart)
             flip_v.stateChanged.connect(self._queue_preview_restart)
             rotation.currentTextChanged.connect(self._queue_preview_restart)
+            barcode_enabled.toggled.connect(set_barcode_enabled)
+            barcode_disabled.toggled.connect(set_barcode_disabled)
             auto_focus.toggled.connect(set_auto_focus)
             manual_focus_mode.toggled.connect(set_manual_focus)
             manual_focus.valueChanged.connect(update_focus_controls)
@@ -181,8 +207,9 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("旋轉"), 2, 0)
             card.addWidget(rotation, 2, 1, 1, 2)
 
-            card.addWidget(QLabel("條碼"), 3, 0)
-            card.addWidget(barcode, 3, 1, 1, 2)
+            card.addWidget(QLabel("條碼辨識"), 3, 0)
+            card.addWidget(barcode_enabled, 3, 1)
+            card.addWidget(barcode_disabled, 3, 2)
 
             card.addWidget(QLabel("焦距方法"), 4, 0)
             card.addWidget(auto_focus, 4, 1)
@@ -196,7 +223,7 @@ class SettingsPage(QWidget):
             self.camera_tabs.addTab(camera_box, f"Camera {config.slot}")
             self.rows.append((
                 enabled, index, flip_h, flip_v, rotation,
-                barcode, auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
+                barcode_enabled, barcode_disabled, auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
             ))
 
         layout.addWidget(self.camera_tabs, 1)
@@ -245,13 +272,17 @@ class SettingsPage(QWidget):
         self.state.use_simulation = False
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, flip_h, flip_v, rotation, barcode, auto_focus, manual_focus_mode, manual_focus, manual_focus_value = controls
+            (
+                enabled, index, flip_h, flip_v, rotation, barcode_enabled, barcode_disabled,
+                auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
+            ) = controls
             enabled.setChecked(config.enabled)
             self.populate_camera_index_combo(index, config.device_index)
             flip_h.setChecked(config.flip_horizontal)
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
-            barcode.setChecked(config.barcode_read_enabled)
+            barcode_enabled.setChecked(config.barcode_read_enabled)
+            barcode_disabled.setChecked(not config.barcode_read_enabled)
             is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
             auto_focus.setChecked(not is_manual_focus)
             manual_focus_mode.setChecked(is_manual_focus)
@@ -325,7 +356,10 @@ class SettingsPage(QWidget):
     def current_enabled_camera_rows(self):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
-            enabled, index, flip_h, flip_v, rotation, barcode, _, manual_focus_mode, manual_focus, _ = controls
+            (
+                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                _, manual_focus_mode, manual_focus, _,
+            ) = controls
             if enabled.isChecked():
                 model_names = camera_model_names(self.state.inspection_cameras[slot - 1])
                 enabled_rows.append(
@@ -337,7 +371,7 @@ class SettingsPage(QWidget):
                         "flip_horizontal": flip_h.isChecked(),
                         "flip_vertical": flip_v.isChecked(),
                         "rotation_degrees": int(rotation.currentText()),
-                        "barcode_read_enabled": barcode.isChecked(),
+                        "barcode_read_enabled": barcode_enabled.isChecked(),
                         "focus_mode": "manual" if manual_focus_mode.isChecked() else "auto",
                         "manual_focus_value": manual_focus.value(),
                     }
@@ -357,13 +391,16 @@ class SettingsPage(QWidget):
         enabled_count = 0
         missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, flip_h, flip_v, rotation, barcode, _, manual_focus_mode, manual_focus, _ = controls
+            (
+                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                _, manual_focus_mode, manual_focus, _,
+            ) = controls
             config.enabled = enabled.isChecked()
             config.device_index = int(index.currentData())
             config.flip_horizontal = flip_h.isChecked()
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
-            config.barcode_read_enabled = barcode.isChecked()
+            config.barcode_read_enabled = barcode_enabled.isChecked()
             config.focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
             config.manual_focus_value = manual_focus.value()
             enabled_count += int(config.enabled)
