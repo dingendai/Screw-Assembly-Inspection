@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -140,13 +141,26 @@ class SettingsPage(QWidget):
             mode_index = focus_mode.findData(getattr(config, "focus_mode", "auto"))
             focus_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
 
-            manual_focus = QSpinBox()
+            manual_focus = QSlider(Qt.Orientation.Horizontal)
             manual_focus.setRange(0, 255)
+            manual_focus.setSingleStep(1)
+            manual_focus.setPageStep(10)
             manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
-            manual_focus.setEnabled(focus_mode.currentData() == "manual")
+            manual_focus_value = QLabel(str(manual_focus.value()))
+            manual_focus_value.setMinimumWidth(36)
+            manual_focus_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-            def update_focus_enabled(_index=None, mode_combo=focus_mode, value_spin=manual_focus):
-                value_spin.setEnabled(mode_combo.currentData() == "manual")
+            focus_value_row = QHBoxLayout()
+            focus_value_row.addWidget(manual_focus, 1)
+            focus_value_row.addWidget(manual_focus_value)
+
+            def update_focus_controls(_value=None, mode_combo=focus_mode, slider=manual_focus, value_label=manual_focus_value):
+                enabled_manual = mode_combo.currentData() == "manual"
+                slider.setEnabled(enabled_manual)
+                value_label.setEnabled(enabled_manual)
+                value_label.setText(str(slider.value()))
+
+            update_focus_controls()
 
             index.currentIndexChanged.connect(self._queue_preview_restart)
             enabled.stateChanged.connect(self._queue_preview_restart)
@@ -154,8 +168,9 @@ class SettingsPage(QWidget):
             flip_v.stateChanged.connect(self._queue_preview_restart)
             rotation.currentTextChanged.connect(self._queue_preview_restart)
             model_list.itemChanged.connect(self._queue_preview_restart)
-            focus_mode.currentIndexChanged.connect(update_focus_enabled)
+            focus_mode.currentIndexChanged.connect(update_focus_controls)
             focus_mode.currentIndexChanged.connect(self._queue_preview_restart)
+            manual_focus.valueChanged.connect(update_focus_controls)
             manual_focus.valueChanged.connect(self._queue_preview_restart)
 
             camera_box = QGroupBox(f"Camera {config.slot}")
@@ -179,14 +194,17 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("焦距模式"), 4, 0)
             card.addWidget(focus_mode, 4, 1, 1, 2)
             card.addWidget(QLabel("固定焦距"), 5, 0)
-            card.addWidget(manual_focus, 5, 1, 1, 2)
+            card.addLayout(focus_value_row, 5, 1, 1, 2)
 
             card.addWidget(QLabel("指定模型"), 6, 0, 1, 3)
             card.addWidget(model_list, 7, 0, 1, 3)
             card.setColumnStretch(2, 1)
 
             camera_grid.addWidget(camera_box, row // 2, row % 2)
-            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus))
+            self.rows.append((
+                enabled, index, model_list, flip_h, flip_v, rotation,
+                barcode, focus_mode, manual_focus, manual_focus_value,
+            ))
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
@@ -328,7 +346,7 @@ class SettingsPage(QWidget):
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus, manual_focus_value = controls
             enabled.setChecked(config.enabled)
             self.populate_camera_index_combo(index, config.device_index)
             self.populate_model_list(model_list, camera_model_names(config))
@@ -339,7 +357,9 @@ class SettingsPage(QWidget):
             mode_index = focus_mode.findData(getattr(config, "focus_mode", "auto"))
             focus_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
             manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
+            manual_focus_value.setText(str(manual_focus.value()))
             manual_focus.setEnabled(focus_mode.currentData() == "manual")
+            manual_focus_value.setEnabled(focus_mode.currentData() == "manual")
         self.barcode_classes_input.setText(", ".join(self.state.barcode_label_classes))
         self.load_model_table()
         self.apply_role_permissions()
@@ -519,7 +539,7 @@ class SettingsPage(QWidget):
     def current_enabled_camera_rows(self):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus, _ = controls
             if enabled.isChecked():
                 model_names = self.checked_model_names(model_list)
                 enabled_rows.append(
@@ -572,7 +592,7 @@ class SettingsPage(QWidget):
         enabled_count = 0
         missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus, _ = controls
             config.enabled = enabled.isChecked()
             config.device_index = int(index.currentData())
             selected_models = self.checked_model_names(model_list)
