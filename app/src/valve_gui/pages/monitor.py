@@ -202,9 +202,7 @@ class MonitorPage(QWidget):
         enabled = [config for config in self.state.inspection_cameras if config.enabled]
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
-            view = CameraView(
-                f"Camera {config.slot} / Device {config.device_index} / Model: {format_camera_model_names(config)}"
-            )
+            view = CameraView(f"Camera {config.slot}")
             self.views.append((config, view))
             self.grid.addWidget(view, idx // columns, idx % columns)
 

@@ -281,9 +281,7 @@ class SettingsPage(QWidget):
             return
 
         for idx, camera in enumerate(enabled_rows):
-            view = CameraView(
-                f"Camera {camera['slot']} / Device {camera['device_index']} / Model: {camera['model_name'] or '--'}"
-            )
+            view = CameraView(f"Camera {camera['slot']}")
             source = VideoSource(
                 f"CAMERA {camera['slot']}",
                 camera["device_index"],
