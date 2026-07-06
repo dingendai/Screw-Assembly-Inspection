@@ -15,7 +15,13 @@ from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.qc_products import ProductMasterPage
 from valve_gui.pages.qc_stats import StatisticsPage
 from valve_gui.pages.regions import RegionSettingsPage
-from valve_gui.pages.settings import DisplaySettingsPage, ModelSettingsPage, SettingsPage
+from valve_gui.pages.settings import (
+    CameraModelSettingsPage,
+    DecisionSettingsPage,
+    DisplaySettingsPage,
+    ModelSettingsPage,
+    SettingsPage,
+)
 from valve_gui.pages.users import UserManagementPage
 from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import (
@@ -63,6 +69,8 @@ class MainWindow(QMainWindow):
             on_logout=self.logout,
         )
         self.model_page = ModelSettingsPage(self.state, self.after_model_settings_saved, self.logout)
+        self.camera_model_page = CameraModelSettingsPage(self.state, self.after_model_settings_saved, self.logout)
+        self.decision_page = DecisionSettingsPage(self.state, self.logout)
         self.history_page = HistoryPage(self.state)
         self.qc_stats_page = StatisticsPage(self.state)
         self.qc_products_page = ProductMasterPage(self.state)
@@ -73,6 +81,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.model_page)
+        self.stack.addWidget(self.camera_model_page)
+        self.stack.addWidget(self.decision_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.qc_stats_page)
@@ -139,7 +149,9 @@ class MainWindow(QMainWindow):
             ("login", "登入", self.show_login, True),
             ("models", "S1 模型清單", self.show_models, True),
             ("settings", "S2 相機設定", self.show_settings, True),
-            ("regions", "指定範圍監視", self.show_region_settings, True),
+            ("camera_models", "S3 相機模型設定", self.show_camera_models, True),
+            ("regions", "S4 範圍監視", self.show_region_settings, True),
+            ("decision", "S5 判定設定", self.show_decision_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
@@ -194,6 +206,20 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["camera_models"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
+        self.actions["decision"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["models"].setVisible(
             logged_in and has_permission(
                 self.state.operator_role,
@@ -240,7 +266,9 @@ class MainWindow(QMainWindow):
             self.login_page: "login",
             self.settings_page: "settings",
             self.model_page: "models",
+            self.camera_model_page: "camera_models",
             self.region_page: "regions",
+            self.decision_page: "decision",
             self.monitor_page: "monitor",
             self.history_page: "history",
             self.qc_stats_page: "qc_stats",
@@ -288,11 +316,23 @@ class MainWindow(QMainWindow):
         ):
             return self.model_page.save
         if (
+            current == self.camera_model_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
+        ):
+            return self.camera_model_page.save
+        if (
             current == self.region_page
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.region_page.save_region_settings
+        if (
+            current == self.decision_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.decision_page.save_decision_settings
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -352,6 +392,17 @@ class MainWindow(QMainWindow):
         self.model_page.refresh()
         self.stack.setCurrentWidget(self.model_page)
 
+    def show_camera_models(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入相機模型設定。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.camera_model_page.refresh()
+        self.stack.setCurrentWidget(self.camera_model_page)
+
     def show_display_settings(self):
         if self.state.is_logged_in and not has_permission(
             self.state.operator_role,
@@ -369,12 +420,23 @@ class MainWindow(QMainWindow):
         if not self.require_login():
             return
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色無法進入指定範圍監視。")
+            QMessageBox.warning(self, "權限不足", "目前角色無法進入範圍監視。")
             self.show_monitor()
             return
         self.release_all_hardware()
         self.region_page.refresh()
         self.stack.setCurrentWidget(self.region_page)
+
+    def show_decision_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入判定設定。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.decision_page.refresh()
+        self.stack.setCurrentWidget(self.decision_page)
 
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
@@ -412,6 +474,8 @@ class MainWindow(QMainWindow):
     def after_model_settings_saved(self):
         self.monitor_page.router.clear_model_cache()
         self.settings_page.refresh_camera_model_combos()
+        if self.stack.currentWidget() == self.camera_model_page:
+            self.camera_model_page.refresh()
         self.update_navigation()
 
     def show_monitor(self):
@@ -528,7 +592,7 @@ class MainWindow(QMainWindow):
     def release_all_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
-        self.model_page.stop_camera_photo_preview()
+        self.camera_model_page.stop_camera_photo_preview()
         self.region_page.stop()
         self.login_page.stop()
 
