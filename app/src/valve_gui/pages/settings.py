@@ -190,7 +190,7 @@ class SettingsPage(QWidget):
             manual_focus.valueChanged.connect(update_focus_controls)
             manual_focus.valueChanged.connect(self._queue_preview_restart)
 
-            camera_box = QGroupBox(f"Camera {config.slot}")
+            camera_box = QGroupBox()
             camera_box.setObjectName("cameraSettingsCard")
             card = QGridLayout(camera_box)
             card.setContentsMargins(12, 14, 12, 12)
