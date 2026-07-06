@@ -416,10 +416,17 @@ class ModelSettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        layout.addWidget(self.build_model_group(), 1)
+        self.model_tabs = QTabWidget()
+        model_list_page = QWidget()
+        model_list_layout = QVBoxLayout(model_list_page)
+        model_list_layout.setContentsMargins(12, 12, 12, 12)
+        model_list_layout.addWidget(self.build_model_group(), 1)
+        self.model_tabs.addTab(model_list_page, "模型清單")
+
+        layout.addWidget(self.model_tabs, 1)
 
     def build_model_group(self):
-        group = QGroupBox("模型清單")
+        group = QGroupBox()
         layout = QVBoxLayout(group)
         self.model_table = QTableWidget(0, 4)
         self.model_table.setHorizontalHeaderLabels(["啟用", "模型名稱", "模態", "模型檔案"])
