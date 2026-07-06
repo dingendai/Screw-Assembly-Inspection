@@ -172,6 +172,12 @@ def apply_styles(app: QApplication, font_size: int = 14):
             spacing: 8px;
             padding: 4px 2px;
         }
+        QRadioButton {
+            color: #25323a;
+            font-weight: 700;
+            spacing: 8px;
+            padding: 4px 2px;
+        }
         QCheckBox::indicator {
             width: 24px;
             height: 24px;
@@ -179,7 +185,18 @@ def apply_styles(app: QApplication, font_size: int = 14):
             border: 2px solid #7c8d96;
             background: #ffffff;
         }
+        QRadioButton::indicator {
+            width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            border: 2px solid #7c8d96;
+            background: #ffffff;
+        }
         QCheckBox::indicator:hover {
+            border: 2px solid #176b5d;
+            background: #eef7f4;
+        }
+        QRadioButton::indicator:hover {
             border: 2px solid #176b5d;
             background: #eef7f4;
         }
@@ -188,10 +205,22 @@ def apply_styles(app: QApplication, font_size: int = 14):
             background: #176b5d;
             image: none;
         }
+        QRadioButton::indicator:checked {
+            border: 6px solid #176b5d;
+            background: #ffffff;
+        }
         QCheckBox::indicator:checked:hover {
             background: #135b50;
         }
+        QRadioButton::indicator:checked:hover {
+            border: 6px solid #135b50;
+            background: #ffffff;
+        }
         QCheckBox::indicator:disabled {
+            border: 2px solid #c4cdd2;
+            background: #eef2f4;
+        }
+        QRadioButton::indicator:disabled {
             border: 2px solid #c4cdd2;
             background: #eef2f4;
         }
