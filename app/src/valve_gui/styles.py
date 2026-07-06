@@ -206,6 +206,15 @@ def apply_styles(app: QApplication, font_size: int = 14):
         #primaryButton:hover {
             background: #135b50;
         }
+        #loginPanel QPushButton#primaryButton {
+            background: #176b5d;
+            color: #ffffff;
+            border: 1px solid #176b5d;
+            font-weight: 700;
+        }
+        #loginPanel QPushButton#primaryButton:hover {
+            background: #135b50;
+        }
         #activeDetectionButton {
             background: #f59e0b;
             color: #172026;
