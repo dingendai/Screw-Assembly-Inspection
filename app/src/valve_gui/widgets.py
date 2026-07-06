@@ -3,15 +3,16 @@ import time
 import cv2
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
+from PyQt6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
 
 class CameraView(QFrame):
-    def __init__(self, title: str, show_info: bool = True):
+    def __init__(self, title: str, show_info: bool = True, fill_mode: bool = False):
         super().__init__()
         self.setObjectName("cameraCard")
         self.base_title = title
         self.show_info = show_info
+        self.fill_mode = fill_mode
         self.input_fps = 0.0
         self.gui_fps = 0.0
         self._last_gui_frame_time = None
@@ -20,6 +21,7 @@ class CameraView(QFrame):
         self.image = QLabel("No Signal")
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image.setMinimumSize(280, 180)
+        self.image.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.image.setObjectName("cameraImage")
 
         layout = QVBoxLayout(self)
@@ -38,13 +40,21 @@ class CameraView(QFrame):
         h, w, ch = rgb.shape
         image = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(image)
-        self.image.setPixmap(
-            pixmap.scaled(
-                self.image.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        aspect_mode = (
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding
+            if self.fill_mode
+            else Qt.AspectRatioMode.KeepAspectRatio
         )
+        scaled = pixmap.scaled(
+            self.image.size(),
+            aspect_mode,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if self.fill_mode:
+            x = max(0, (scaled.width() - self.image.width()) // 2)
+            y = max(0, (scaled.height() - self.image.height()) // 2)
+            scaled = scaled.copy(x, y, self.image.width(), self.image.height())
+        self.image.setPixmap(scaled)
 
     def _mark_gui_frame_displayed(self):
         now = time.perf_counter()
