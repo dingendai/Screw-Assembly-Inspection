@@ -132,6 +132,8 @@ def load_app_config(state):
                 detection_regions=normalise_regions(item.get("detection_regions", [])),
                 exclusion_regions=normalise_regions(item.get("exclusion_regions", [])),
                 barcode_read_enabled=bool(item.get("barcode_read_enabled", False)),
+                focus_mode=normalise_focus_mode(item.get("focus_mode", "auto")),
+                manual_focus_value=normalise_focus_value(item.get("manual_focus_value", 120)),
             )
             for index, item in enumerate(cameras)
         ]
@@ -186,6 +188,18 @@ def normalise_model_names(value):
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def normalise_focus_mode(value):
+    mode = str(value).strip().lower()
+    return mode if mode in {"auto", "manual"} else "auto"
+
+
+def normalise_focus_value(value):
+    try:
+        return max(0, min(255, int(value)))
+    except (TypeError, ValueError):
+        return 120
 
 
 def normalise_decision_rules(value):

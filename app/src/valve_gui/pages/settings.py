@@ -45,6 +45,10 @@ DISPLAY_MODE_OPTIONS = [
     ("custom", "指定 GUI 畫面大小"),
     ("fullscreen", "全螢幕"),
 ]
+FOCUS_MODE_OPTIONS = [
+    ("auto", "原廠自動焦距"),
+    ("manual", "手動固定焦距"),
+]
 
 
 class SettingsPage(QWidget):
@@ -130,12 +134,29 @@ class SettingsPage(QWidget):
             barcode = QCheckBox("啟用條碼辨識")
             barcode.setChecked(config.barcode_read_enabled)
 
+            focus_mode = QComboBox()
+            for value, label in FOCUS_MODE_OPTIONS:
+                focus_mode.addItem(label, value)
+            mode_index = focus_mode.findData(getattr(config, "focus_mode", "auto"))
+            focus_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
+
+            manual_focus = QSpinBox()
+            manual_focus.setRange(0, 255)
+            manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
+            manual_focus.setEnabled(focus_mode.currentData() == "manual")
+
+            def update_focus_enabled(_index=None, mode_combo=focus_mode, value_spin=manual_focus):
+                value_spin.setEnabled(mode_combo.currentData() == "manual")
+
             index.currentIndexChanged.connect(self._queue_preview_restart)
             enabled.stateChanged.connect(self._queue_preview_restart)
             flip_h.stateChanged.connect(self._queue_preview_restart)
             flip_v.stateChanged.connect(self._queue_preview_restart)
             rotation.currentTextChanged.connect(self._queue_preview_restart)
             model_list.itemChanged.connect(self._queue_preview_restart)
+            focus_mode.currentIndexChanged.connect(update_focus_enabled)
+            focus_mode.currentIndexChanged.connect(self._queue_preview_restart)
+            manual_focus.valueChanged.connect(self._queue_preview_restart)
 
             camera_box = QGroupBox(f"Camera {config.slot}")
             card = QGridLayout(camera_box)
@@ -155,12 +176,17 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("條碼"), 3, 0)
             card.addWidget(barcode, 3, 1, 1, 2)
 
-            card.addWidget(QLabel("指定模型"), 4, 0, 1, 3)
-            card.addWidget(model_list, 5, 0, 1, 3)
+            card.addWidget(QLabel("焦距模式"), 4, 0)
+            card.addWidget(focus_mode, 4, 1, 1, 2)
+            card.addWidget(QLabel("固定焦距"), 5, 0)
+            card.addWidget(manual_focus, 5, 1, 1, 2)
+
+            card.addWidget(QLabel("指定模型"), 6, 0, 1, 3)
+            card.addWidget(model_list, 7, 0, 1, 3)
             card.setColumnStretch(2, 1)
 
             camera_grid.addWidget(camera_box, row // 2, row % 2)
-            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation, barcode))
+            self.rows.append((enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus))
 
         self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
         self.simulation_box.setChecked(self.state.use_simulation)
@@ -302,7 +328,7 @@ class SettingsPage(QWidget):
         self.simulation_box.setChecked(self.state.use_simulation)
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
             enabled.setChecked(config.enabled)
             self.populate_camera_index_combo(index, config.device_index)
             self.populate_model_list(model_list, camera_model_names(config))
@@ -310,6 +336,10 @@ class SettingsPage(QWidget):
             flip_v.setChecked(config.flip_vertical)
             rotation.setCurrentText(str(config.rotation_degrees))
             barcode.setChecked(config.barcode_read_enabled)
+            mode_index = focus_mode.findData(getattr(config, "focus_mode", "auto"))
+            focus_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
+            manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
+            manual_focus.setEnabled(focus_mode.currentData() == "manual")
         self.barcode_classes_input.setText(", ".join(self.state.barcode_label_classes))
         self.load_model_table()
         self.apply_role_permissions()
@@ -438,7 +468,13 @@ class SettingsPage(QWidget):
             view = CameraView(
                 f"Camera {camera['slot']} / Device {camera['device_index']} / Model: {camera['model_name'] or '--'}"
             )
-            source = VideoSource(f"CAMERA {camera['slot']}", camera["device_index"], self.simulation_box.isChecked())
+            source = VideoSource(
+                f"CAMERA {camera['slot']}",
+                camera["device_index"],
+                self.simulation_box.isChecked(),
+                camera["focus_mode"],
+                camera["manual_focus_value"],
+            )
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
                 errors.append(source.last_error)
@@ -483,7 +519,7 @@ class SettingsPage(QWidget):
     def current_enabled_camera_rows(self):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
             if enabled.isChecked():
                 model_names = self.checked_model_names(model_list)
                 enabled_rows.append(
@@ -496,6 +532,8 @@ class SettingsPage(QWidget):
                         "flip_vertical": flip_v.isChecked(),
                         "rotation_degrees": int(rotation.currentText()),
                         "barcode_read_enabled": barcode.isChecked(),
+                        "focus_mode": focus_mode.currentData() or "auto",
+                        "manual_focus_value": manual_focus.value(),
                     }
                 )
         return enabled_rows
@@ -534,7 +572,7 @@ class SettingsPage(QWidget):
         enabled_count = 0
         missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
-            enabled, index, model_list, flip_h, flip_v, rotation, barcode = controls
+            enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus = controls
             config.enabled = enabled.isChecked()
             config.device_index = int(index.currentData())
             selected_models = self.checked_model_names(model_list)
@@ -543,6 +581,8 @@ class SettingsPage(QWidget):
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
             config.barcode_read_enabled = barcode.isChecked()
+            config.focus_mode = focus_mode.currentData() or "auto"
+            config.manual_focus_value = manual_focus.value()
             enabled_count += int(config.enabled)
             if config.enabled and not selected_models:
                 missing_model_slots.append(f"Camera {config.slot}")

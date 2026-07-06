@@ -35,6 +35,8 @@ class CameraModel(BaseModel):
     detection_regions: list[dict] = Field(default_factory=list)
     exclusion_regions: list[dict] = Field(default_factory=list)
     barcode_read_enabled: bool = False
+    focus_mode: str = "auto"
+    manual_focus_value: int = 120
 
 
 class CamerasUpdate(BaseModel):

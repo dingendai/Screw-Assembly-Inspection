@@ -214,7 +214,13 @@ class MonitorPage(QWidget):
         self.refresh()
         errors = []
         for config, _ in self.views:
-            source = VideoSource(f"CAMERA {config.slot}", config.device_index, self.state.use_simulation)
+            source = VideoSource(
+                f"CAMERA {config.slot}",
+                config.device_index,
+                self.state.use_simulation,
+                getattr(config, "focus_mode", "auto"),
+                getattr(config, "manual_focus_value", 120),
+            )
             if source.has_error():
                 errors.append(source.last_error)
             self.sources.append((config.slot, source))

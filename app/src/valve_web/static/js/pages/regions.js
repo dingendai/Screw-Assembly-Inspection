@@ -167,6 +167,8 @@ export async function renderRegions(view) {
         region_detection_enabled: c.region_detection_enabled,
         detection_regions: c.detection_regions, exclusion_regions: c.exclusion_regions,
         barcode_read_enabled: c.barcode_read_enabled,
+        focus_mode: c.focus_mode || "auto",
+        manual_focus_value: c.manual_focus_value ?? 120,
       })),
       region_overlay: {
         show_on_monitor: showBox.checked,

@@ -313,6 +313,8 @@ class CameraRegionEditor(QWidget):
             f"CAMERA {self.camera_config.slot}",
             self.camera_config.device_index,
             self.state.use_simulation,
+            getattr(self.camera_config, "focus_mode", "auto"),
+            getattr(self.camera_config, "manual_focus_value", 120),
         )
 
     def stop(self):

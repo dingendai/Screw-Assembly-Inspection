@@ -14,6 +14,8 @@ from valve_gui.config_store import (
     normalise_color,
     normalise_color_map,
     normalise_decision_rules,
+    normalise_focus_mode,
+    normalise_focus_value,
     normalise_regions,
     save_app_config,
 )
@@ -66,6 +68,8 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
                 detection_regions=normalise_regions([dict(r) for r in item.detection_regions]),
                 exclusion_regions=normalise_regions([dict(r) for r in item.exclusion_regions]),
                 barcode_read_enabled=bool(item.barcode_read_enabled),
+                focus_mode=normalise_focus_mode(item.focus_mode),
+                manual_focus_value=normalise_focus_value(item.manual_focus_value),
             )
         )
     for camera in cameras:

@@ -24,7 +24,7 @@ export async function renderSettings(view) {
 
   const camRows = cfg.cameras.map((c) => buildCameraRow(c, modelNames));
   const camTable = h("table", {},
-    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "條碼辨識", "模型"].map((t) => h("th", {}, t)))),
+    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "條碼辨識", "焦距模式", "固定焦距", "模型"].map((t) => h("th", {}, t)))),
     h("tbody", {}, ...camRows.map((r) => r.tr))
   );
 
@@ -122,6 +122,21 @@ function buildCameraRow(c, modelNames) {
   const rot = h("select", {}, ...[0, 90, 180, 270].map((d) => h("option", { value: d }, d + "°")));
   rot.value = c.rotation_degrees;
   const barcode = h("input", { type: "checkbox" }); barcode.checked = !!c.barcode_read_enabled;
+  const focusMode = h("select", {},
+    h("option", { value: "auto" }, "原廠自動焦距"),
+    h("option", { value: "manual" }, "手動固定焦距")
+  );
+  focusMode.value = c.focus_mode === "manual" ? "manual" : "auto";
+  const manualFocus = h("input", {
+    type: "number",
+    min: 0,
+    max: 255,
+    value: Number.isFinite(Number(c.manual_focus_value)) ? c.manual_focus_value : 120,
+    style: "width:80px",
+  });
+  function syncFocusInput() { manualFocus.disabled = focusMode.value !== "manual"; }
+  focusMode.addEventListener("change", syncFocusInput);
+  syncFocusInput();
   const assigned = new Set(c.assigned_model_names || []);
   const modelChecks = modelNames().map((name) => {
     const cb = h("input", { type: "checkbox" }); cb.checked = assigned.has(name);
@@ -129,11 +144,17 @@ function buildCameraRow(c, modelNames) {
     return h("label", { style: "display:block" }, cb, " " + name);
   });
   const modelCell = h("div", {}, ...(modelChecks.length ? modelChecks : [h("span", { class: "muted" }, "無可用模型")]));
+  const readFocusValue = () => {
+    const value = parseInt(manualFocus.value);
+    if (Number.isNaN(value)) return 120;
+    return Math.max(0, Math.min(255, value));
+  };
 
   return {
     tr: h("tr", {},
       h("td", {}, enabled), h("td", {}, "C" + c.slot), h("td", {}, dev),
-      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot), h("td", {}, barcode), h("td", {}, modelCell)),
+      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot), h("td", {}, barcode),
+      h("td", {}, focusMode), h("td", {}, manualFocus), h("td", {}, modelCell)),
     read: () => ({
       slot: c.slot,
       device_index: parseInt(dev.value) || 0,
@@ -142,6 +163,8 @@ function buildCameraRow(c, modelNames) {
       flip_vertical: fv.checked,
       rotation_degrees: parseInt(rot.value) || 0,
       barcode_read_enabled: barcode.checked,
+      focus_mode: focusMode.value === "manual" ? "manual" : "auto",
+      manual_focus_value: readFocusValue(),
       assigned_model_names: modelChecks.map((l) => l.firstChild).filter((cb) => cb.checked).map((cb) => cb._name),
       region_detection_enabled: c.region_detection_enabled,
       detection_regions: c.detection_regions || [],

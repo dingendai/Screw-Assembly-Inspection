@@ -16,11 +16,12 @@ from valve_gui.camera import VideoSource, apply_frame_transform
 
 
 class _SlotWorker:
-    def __init__(self, slot: int, device_index: int, simulate: bool, transform: dict):
+    def __init__(self, slot: int, device_index: int, simulate: bool, transform: dict, focus: dict | None = None):
         self.slot = slot
         self.device_index = device_index
         self.simulate = simulate
         self.transform = transform
+        self.focus = focus or {}
         self._source: VideoSource | None = None
         self._frame = None
         self._lock = threading.Lock()
@@ -30,7 +31,13 @@ class _SlotWorker:
         self.input_fps = 0.0
 
     def start(self):
-        self._source = VideoSource(f"CAMERA {self.slot}", self.device_index, self.simulate)
+        self._source = VideoSource(
+            f"CAMERA {self.slot}",
+            self.device_index,
+            self.simulate,
+            self.focus.get("focus_mode", "auto"),
+            self.focus.get("manual_focus_value", 120),
+        )
         if self._source.has_error():
             self.last_error = self._source.last_error
         self._thread = threading.Thread(target=self._run, name=f"cam-slot-{self.slot}", daemon=True)
@@ -128,6 +135,10 @@ class CameraManager:
                         "flip_horizontal": camera.flip_horizontal,
                         "flip_vertical": camera.flip_vertical,
                         "rotation_degrees": camera.rotation_degrees,
+                    },
+                    focus={
+                        "focus_mode": getattr(camera, "focus_mode", "auto"),
+                        "manual_focus_value": getattr(camera, "manual_focus_value", 120),
                     },
                 )
                 worker.start()

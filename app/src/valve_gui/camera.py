@@ -97,7 +97,7 @@ def roi_id_detections(detection_regions, yolo_boxes_xyxy, frame_w, frame_h) -> d
 
 
 class VideoSource:
-    def __init__(self, label: str, index: int, simulate: bool):
+    def __init__(self, label: str, index: int, simulate: bool, focus_mode="auto", manual_focus_value=120):
         self.label = label
         self.index = index
         self.requested_simulation = simulate
@@ -105,6 +105,7 @@ class VideoSource:
         self.capture = None
         self.counter = 0
         self.last_error = ""
+        self.focus_status = ""
         self.input_fps = 0.0
         self._last_frame_time = None
         if not simulate:
@@ -117,6 +118,26 @@ class VideoSource:
                     f"{label} / Device {index}: 無法開啟相機。"
                     "請確認相機已連接、未被其他程式占用，或改用模擬影像。"
                 )
+            else:
+                self.apply_focus_settings(focus_mode, manual_focus_value)
+
+    def apply_focus_settings(self, focus_mode, manual_focus_value):
+        if focus_mode != "manual" or not self.capture or not self.capture.isOpened():
+            return
+        try:
+            value = max(0, min(255, int(manual_focus_value)))
+        except (TypeError, ValueError):
+            value = 120
+        try:
+            set_auto = self.capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+            set_focus = self.capture.set(cv2.CAP_PROP_FOCUS, value)
+            readback = self.capture.get(cv2.CAP_PROP_FOCUS)
+            self.focus_status = (
+                f"manual focus requested={value} "
+                f"set_auto={set_auto} set_focus={set_focus} readback={readback}"
+            )
+        except Exception as exc:
+            self.focus_status = f"manual focus requested={value} error={exc}"
 
     def read(self):
         if self.capture and self.capture.isOpened():
