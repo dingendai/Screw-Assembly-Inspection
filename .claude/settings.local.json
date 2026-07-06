@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(.venvScriptspython.exe -c ' *)",
+      "Bash(py --version)",
+      "Bash(where python *)",
+      "Bash('C:\\\\Users\\\\guan0\\\\anaconda3\\\\python.exe' -c ' *)",
+      "Bash('.venv\\\\Scripts\\\\python.exe' -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(PYTHONPATH=app/src .venv/Scripts/python.exe -c ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\guan0\\\\Desktop\\\\screw_assembly_inspection\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-Table -AutoSize)"
+    ]
+  }
+}
