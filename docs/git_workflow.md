@@ -5,6 +5,7 @@
 * 保持主分支穩定可用
 * 避免互相覆蓋程式
 * 簡化流程，不增加負擔
+* 聚焦推論、檢測與展示功能
 
 ---
 
@@ -12,19 +13,21 @@
 
 ```text
 main            # 穩定版本（可展示 / 可執行）
-training/*      # 模型訓練相關
-app/*           # 主程式（推論 / UI / API）
+app/*           # 主程式（推論 / 檢測 / UI / API）
 docs/*          # 文件與規格
+chore/*         # 結構調整、設定、雜項維護
 ```
 
 ### 範例
 
 ```text
-training/init-env
-training/dataset-setup
 app/basic-inference
-docs/annotation-spec
+app/detection-ui
+docs/detection-spec
+chore/project-structure
 ```
+
+模型訓練、dataset 整理與實驗管理不在本專案分支策略內，相關工作應在 YOLO-TrainKit 進行。
 
 ---
 
@@ -38,14 +41,14 @@ git checkout main
 git pull
 
 # 2. 開新分支
-git checkout -b training/xxx   # 或 app/xxx
+git checkout -b app/xxx   # 或 docs/xxx、chore/xxx
 
 # 3. 開發 + commit
 git add .
 git commit -m "feat: add xxx"
 
 # 4. 推上 GitHub
-git push origin training/xxx
+git push origin app/xxx
 ```
 
 ---
@@ -77,48 +80,50 @@ refactor: 重構（不改功能）
 ### 範例
 
 ```text
-feat: add YOLO training script
-fix: correct dataset path
-docs: update annotation spec
-chore: add .gitkeep files
+feat: add image inference endpoint
+fix: correct model path
+docs: update detection spec
+chore: update project structure
 ```
 
 ---
 
-## 禁止事項（避免爆炸）
+## 禁止事項
 
 ```text
 不要直接 push main
 不要上傳 dataset
 不要上傳模型權重（*.pt）
+不要將訓練實驗輸出納入 Git
 不要覆蓋別人的檔案不討論
 ```
 
 ---
 
-## Dataset & Model 規則
+## Model 規則
 
 ```text
-dataset / model 不走 Git
+model 不走 Git
 ```
 
 統一方式：
 
 ```text
-Google Drive / 雲端共享
-本地放在：
-   training/data/
+由 YOLO-TrainKit 完成訓練、驗證、整理與封存
+正式推論模型本地放在：
    models/
 ```
+
+本專案只使用 `models/` 中的正式推論模型，不使用訓練實驗輸出作為模型載入來源。
 
 ---
 
 ## 分工建議
 
 ```text
-A：training（資料處理 / YOLO）
-B：app（推論 / UI / API）
-C：docs / 標註 / 測試
+A：app（推論 / 檢測）
+B：app（UI / API / 展示）
+C：docs / 檢測規格 / 測試
 ```
 
 但：

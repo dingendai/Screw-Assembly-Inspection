@@ -1,8 +1,0 @@
-path: C:/Python/screw_assembly_inspection/training/data/yolo_dataset
-train: images/train
-val: images/val
-
-names:
-  0: screw_ok
-  1: screw_not_locked
-  2: screw_missing
