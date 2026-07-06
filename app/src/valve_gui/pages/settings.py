@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSlider,
     QSpinBox,
     QTableWidget,
@@ -104,8 +103,8 @@ class SettingsPage(QWidget):
             barcode = QCheckBox("啟用條碼辨識")
             barcode.setChecked(config.barcode_read_enabled)
 
-            auto_focus = QRadioButton("自動焦距")
-            manual_focus_mode = QRadioButton("手動焦距")
+            auto_focus = QCheckBox("自動焦距")
+            manual_focus_mode = QCheckBox("手動焦距")
             is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
             auto_focus.setChecked(not is_manual_focus)
             manual_focus_mode.setChecked(is_manual_focus)
@@ -129,6 +128,30 @@ class SettingsPage(QWidget):
                 value_label.setEnabled(enabled_manual)
                 value_label.setText(str(slider.value()))
 
+            def set_auto_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode):
+                if checked:
+                    manual_check.blockSignals(True)
+                    manual_check.setChecked(False)
+                    manual_check.blockSignals(False)
+                elif not manual_check.isChecked():
+                    auto_check.blockSignals(True)
+                    auto_check.setChecked(True)
+                    auto_check.blockSignals(False)
+                update_focus_controls()
+                self._queue_preview_restart()
+
+            def set_manual_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode):
+                if checked:
+                    auto_check.blockSignals(True)
+                    auto_check.setChecked(False)
+                    auto_check.blockSignals(False)
+                elif not auto_check.isChecked():
+                    manual_check.blockSignals(True)
+                    manual_check.setChecked(True)
+                    manual_check.blockSignals(False)
+                update_focus_controls()
+                self._queue_preview_restart()
+
             update_focus_controls()
 
             index.currentIndexChanged.connect(self._queue_preview_restart)
@@ -136,10 +159,8 @@ class SettingsPage(QWidget):
             flip_h.stateChanged.connect(self._queue_preview_restart)
             flip_v.stateChanged.connect(self._queue_preview_restart)
             rotation.currentTextChanged.connect(self._queue_preview_restart)
-            auto_focus.toggled.connect(update_focus_controls)
-            auto_focus.toggled.connect(self._queue_preview_restart)
-            manual_focus_mode.toggled.connect(update_focus_controls)
-            manual_focus_mode.toggled.connect(self._queue_preview_restart)
+            auto_focus.toggled.connect(set_auto_focus)
+            manual_focus_mode.toggled.connect(set_manual_focus)
             manual_focus.valueChanged.connect(update_focus_controls)
             manual_focus.valueChanged.connect(self._queue_preview_restart)
 
