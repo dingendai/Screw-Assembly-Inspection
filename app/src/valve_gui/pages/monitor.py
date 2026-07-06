@@ -164,8 +164,8 @@ class MonitorPage(QWidget):
         bottom_controls.addLayout(camera_actions)
 
         side_layout.addLayout(bottom_controls)
-        side.setMinimumWidth(420)
-        side.setMaximumWidth(520)
+        side.setMinimumWidth(560)
+        side.setMaximumWidth(680)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
