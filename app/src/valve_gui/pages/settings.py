@@ -26,7 +26,13 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
+from valve_gui.model_registry import (
+    camera_model_names,
+    enabled_model_names,
+    ensure_model_configs,
+    model_by_name,
+    set_camera_model_names,
+)
 from valve_gui.models import AppState, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
@@ -411,6 +417,7 @@ class ModelSettingsPage(QWidget):
         self.state = state
         self.on_saved = on_saved
         self.on_logout = on_logout
+        self.camera_model_tables = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -422,6 +429,8 @@ class ModelSettingsPage(QWidget):
         model_list_layout.setContentsMargins(12, 12, 12, 12)
         model_list_layout.addWidget(self.build_model_group(), 1)
         self.model_tabs.addTab(model_list_page, "模型清單")
+        for camera in self.state.inspection_cameras:
+            self.model_tabs.addTab(self.build_camera_model_page(camera), f"Camera {camera.slot}")
 
         layout.addWidget(self.model_tabs, 1)
 
@@ -455,9 +464,27 @@ class ModelSettingsPage(QWidget):
         layout.addLayout(actions)
         return group
 
+    def build_camera_model_page(self, camera):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        table = QTableWidget(0, 3)
+        table.setHorizontalHeaderLabels(["模型名稱", "模態", "模型檔案"])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setColumnWidth(0, 180)
+        table.setColumnWidth(1, 120)
+
+        layout.addWidget(table, 1)
+        self.camera_model_tables.append((camera, table))
+        return page
+
     def refresh(self):
         ensure_model_configs(self.state)
         self.load_model_table()
+        self.load_camera_model_tabs()
         self.apply_role_permissions()
 
     def apply_role_permissions(self):
@@ -477,6 +504,17 @@ class ModelSettingsPage(QWidget):
         self.model_table.setRowCount(0)
         for config in self.state.model_configs:
             self.add_model_row(config)
+
+    def load_camera_model_tabs(self):
+        for camera, table in self.camera_model_tables:
+            table.setRowCount(0)
+            for model_name in camera_model_names(camera):
+                model = model_by_name(self.state, model_name)
+                row = table.rowCount()
+                table.insertRow(row)
+                table.setItem(row, 0, QTableWidgetItem(model_name))
+                table.setItem(row, 1, QTableWidgetItem(model.modality if model else ""))
+                table.setItem(row, 2, QTableWidgetItem(model.file_path if model else ""))
 
     def add_model_row(self, config=None):
         if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
@@ -531,6 +569,7 @@ class ModelSettingsPage(QWidget):
             return
         ensure_model_configs(self.state)
         self.load_model_table()
+        self.load_camera_model_tabs()
 
     def collect_model_configs(self):
         configs = []
@@ -557,6 +596,7 @@ class ModelSettingsPage(QWidget):
             return
         self.state.model_configs = self.collect_model_configs()
         ensure_model_configs(self.state)
+        self.load_camera_model_tabs()
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()
