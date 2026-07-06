@@ -87,6 +87,7 @@ class LoginPage(QWidget):
         form.addRow("登入拍照相機", self.camera_index)
 
         panel = QGroupBox("登入與操作者照片")
+        panel.setObjectName("loginPanel")
         panel.setMinimumWidth(420)
         panel.setMaximumWidth(560)
         panel_shadow = QGraphicsDropShadowEffect(panel)

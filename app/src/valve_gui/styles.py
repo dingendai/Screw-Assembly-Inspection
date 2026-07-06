@@ -135,6 +135,12 @@ def apply_styles(app: QApplication, font_size: int = 14):
             color: #41515c;
             font-weight: 700;
         }
+        #loginPanel QWidget,
+        #loginPanel QLabel,
+        #loginPanel QCheckBox,
+        #loginPanel QGroupBox::title {
+            background: #ffffff;
+        }
         QLineEdit, QSpinBox {
             background: #ffffff;
             border: 1px solid #bcc8ce;
