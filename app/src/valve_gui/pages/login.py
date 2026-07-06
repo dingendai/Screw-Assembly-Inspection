@@ -172,7 +172,7 @@ class LoginPage(QWidget):
         self.clear_preview_grid()
         self.build_camera_visibility_controls(indexes)
         for camera_index in indexes:
-            view = CameraView(f"Camera Device {camera_index}")
+            view = CameraView(f"Camera Device {camera_index}", show_info=False)
             source = VideoSource(f"CAMERA {camera_index}", camera_index, False)
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)

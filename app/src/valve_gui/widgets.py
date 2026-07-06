@@ -7,10 +7,11 @@ from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 
 class CameraView(QFrame):
-    def __init__(self, title: str):
+    def __init__(self, title: str, show_info: bool = True):
         super().__init__()
         self.setObjectName("cameraCard")
         self.base_title = title
+        self.show_info = show_info
         self.input_fps = 0.0
         self.gui_fps = 0.0
         self._last_gui_frame_time = None
@@ -25,15 +26,17 @@ class CameraView(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.addWidget(self.title)
-        layout.addWidget(self.fps_label)
+        if show_info:
+            layout.addWidget(self.title)
+            layout.addWidget(self.fps_label)
         layout.addWidget(self.image, 1)
 
     def set_frame(self, frame, input_fps=None):
         if input_fps is not None:
             self.input_fps = input_fps
         self._mark_gui_frame_displayed()
-        self.update_fps_label()
+        if self.show_info:
+            self.update_fps_label()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         image = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
