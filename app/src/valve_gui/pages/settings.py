@@ -163,8 +163,9 @@ class SettingsPage(QWidget):
 
             camera_box = QGroupBox(f"Camera {config.slot}")
             card = QGridLayout(camera_box)
+            card.setContentsMargins(12, 14, 12, 12)
             card.setHorizontalSpacing(10)
-            card.setVerticalSpacing(8)
+            card.setVerticalSpacing(6)
 
             card.addWidget(enabled, 0, 0)
             card.addWidget(QLabel("相機"), 0, 1)
@@ -187,6 +188,7 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("指定模型"), 6, 0, 1, 3)
             card.addWidget(model_list, 7, 0, 1, 3)
             card.setColumnStretch(2, 1)
+            card.setRowStretch(8, 1)
 
             self.camera_tabs.addTab(camera_box, f"Camera {config.slot}")
             self.rows.append((
