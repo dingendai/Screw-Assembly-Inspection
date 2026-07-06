@@ -186,6 +186,7 @@ class SettingsPage(QWidget):
 
     def build_preview_group(self):
         group = QGroupBox("相機設定即時預覽")
+        group.setObjectName("cameraPreviewGroup")
         layout = QVBoxLayout(group)
         self.preview_grid = QGridLayout()
 

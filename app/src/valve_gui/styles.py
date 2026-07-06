@@ -151,6 +151,14 @@ def apply_styles(app: QApplication, font_size: int = 14):
         #cameraSettingsCard QGroupBox::title {
             background: #ffffff;
         }
+        #cameraPreviewGroup QWidget,
+        #cameraPreviewGroup QLabel,
+        #cameraPreviewGroup #cameraCard,
+        #cameraPreviewGroup #cameraTitle,
+        #cameraPreviewGroup #mutedText,
+        #cameraPreviewGroup QGroupBox::title {
+            background: #ffffff;
+        }
         QLineEdit, QSpinBox {
             background: #ffffff;
             border: 1px solid #bcc8ce;
