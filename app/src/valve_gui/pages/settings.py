@@ -416,13 +416,6 @@ class ModelSettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        header = QHBoxLayout()
-        title = QLabel("模型清單")
-        title.setObjectName("pageTitle")
-        header.addWidget(title)
-        header.addStretch()
-
-        layout.addLayout(header)
         layout.addWidget(self.build_model_group(), 1)
 
     def build_model_group(self):
