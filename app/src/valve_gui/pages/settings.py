@@ -886,7 +886,7 @@ class DecisionSettingsPage(QWidget):
         self.rule_rows = []
         self.rule_tab_slots = []
         self.loading_rules = False
-        self.camera_preview_views = {}
+        self.camera_preview_view = None
         self.camera_preview_source = None
         self.camera_preview_timer = QTimer(self)
         self.camera_preview_timer.timeout.connect(self.update_camera_preview)
@@ -937,17 +937,8 @@ class DecisionSettingsPage(QWidget):
     def build_camera_preview_group(self):
         group = QGroupBox("相機影像")
         layout = QVBoxLayout(group)
-        self.camera_preview_tabs = QTabWidget()
-        for camera in self.state.inspection_cameras:
-            page = QWidget()
-            page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(12, 12, 12, 12)
-            view = CameraView(f"Camera {camera.slot}")
-            page_layout.addWidget(view, 1)
-            self.camera_preview_views[camera.slot] = view
-            self.camera_preview_tabs.addTab(page, f"Camera {camera.slot}")
-        self.camera_preview_tabs.currentChanged.connect(self.update_camera_preview_tab)
-        layout.addWidget(self.camera_preview_tabs, 1)
+        self.camera_preview_view = CameraView("Camera")
+        layout.addWidget(self.camera_preview_view, 1)
         return group
 
     def refresh(self):
@@ -956,7 +947,7 @@ class DecisionSettingsPage(QWidget):
         self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
         self.load_rule_table()
         self.loading_rules = False
-        self.update_camera_preview_tab(self.camera_preview_tabs.currentIndex())
+        self.update_camera_preview_tab(self.model_tabs.currentIndex())
 
     def load_rule_table(self):
         self.rule_rows = []
@@ -1065,22 +1056,24 @@ class DecisionSettingsPage(QWidget):
         save_app_config(self.state)
 
     def sync_camera_preview_to_rule_tab(self, index):
-        if index < 0 or index >= len(self.rule_tab_slots):
-            return
-        slot = self.rule_tab_slots[index]
-        for preview_index, camera in enumerate(self.state.inspection_cameras):
-            if camera.slot == slot:
-                self.camera_preview_tabs.setCurrentIndex(preview_index)
-                return
+        self.update_camera_preview_tab(index)
 
     def update_camera_preview_tab(self, index):
         self.stop_camera_preview()
-        if index < 0 or index >= len(self.state.inspection_cameras):
+        if index < 0 or index >= len(self.rule_tab_slots):
             return
-        camera = self.state.inspection_cameras[index]
-        view = self.camera_preview_views.get(camera.slot)
+        slot = self.rule_tab_slots[index]
+        camera = next((config for config in self.state.inspection_cameras if config.slot == slot), None)
+        view = self.camera_preview_view
+        if camera is None:
+            if view:
+                view.set_message("沒有相機設定。", is_error=True)
+            return
         if not view:
             return
+        view.base_title = f"Camera {camera.slot}"
+        if view.show_info:
+            view.update_fps_label()
         source = VideoSource(
             f"CAMERA {camera.slot}",
             camera.device_index,
@@ -1097,7 +1090,7 @@ class DecisionSettingsPage(QWidget):
         if not self.camera_preview_source:
             return
         camera, source = self.camera_preview_source
-        view = self.camera_preview_views.get(camera.slot)
+        view = self.camera_preview_view
         if not view:
             return
         frame = source.read()
