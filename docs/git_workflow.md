@@ -94,7 +94,7 @@ chore: update project structure
 不要直接 push main
 不要上傳 dataset
 不要上傳模型權重（*.pt）
-不要將 training/runs 實驗輸出納入 Git
+不要將訓練實驗輸出納入 Git
 不要覆蓋別人的檔案不討論
 ```
 
@@ -114,7 +114,7 @@ model 不走 Git
    models/
 ```
 
-本專案只使用 `models/` 中的正式推論模型，不使用 `training/runs/` 作為模型載入來源。
+本專案只使用 `models/` 中的正式推論模型，不使用訓練實驗輸出作為模型載入來源。
 
 ---
 

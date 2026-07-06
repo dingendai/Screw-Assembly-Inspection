@@ -42,12 +42,11 @@ screw_assembly_inspection/
 ├─ app/                # 主程式（推論 / 檢測 / UI / API）
 ├─ models/             # 正式推論模型權重（不納入版本控制）
 ├─ docs/               # 檢測規格、協作文件與展示文件
-├─ training/           # 歷史訓練資料與成果；後續應移交 YOLO-TrainKit 管理
 ├─ .gitignore
 └─ README.md
 ```
 
-`training/` 目前保留既有資料，不在本次調整中刪除或移動；後續若要清理，應先確認資料已在 YOLO-TrainKit 或外部儲存完成交接。
+訓練資料、訓練輸出與實驗成果由 YOLO-TrainKit 的 workspace 管理，不放在本專案中。
 
 ---
 
@@ -61,7 +60,7 @@ screw_assembly_inspection/
 models/
 ```
 
-本專案的推論流程應只從 `models/` 載入正式模型，不應依賴 `training/runs/` 中的實驗輸出。
+本專案的推論流程應只從 `models/` 載入正式模型，不應依賴訓練實驗輸出目錄。
 
 ---
 
@@ -105,8 +104,8 @@ docs/annotation_spec.md
 
 ```text
 - 模型權重（*.pt）
-- dataset（影像與標註）
-- training/runs（歷史訓練輸出）
+- dataset（影像與標註，由 YOLO-TrainKit 管理）
+- 訓練輸出與實驗成果（由 YOLO-TrainKit 管理）
 ```
 
 ---
