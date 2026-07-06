@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPus
 
 from valve_gui import qc_db
 from valve_gui.config_store import load_app_config
-from valve_gui.model_registry import ensure_model_configs
+from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs
 from valve_gui.models import AppState, InspectionRecord
 from valve_gui.pages.help import HelpPage
 from valve_gui.pages.history import HistoryPage
@@ -314,25 +314,25 @@ class MainWindow(QMainWindow):
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
         ):
-            return self.model_page.save
+            return self.apply_model_settings_without_navigation
         if (
             current == self.camera_model_page
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
         ):
-            return self.camera_model_page.save
+            return self.apply_camera_model_settings_without_navigation
         if (
             current == self.region_page
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
-            return self.region_page.save_region_settings
+            return self.apply_region_settings_without_navigation
         if (
             current == self.decision_page
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
-            return self.decision_page.save_decision_settings
+            return self.apply_decision_settings_without_navigation
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -346,8 +346,52 @@ class MainWindow(QMainWindow):
 
     def apply_camera_settings_without_navigation(self):
         if self.settings_page.apply(enter_monitor=False):
-            self.monitor_page.router.clear_model_cache()
-            self.update_navigation()
+            self.mark_settings_applied()
+
+    def apply_model_settings_without_navigation(self):
+        if self.model_page.save():
+            self.mark_settings_applied()
+
+    def apply_camera_model_settings_without_navigation(self):
+        if self.camera_model_page.save():
+            self.mark_settings_applied()
+
+    def apply_region_settings_without_navigation(self):
+        if self.region_page.save_region_settings():
+            self.mark_settings_applied()
+
+    def apply_decision_settings_without_navigation(self):
+        if self.decision_page.save_decision_settings():
+            self.mark_settings_applied()
+
+    def mark_settings_applied(self):
+        if not self.validate_monitor_configuration():
+            return
+        self.state.settings_applied = True
+        self.monitor_page.router.clear_model_cache()
+        self.update_navigation()
+
+    def validate_monitor_configuration(self):
+        if not enabled_model_names(self.state):
+            QMessageBox.warning(self, "模型設定", "至少需要啟用一個模型，才能進入監測。")
+            return False
+        enabled_cameras = [camera for camera in self.state.inspection_cameras if camera.enabled]
+        if not enabled_cameras:
+            QMessageBox.warning(self, "相機設定", "至少需要啟用一顆檢測相機，才能進入監測。")
+            return False
+        missing_model_slots = [
+            f"Camera {camera.slot}"
+            for camera in enabled_cameras
+            if not camera_model_names(camera)
+        ]
+        if missing_model_slots:
+            QMessageBox.warning(
+                self,
+                "相機模型設定",
+                "請先替這些相機指定模型：" + ", ".join(missing_model_slots),
+            )
+            return False
+        return True
 
     def require_login(self):
         if not self.state.is_logged_in:
@@ -485,8 +529,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入監視頁面。")
             return
         if not self.state.settings_applied:
-            QMessageBox.information(self, "尚未套用設定", "請先套用相機設定。")
-            self.show_settings()
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S5 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.monitor_page.refresh()
@@ -500,7 +543,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入歷史紀錄。")
             return
         if not self.state.settings_applied:
-            self.show_settings()
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S5 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.history_page.refresh()

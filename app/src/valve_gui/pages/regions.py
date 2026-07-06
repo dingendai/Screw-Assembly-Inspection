@@ -619,6 +619,7 @@ class RegionSettingsPage(QWidget):
     def save_region_settings(self):
         save_app_config(self.state)
         QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
+        return True
 
     def logout(self):
         self.stop()

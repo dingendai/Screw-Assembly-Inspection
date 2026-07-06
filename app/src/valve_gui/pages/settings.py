@@ -615,12 +615,13 @@ class ModelSettingsPage(QWidget):
     def save(self):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改模型清單。")
-            return
+            return False
         self.state.model_configs = self.collect_model_configs()
         ensure_model_configs(self.state)
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()
+        return True
 
     def logout(self):
         if self.on_logout:
@@ -769,11 +770,12 @@ class CameraModelSettingsPage(QWidget):
     def save(self):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改相機模型設定。")
-            return
+            return False
         self.collect_camera_model_assignments()
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()
+        return True
 
     def logout(self):
         self.stop_camera_photo_preview()
@@ -1043,6 +1045,7 @@ class DecisionSettingsPage(QWidget):
     def save_decision_settings(self):
         self.persist_decision_settings()
         QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
+        return True
 
     def persist_decision_settings(self):
         self.state.decision.pass_confidence_threshold = self.global_threshold.value()
