@@ -1,4 +1,43 @@
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QEvent, QObject, QTimer
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QPushButton, QToolButton
+
+
+class _ButtonShadowFilter(QObject):
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.ChildAdded, QEvent.Type.Show):
+            app = QApplication.instance()
+            if app:
+                QTimer.singleShot(0, lambda: apply_button_shadows(app))
+        return False
+
+
+def _apply_button_shadow(button):
+    if button.property("buttonShadowApplied"):
+        return
+
+    shadow = QGraphicsDropShadowEffect(button)
+    shadow.setBlurRadius(14)
+    shadow.setOffset(0, 3)
+    shadow.setColor(QColor(23, 32, 38, 60))
+    button.setGraphicsEffect(shadow)
+    button.setProperty("buttonShadowApplied", True)
+
+
+def apply_button_shadows(app: QApplication):
+    for button in app.allWidgets():
+        if isinstance(button, (QPushButton, QToolButton)):
+            _apply_button_shadow(button)
+
+
+def install_button_shadow_filter(app: QApplication):
+    if app.property("buttonShadowFilterInstalled"):
+        return
+
+    shadow_filter = _ButtonShadowFilter(app)
+    app.installEventFilter(shadow_filter)
+    app._button_shadow_filter = shadow_filter
+    app.setProperty("buttonShadowFilterInstalled", True)
 
 
 def apply_styles(app: QApplication, font_size: int = 14):
@@ -285,3 +324,5 @@ def apply_styles(app: QApplication, font_size: int = 14):
         }
         """
     app.setStyleSheet(stylesheet.replace("__FONT_SIZE__", str(font_size)))
+    install_button_shadow_filter(app)
+    QTimer.singleShot(0, lambda: apply_button_shadows(app))
