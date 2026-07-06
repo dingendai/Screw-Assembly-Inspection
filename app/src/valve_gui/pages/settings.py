@@ -204,7 +204,7 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("影像方向"), 2, 0)
             card.addWidget(flip_h, 2, 1)
             card.addWidget(flip_v, 2, 2)
-            card.addWidget(QLabel("旋轉"), 3, 0)
+            card.addWidget(QLabel("影像旋轉"), 3, 0)
             card.addWidget(rotation, 3, 1, 1, 2)
 
             card.addWidget(QLabel("條碼辨識"), 4, 0)
