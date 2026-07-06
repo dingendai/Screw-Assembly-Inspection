@@ -1,7 +1,15 @@
 import json
 from dataclasses import asdict
 
-from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, RegionOverlayConfig, UserAccount
+from valve_gui.models import (
+    DEFAULT_INSPECTION_CAMERA_COUNT,
+    CameraConfig,
+    DecisionConfig,
+    DisplayConfig,
+    ModelConfig,
+    RegionOverlayConfig,
+    UserAccount,
+)
 from valve_gui.paths import APP_CONFIG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
@@ -137,6 +145,7 @@ def load_app_config(state):
             )
             for index, item in enumerate(cameras)
         ]
+        ensure_default_camera_count(state.inspection_cameras)
 
     models = data.get("model_configs", [])
     if models:
@@ -157,6 +166,14 @@ def _hashed_passwords(role_passwords):
         role: hash_password(pw) if pw and not pw.startswith("sha256:") else pw
         for role, pw in role_passwords.items()
     }
+
+
+def ensure_default_camera_count(cameras):
+    existing_slots = {camera.slot for camera in cameras}
+    for slot in range(1, DEFAULT_INSPECTION_CAMERA_COUNT + 1):
+        if slot not in existing_slots:
+            cameras.append(CameraConfig(slot=slot, device_index=slot - 1, enabled=True))
+    cameras.sort(key=lambda camera: camera.slot)
 
 
 def save_app_config(state):

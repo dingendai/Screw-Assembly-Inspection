@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from valve_gui.permissions import default_role_labels, default_role_passwords, default_role_permissions
 
 
+DEFAULT_INSPECTION_CAMERA_COUNT = 5
+
+
 @dataclass
 class CameraConfig:
     slot: int
@@ -97,7 +100,10 @@ class AppState:
     model_configs: list[ModelConfig] = field(default_factory=list)
     detected_cameras: list[int] = field(default_factory=list)
     inspection_cameras: list[CameraConfig] = field(
-        default_factory=lambda: [CameraConfig(slot=i + 1, device_index=i, enabled=True) for i in range(4)]
+        default_factory=lambda: [
+            CameraConfig(slot=i + 1, device_index=i, enabled=True)
+            for i in range(DEFAULT_INSPECTION_CAMERA_COUNT)
+        ]
     )
     operator_camera_index: int = 4
     use_simulation: bool = False
