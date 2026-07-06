@@ -70,12 +70,6 @@ class SettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        header = QHBoxLayout()
-        title = QLabel("相機設定")
-        title.setObjectName("pageTitle")
-        header.addWidget(title)
-        header.addStretch()
-
         content = QHBoxLayout()
         content.setSpacing(12)
         content.addWidget(self.build_camera_group(), 1)
@@ -83,7 +77,6 @@ class SettingsPage(QWidget):
         content.setStretch(0, 1)
         content.setStretch(1, 1)
 
-        layout.addLayout(header)
         layout.addLayout(content, 1)
 
     def build_camera_group(self):
