@@ -60,6 +60,11 @@ class SettingsPage(QWidget):
         self._preview_debounce.setSingleShot(True)
         self._preview_debounce.setInterval(400)
         self._preview_debounce.timeout.connect(self.restart_preview)
+        self._camera_autosave_timer = QTimer(self)
+        self._camera_autosave_timer.setSingleShot(True)
+        self._camera_autosave_timer.setInterval(0)
+        self._camera_autosave_timer.timeout.connect(self.persist_camera_settings)
+        self._loading_camera_controls = False
 
         ensure_model_configs(self.state)
 
@@ -271,25 +276,29 @@ class SettingsPage(QWidget):
         ensure_model_configs(self.state)
         self.state.use_simulation = False
         self.refresh_camera_index_combos()
-        for config, controls in zip(self.state.inspection_cameras, self.rows):
-            (
-                enabled, index, flip_h, flip_v, rotation, barcode_enabled, barcode_disabled,
-                auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
-            ) = controls
-            enabled.setChecked(config.enabled)
-            self.populate_camera_index_combo(index, config.device_index)
-            flip_h.setChecked(config.flip_horizontal)
-            flip_v.setChecked(config.flip_vertical)
-            rotation.setCurrentText(str(config.rotation_degrees))
-            barcode_enabled.setChecked(config.barcode_read_enabled)
-            barcode_disabled.setChecked(not config.barcode_read_enabled)
-            is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
-            auto_focus.setChecked(not is_manual_focus)
-            manual_focus_mode.setChecked(is_manual_focus)
-            manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
-            manual_focus_value.setText(str(manual_focus.value()))
-            manual_focus.setEnabled(manual_focus_mode.isChecked())
-            manual_focus_value.setEnabled(manual_focus_mode.isChecked())
+        self._loading_camera_controls = True
+        try:
+            for config, controls in zip(self.state.inspection_cameras, self.rows):
+                (
+                    enabled, index, flip_h, flip_v, rotation, barcode_enabled, barcode_disabled,
+                    auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
+                ) = controls
+                enabled.setChecked(config.enabled)
+                self.populate_camera_index_combo(index, config.device_index)
+                flip_h.setChecked(config.flip_horizontal)
+                flip_v.setChecked(config.flip_vertical)
+                rotation.setCurrentText(str(config.rotation_degrees))
+                barcode_enabled.setChecked(config.barcode_read_enabled)
+                barcode_disabled.setChecked(not config.barcode_read_enabled)
+                is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
+                auto_focus.setChecked(not is_manual_focus)
+                manual_focus_mode.setChecked(is_manual_focus)
+                manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))
+                manual_focus_value.setText(str(manual_focus.value()))
+                manual_focus.setEnabled(manual_focus_mode.isChecked())
+                manual_focus_value.setEnabled(manual_focus_mode.isChecked())
+        finally:
+            self._loading_camera_controls = False
         self.apply_role_permissions()
         self.restart_preview()
 
@@ -297,7 +306,10 @@ class SettingsPage(QWidget):
         pass
 
     def _queue_preview_restart(self):
+        if self._loading_camera_controls:
+            return
         self._preview_debounce.start()
+        self._camera_autosave_timer.start()
 
     def restart_preview(self):
         self.stop_preview()
@@ -423,6 +435,28 @@ class SettingsPage(QWidget):
         save_app_config(self.state)
         self.stop_preview()
         self.on_apply()
+
+    def persist_camera_settings(self):
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            return
+        self.write_camera_controls_to_state()
+        self.state.use_simulation = False
+        save_app_config(self.state)
+
+    def write_camera_controls_to_state(self):
+        for config, controls in zip(self.state.inspection_cameras, self.rows):
+            (
+                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                _, manual_focus_mode, manual_focus, _,
+            ) = controls
+            config.enabled = enabled.isChecked()
+            config.device_index = int(index.currentData())
+            config.flip_horizontal = flip_h.isChecked()
+            config.flip_vertical = flip_v.isChecked()
+            config.rotation_degrees = int(rotation.currentText())
+            config.barcode_read_enabled = barcode_enabled.isChecked()
+            config.focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
+            config.manual_focus_value = manual_focus.value()
 
     def release_external_cameras(self):
         self.stop_preview()
