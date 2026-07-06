@@ -1,3 +1,5 @@
+import cv2
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -22,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui.camera import VideoSource, apply_frame_transform
+from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
 from valve_gui.config_store import save_app_config
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
 from valve_gui.models import AppState, ModelConfig
@@ -32,7 +34,7 @@ from valve_gui.permissions import (
     PERMISSION_OPEN_SETTINGS,
     has_permission,
 )
-from valve_gui.utils import decision_rule_key as _rule_key
+from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
 from valve_gui.widgets import CameraView
 
 
@@ -1156,7 +1158,56 @@ class DecisionSettingsPage(QWidget):
             flip_vertical=camera.flip_vertical,
             rotation_degrees=camera.rotation_degrees,
         )
+        frame = self.frame_with_region_overlay(camera, frame)
         view.set_frame(frame, input_fps=source.input_fps)
+
+    def frame_with_region_overlay(self, camera, frame):
+        if not getattr(camera, "region_detection_enabled", False):
+            return frame
+        if not camera.detection_regions and not camera.exclusion_regions:
+            return frame
+        annotated = frame.copy()
+        height, width = annotated.shape[:2]
+        self.draw_region_list(
+            annotated,
+            camera.detection_regions,
+            hex_to_bgr(self.state.region_overlay.detection_color),
+            "ROI",
+            width,
+            height,
+        )
+        self.draw_region_list(
+            annotated,
+            camera.exclusion_regions,
+            hex_to_bgr(self.state.region_overlay.exclusion_color),
+            "EX",
+            width,
+            height,
+        )
+        return annotated
+
+    def draw_region_list(self, frame, regions, color, label, width, height):
+        for index, region in enumerate(regions, start=1):
+            x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                frame,
+                self.format_region_label(label, index, region),
+                (x1 + 6, max(18, y1 + 22)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                color,
+                2,
+            )
+
+    def format_region_label(self, label, index, region):
+        roi_id = region.get("roi_id")
+        if roi_id is not None:
+            return f"#{roi_id}"
+        model_names = region.get("model_names", [])
+        if not model_names:
+            return f"{label} {index}"
+        return f"{label} {index}: {', '.join(model_names)}"
 
     def stop_camera_preview(self):
         self.camera_preview_timer.stop()
