@@ -163,10 +163,14 @@ class MainWindow(QMainWindow):
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
-        self.apply_settings_button = QPushButton("儲存 / 套用設定")
+        self.apply_settings_button = QPushButton("套用設定")
         self.apply_settings_button.setObjectName("primaryButton")
         self.apply_settings_button.clicked.connect(self.save_current_page_settings)
         self.apply_settings_action = toolbar.addWidget(self.apply_settings_button)
+        self.enter_monitor_button = QPushButton("進入監測")
+        self.enter_monitor_button.setObjectName("primaryButton")
+        self.enter_monitor_button.clicked.connect(self.show_monitor)
+        self.enter_monitor_action = toolbar.addWidget(self.enter_monitor_button)
         toolbar.addWidget(self.login_page.exit_button)
         self.role_badge = QLabel()
         self.role_badge.setObjectName("roleBadge")
@@ -258,6 +262,14 @@ class MainWindow(QMainWindow):
         self.apply_settings_button.setVisible(should_show)
         if hasattr(self, "apply_settings_action"):
             self.apply_settings_action.setVisible(should_show)
+        monitor_visible = (
+            self.state.is_logged_in
+            and self.stack.currentWidget() != self.monitor_page
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions)
+        )
+        self.enter_monitor_button.setVisible(monitor_visible)
+        if hasattr(self, "enter_monitor_action"):
+            self.enter_monitor_action.setVisible(monitor_visible)
 
     def current_page_save_handler(self):
         current = self.stack.currentWidget()
@@ -268,7 +280,7 @@ class MainWindow(QMainWindow):
             and self.state.is_logged_in
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
-            return self.settings_page.apply
+            return self.apply_camera_settings_without_navigation
         if (
             current == self.model_page
             and self.state.is_logged_in
@@ -291,6 +303,12 @@ class MainWindow(QMainWindow):
         handler = self.current_page_save_handler()
         if handler:
             handler()
+
+    def apply_camera_settings_without_navigation(self):
+        if self.settings_page.apply(enter_monitor=False):
+            self.monitor_page.router.clear_model_cache()
+            self.apply_display_config()
+            self.update_navigation()
 
     def require_login(self):
         if not self.state.is_logged_in:

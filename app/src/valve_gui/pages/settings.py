@@ -390,15 +390,16 @@ class SettingsPage(QWidget):
                 )
         return enabled_rows
 
-    def apply(self):
+    def apply(self, enter_monitor=True):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改相機與模型設定。")
-            return
-        self.release_external_cameras()
+            return False
+        if enter_monitor:
+            self.release_external_cameras()
         enabled_names = enabled_model_names(self.state)
         if not enabled_names:
             QMessageBox.warning(self, "模型設定", "至少需要啟用一個模型，才能指定給相機。")
-            return
+            return False
 
         enabled_count = 0
         missing_model_slots = []
@@ -420,7 +421,7 @@ class SettingsPage(QWidget):
                 missing_model_slots.append(f"Camera {config.slot}")
         if enabled_count == 0:
             QMessageBox.warning(self, "相機設定", "至少需要啟用一顆檢測相機。")
-            return
+            return False
 
         if missing_model_slots:
             QMessageBox.warning(
@@ -428,13 +429,17 @@ class SettingsPage(QWidget):
                 "Model assignment",
                 "Select at least one model for: " + ", ".join(missing_model_slots),
             )
-            return
+            return False
 
         self.state.use_simulation = False
         self.state.settings_applied = True
         save_app_config(self.state)
-        self.stop_preview()
-        self.on_apply()
+        if enter_monitor:
+            self.stop_preview()
+            self.on_apply()
+        else:
+            self.restart_preview()
+        return True
 
     def persist_camera_settings(self):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
