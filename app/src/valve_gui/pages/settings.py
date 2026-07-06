@@ -198,10 +198,10 @@ class SettingsPage(QWidget):
             card.setVerticalSpacing(6)
 
             card.addWidget(enabled, 0, 0, 1, 3)
-            card.addWidget(QLabel("相機"), 1, 0)
+            card.addWidget(QLabel("相機機號"), 1, 0)
             card.addWidget(index, 1, 1, 1, 2)
 
-            card.addWidget(QLabel("方向"), 2, 0)
+            card.addWidget(QLabel("影像方向"), 2, 0)
             card.addWidget(flip_h, 2, 1)
             card.addWidget(flip_v, 2, 2)
             card.addWidget(QLabel("旋轉"), 3, 0)
