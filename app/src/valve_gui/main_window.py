@@ -15,10 +15,11 @@ from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.qc_products import ProductMasterPage
 from valve_gui.pages.qc_stats import StatisticsPage
 from valve_gui.pages.regions import RegionSettingsPage
-from valve_gui.pages.settings import DisplaySettingsPage, SettingsPage
+from valve_gui.pages.settings import DisplaySettingsPage, ModelSettingsPage, SettingsPage
 from valve_gui.pages.users import UserManagementPage
 from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import (
+    PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_HISTORY,
     PERMISSION_OPEN_MONITOR,
     PERMISSION_OPEN_SETTINGS,
@@ -61,6 +62,7 @@ class MainWindow(QMainWindow):
             on_display_change=self.apply_display_config,
             on_logout=self.logout,
         )
+        self.model_page = ModelSettingsPage(self.state, self.after_model_settings_saved, self.logout)
         self.history_page = HistoryPage(self.state)
         self.qc_stats_page = StatisticsPage(self.state)
         self.qc_products_page = ProductMasterPage(self.state)
@@ -70,6 +72,7 @@ class MainWindow(QMainWindow):
         self.help_page = HelpPage()
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.settings_page)
+        self.stack.addWidget(self.model_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
         self.stack.addWidget(self.qc_stats_page)
@@ -135,6 +138,7 @@ class MainWindow(QMainWindow):
         action_specs = [
             ("login", "登入", self.show_login, True),
             ("settings", "相機設定", self.show_settings, True),
+            ("models", "模型清單", self.show_models, True),
             ("regions", "指定範圍監視", self.show_region_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
@@ -186,6 +190,13 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["models"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["display"].setVisible(True)
         self.actions["monitor"].setVisible(
             logged_in
@@ -224,6 +235,7 @@ class MainWindow(QMainWindow):
         page_actions = {
             self.login_page: "login",
             self.settings_page: "settings",
+            self.model_page: "models",
             self.region_page: "regions",
             self.monitor_page: "monitor",
             self.history_page: "history",
@@ -257,6 +269,12 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.settings_page.apply
+        if (
+            current == self.model_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
+        ):
+            return self.model_page.save
         if (
             current == self.region_page
             and self.state.is_logged_in
@@ -305,6 +323,17 @@ class MainWindow(QMainWindow):
         self.release_all_hardware()
         self.settings_page.refresh()
         self.stack.setCurrentWidget(self.settings_page)
+
+    def show_models(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入模型清單。")
+            self.show_monitor()
+            return
+        self.release_all_hardware()
+        self.model_page.refresh()
+        self.stack.setCurrentWidget(self.model_page)
 
     def show_display_settings(self):
         if self.state.is_logged_in and not has_permission(
@@ -362,6 +391,11 @@ class MainWindow(QMainWindow):
         if has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
             self.monitor_page.start()
             self.stack.setCurrentWidget(self.monitor_page)
+
+    def after_model_settings_saved(self):
+        self.monitor_page.router.clear_model_cache()
+        self.settings_page.refresh_camera_model_combos()
+        self.update_navigation()
 
     def show_monitor(self):
         if not self.require_login():

@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -78,30 +77,20 @@ class SettingsPage(QWidget):
         layout.setSpacing(12)
 
         header = QHBoxLayout()
-        title = QLabel("相機與模型配置")
+        title = QLabel("相機設定")
         title.setObjectName("pageTitle")
         header.addWidget(title)
         header.addStretch()
 
-        self.tabs = QTabWidget()
-
-        camera_tab = QWidget()
-        content = QHBoxLayout(camera_tab)
+        content = QHBoxLayout()
         content.setSpacing(12)
         content.addWidget(self.build_camera_group(), 1)
         content.addWidget(self.build_preview_group(), 1)
         content.setStretch(0, 1)
         content.setStretch(1, 1)
 
-        model_tab = QWidget()
-        model_layout = QVBoxLayout(model_tab)
-        model_layout.addWidget(self.build_model_group())
-
-        self.camera_tab_index = self.tabs.addTab(camera_tab, "相機設定")
-        self.model_tab_index = self.tabs.addTab(model_tab, "模型清單")
-
         layout.addLayout(header)
-        layout.addWidget(self.tabs, 1)
+        layout.addLayout(content, 1)
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
@@ -234,36 +223,6 @@ class SettingsPage(QWidget):
         layout.addWidget(self.detected_label)
         return group
 
-    def build_model_group(self):
-        group = QGroupBox("模型清單")
-        layout = QVBoxLayout(group)
-        self.model_table = QTableWidget(0, 4)
-        self.model_table.setHorizontalHeaderLabels(["啟用", "模型名稱", "模態", "模型檔案"])
-        self.model_table.setColumnWidth(0, 54)
-        self.model_table.setColumnWidth(1, 180)
-        self.model_table.setColumnWidth(2, 120)
-        self.model_table.setColumnWidth(3, 340)
-
-        self.add_model_button = QPushButton("新增模型")
-        self.add_model_button.clicked.connect(self.add_model_row)
-        self.remove_model_button = QPushButton("移除選取模型")
-        self.remove_model_button.clicked.connect(self.remove_selected_model)
-        self.browse_model_button = QPushButton("選取模型檔案")
-        self.browse_model_button.clicked.connect(self.browse_selected_model)
-        self.rescan_models_button = QPushButton("重新掃描 models 模型")
-        self.rescan_models_button.clicked.connect(self.rescan_models)
-
-        actions = QHBoxLayout()
-        actions.addWidget(self.add_model_button)
-        actions.addWidget(self.remove_model_button)
-        actions.addWidget(self.browse_model_button)
-        actions.addWidget(self.rescan_models_button)
-        actions.addStretch()
-
-        layout.addWidget(self.model_table)
-        layout.addLayout(actions)
-        return group
-
     def build_preview_group(self):
         group = QGroupBox("相機設定即時預覽")
         layout = QVBoxLayout(group)
@@ -361,94 +320,12 @@ class SettingsPage(QWidget):
             manual_focus.setEnabled(focus_mode.currentData() == "manual")
             manual_focus_value.setEnabled(focus_mode.currentData() == "manual")
         self.barcode_classes_input.setText(", ".join(self.state.barcode_label_classes))
-        self.load_model_table()
         self.apply_role_permissions()
         self.restart_preview()
 
     def apply_role_permissions(self):
-        can_manage_models = has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
         can_use_simulation = has_permission(self.state.operator_role, PERMISSION_USE_SIMULATION, self.state.role_permissions)
-        self.model_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.AllEditTriggers
-            if can_manage_models
-            else QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        self.model_table.setEnabled(can_manage_models)
-        self.add_model_button.setVisible(can_manage_models)
-        self.remove_model_button.setVisible(can_manage_models)
-        self.browse_model_button.setVisible(can_manage_models)
-        self.rescan_models_button.setVisible(can_manage_models)
         self.simulation_box.setEnabled(can_use_simulation)
-
-    def load_model_table(self):
-        self.model_table.setRowCount(0)
-        for config in self.state.model_configs:
-            self.add_model_row(config)
-
-    def add_model_row(self, config=None):
-        if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色不能新增模型。")
-            return
-        config = config or ModelConfig(name=f"Model {self.model_table.rowCount() + 1}")
-        row = self.model_table.rowCount()
-        self.model_table.insertRow(row)
-
-        enabled = QCheckBox()
-        enabled.setChecked(config.enabled)
-        enabled.stateChanged.connect(self.sync_models_from_table)
-        self.model_table.setCellWidget(row, 0, enabled)
-
-        self.model_table.setItem(row, 1, QTableWidgetItem(config.name))
-
-        modality = QComboBox()
-        modality.addItems(MODEL_MODALITIES)
-        if config.modality in MODEL_MODALITIES:
-            modality.setCurrentText(config.modality)
-        self.model_table.setCellWidget(row, 2, modality)
-
-        self.model_table.setItem(row, 3, QTableWidgetItem(config.file_path))
-
-    def remove_selected_model(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色不能移除模型。")
-            return
-        row = self.model_table.currentRow()
-        if row >= 0:
-            self.model_table.removeRow(row)
-            self.sync_models_from_table()
-
-    def browse_selected_model(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色不能選取模型檔案。")
-            return
-        row = self.model_table.currentRow()
-        if row < 0:
-            QMessageBox.information(self, "選擇模型", "請先選取一列模型設定。")
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "選擇模型檔案",
-            str(APP_DIR),
-            "Model Files (*.pt *.onnx *.engine *.weights *.bin *.json);;All Files (*)",
-        )
-        if path:
-            self.model_table.setItem(row, 3, QTableWidgetItem(path))
-            self.sync_models_from_table()
-
-    def rescan_models(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            QMessageBox.warning(self, "權限不足", "目前角色不能重新掃描模型。")
-            return
-        ensure_model_configs(self.state)
-        self.load_model_table()
-        self.refresh_camera_model_combos()
-        self.restart_preview()
-
-    def sync_models_from_table(self):
-        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            return
-        self.state.model_configs = self.collect_model_configs()
-        self.refresh_camera_model_combos()
 
     def _queue_preview_restart(self):
         self._preview_debounce.start()
@@ -558,32 +435,11 @@ class SettingsPage(QWidget):
                 )
         return enabled_rows
 
-    def collect_model_configs(self):
-        configs = []
-        for row in range(self.model_table.rowCount()):
-            enabled_widget = self.model_table.cellWidget(row, 0)
-            modality_widget = self.model_table.cellWidget(row, 2)
-            name_item = self.model_table.item(row, 1)
-            path_item = self.model_table.item(row, 3)
-            name = name_item.text().strip() if name_item else f"Model {row + 1}"
-            path = path_item.text().strip() if path_item else ""
-            configs.append(
-                ModelConfig(
-                    name=name or f"Model {row + 1}",
-                    modality=modality_widget.currentText() if modality_widget else "vision",
-                    file_path=path,
-                    enabled=enabled_widget.isChecked() if enabled_widget else True,
-                )
-            )
-        return configs
-
     def apply(self):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改相機與模型設定。")
             return
         self.release_external_cameras()
-        if has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
-            self.state.model_configs = self.collect_model_configs()
         enabled_names = enabled_model_names(self.state)
         if not enabled_names:
             QMessageBox.warning(self, "模型設定", "至少需要啟用一個模型，才能指定給相機。")
@@ -634,6 +490,167 @@ class SettingsPage(QWidget):
 
     def logout(self):
         self.stop_preview()
+        if self.on_logout:
+            self.on_logout()
+
+
+class ModelSettingsPage(QWidget):
+    def __init__(self, state: AppState, on_saved=None, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_saved = on_saved
+        self.on_logout = on_logout
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        title = QLabel("模型清單")
+        title.setObjectName("pageTitle")
+        header.addWidget(title)
+        header.addStretch()
+
+        layout.addLayout(header)
+        layout.addWidget(self.build_model_group(), 1)
+
+    def build_model_group(self):
+        group = QGroupBox("模型清單")
+        layout = QVBoxLayout(group)
+        self.model_table = QTableWidget(0, 4)
+        self.model_table.setHorizontalHeaderLabels(["啟用", "模型名稱", "模態", "模型檔案"])
+        self.model_table.setColumnWidth(0, 54)
+        self.model_table.setColumnWidth(1, 180)
+        self.model_table.setColumnWidth(2, 120)
+        self.model_table.setColumnWidth(3, 520)
+
+        self.add_model_button = QPushButton("新增模型")
+        self.add_model_button.clicked.connect(self.add_model_row)
+        self.remove_model_button = QPushButton("移除選取模型")
+        self.remove_model_button.clicked.connect(self.remove_selected_model)
+        self.browse_model_button = QPushButton("選取模型檔案")
+        self.browse_model_button.clicked.connect(self.browse_selected_model)
+        self.rescan_models_button = QPushButton("重新掃描 models 模型")
+        self.rescan_models_button.clicked.connect(self.rescan_models)
+
+        actions = QHBoxLayout()
+        actions.addWidget(self.add_model_button)
+        actions.addWidget(self.remove_model_button)
+        actions.addWidget(self.browse_model_button)
+        actions.addWidget(self.rescan_models_button)
+        actions.addStretch()
+
+        layout.addWidget(self.model_table)
+        layout.addLayout(actions)
+        return group
+
+    def refresh(self):
+        ensure_model_configs(self.state)
+        self.load_model_table()
+        self.apply_role_permissions()
+
+    def apply_role_permissions(self):
+        can_manage_models = has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
+        self.model_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.AllEditTriggers
+            if can_manage_models
+            else QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.model_table.setEnabled(can_manage_models)
+        self.add_model_button.setVisible(can_manage_models)
+        self.remove_model_button.setVisible(can_manage_models)
+        self.browse_model_button.setVisible(can_manage_models)
+        self.rescan_models_button.setVisible(can_manage_models)
+
+    def load_model_table(self):
+        self.model_table.setRowCount(0)
+        for config in self.state.model_configs:
+            self.add_model_row(config)
+
+    def add_model_row(self, config=None):
+        if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能新增模型。")
+            return
+        config = config or ModelConfig(name=f"Model {self.model_table.rowCount() + 1}")
+        row = self.model_table.rowCount()
+        self.model_table.insertRow(row)
+
+        enabled = QCheckBox()
+        enabled.setChecked(config.enabled)
+        self.model_table.setCellWidget(row, 0, enabled)
+
+        self.model_table.setItem(row, 1, QTableWidgetItem(config.name))
+
+        modality = QComboBox()
+        modality.addItems(MODEL_MODALITIES)
+        if config.modality in MODEL_MODALITIES:
+            modality.setCurrentText(config.modality)
+        self.model_table.setCellWidget(row, 2, modality)
+
+        self.model_table.setItem(row, 3, QTableWidgetItem(config.file_path))
+
+    def remove_selected_model(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能移除模型。")
+            return
+        row = self.model_table.currentRow()
+        if row >= 0:
+            self.model_table.removeRow(row)
+
+    def browse_selected_model(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能選取模型檔案。")
+            return
+        row = self.model_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "選擇模型", "請先選取一列模型設定。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇模型檔案",
+            str(APP_DIR),
+            "Model Files (*.pt *.onnx *.engine *.weights *.bin *.json);;All Files (*)",
+        )
+        if path:
+            self.model_table.setItem(row, 3, QTableWidgetItem(path))
+
+    def rescan_models(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能重新掃描模型。")
+            return
+        ensure_model_configs(self.state)
+        self.load_model_table()
+
+    def collect_model_configs(self):
+        configs = []
+        for row in range(self.model_table.rowCount()):
+            enabled_widget = self.model_table.cellWidget(row, 0)
+            modality_widget = self.model_table.cellWidget(row, 2)
+            name_item = self.model_table.item(row, 1)
+            path_item = self.model_table.item(row, 3)
+            name = name_item.text().strip() if name_item else f"Model {row + 1}"
+            path = path_item.text().strip() if path_item else ""
+            configs.append(
+                ModelConfig(
+                    name=name or f"Model {row + 1}",
+                    modality=modality_widget.currentText() if modality_widget else "vision",
+                    file_path=path,
+                    enabled=enabled_widget.isChecked() if enabled_widget else True,
+                )
+            )
+        return configs
+
+    def save(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能修改模型清單。")
+            return
+        self.state.model_configs = self.collect_model_configs()
+        ensure_model_configs(self.state)
+        save_app_config(self.state)
+        if self.on_saved:
+            self.on_saved()
+
+    def logout(self):
         if self.on_logout:
             self.on_logout()
 
