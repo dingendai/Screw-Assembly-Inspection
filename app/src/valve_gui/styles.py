@@ -5,7 +5,7 @@ def apply_styles(app: QApplication, font_size: int = 14):
     font_size = max(10, min(28, int(font_size)))
     stylesheet = """
         QMainWindow, QWidget {
-            background: #f5f7f8;
+            background: #f1eee7;
             color: #172026;
             font-family: "Microsoft JhengHei UI", "Segoe UI", Arial;
             font-size: __FONT_SIZE__px;
