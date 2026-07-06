@@ -188,24 +188,8 @@ class SettingsPage(QWidget):
         group = QGroupBox("相機設定即時預覽")
         layout = QVBoxLayout(group)
         self.preview_grid = QGridLayout()
-        self.preview_status = QLabel("每個預覽格會顯示該相機目前指定的模型。")
-        self.preview_status.setObjectName("mutedText")
-
-        restart_button = QPushButton("重新整理預覽")
-        restart_button.clicked.connect(self.restart_preview)
-        stop_button = QPushButton("停止預覽並釋放相機")
-        stop_button.clicked.connect(self.stop_preview)
-        self.restart_preview_button = restart_button
-        self.stop_preview_button = stop_button
-
-        actions = QHBoxLayout()
-        actions.addWidget(restart_button)
-        actions.addWidget(stop_button)
-        actions.addStretch()
 
         layout.addLayout(self.preview_grid, 1)
-        layout.addWidget(self.preview_status)
-        layout.addLayout(actions)
         return group
 
     def camera_index_options(self, selected_index=None):
@@ -293,10 +277,8 @@ class SettingsPage(QWidget):
         self.clear_preview_grid()
         enabled_rows = self.current_enabled_camera_rows()
         if not enabled_rows:
-            self.preview_status.setText("目前沒有啟用的檢測相機。")
             return
 
-        errors = []
         for idx, camera in enumerate(enabled_rows):
             view = CameraView(
                 f"Camera {camera['slot']} / Device {camera['device_index']} / Model: {camera['model_name'] or '--'}"
@@ -310,11 +292,9 @@ class SettingsPage(QWidget):
             )
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
-                errors.append(source.last_error)
             self.preview_views.append((camera, view))
             self.preview_sources.append((camera["slot"], source))
             self.preview_grid.addWidget(view, idx // 2, idx % 2)
-        self.preview_status.setText("；".join(errors) if errors else "正在預覽目前相機配置、方向與指定模型。")
         self.preview_timer.start(33)
 
     def stop_preview(self):
@@ -339,7 +319,6 @@ class SettingsPage(QWidget):
                 frame = source.read()
                 if frame is None:
                     view.set_message(source.last_error or "沒有相機影像。", is_error=True)
-                    self.preview_status.setText(source.last_error or "沒有相機影像。")
                     continue
                 frame = apply_frame_transform(
                     frame,
