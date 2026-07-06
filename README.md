@@ -2,7 +2,9 @@
 
 ## 專案簡介
 
-本專題透過影像識別技術（YOLOv8），對產品四面影像進行檢測，判斷螺絲裝配狀態與相關元件是否正確安裝。
+本專案負責使用已訓練完成的 YOLO 模型，對產品四面影像進行推論、檢測與展示，判斷螺絲裝配狀態與相關元件是否正確安裝。
+
+模型訓練、資料集整理、實驗管理、訓練成果整理與模型封存已獨立到 YOLO-TrainKit，本專案後續不再負責上述訓練流程。
 
 本系統目標包含：
 
@@ -13,21 +15,53 @@
 
 ---
 
+## 專案責任邊界
+
+本專案負責：
+
+* 載入正式推論模型
+* 對輸入影像或影像串流執行推論
+* 解析檢測結果（類別、信心分數、位置）
+* 提供檢測流程、展示介面或 API
+* 維護檢測類別、判定規格與展示文件
+
+本專案不負責：
+
+* 模型訓練
+* 訓練資料集整理
+* 標註資料轉換
+* 實驗管理與訓練結果比較
+* 訓練成果封存
+
+---
+
 ## 專案結構
 
 ```text
 screw_assembly_inspection/
-├─ app/                # 主程式（推論 / UI / API）
-├─ training/           # 資料處理與模型訓練
-│  ├─ data/
-│  ├─ scripts/
-│  ├─ runs/
-│  └─ requirements.txt
-├─ models/             # 模型權重（不納入版本控制）
-├─ docs/               # 規格與文件（標註規則 / dataset / 訓練計畫）
+├─ app/                # 主程式（推論 / 檢測 / UI / API）
+├─ models/             # 正式推論模型權重（不納入版本控制）
+├─ docs/               # 檢測規格、協作文件與展示文件
+├─ training/           # 歷史訓練資料與成果；後續應移交 YOLO-TrainKit 管理
 ├─ .gitignore
 └─ README.md
 ```
+
+`training/` 目前保留既有資料，不在本次調整中刪除或移動；後續若要清理，應先確認資料已在 YOLO-TrainKit 或外部儲存完成交接。
+
+---
+
+## 模型來源
+
+正式推論模型由 YOLO-TrainKit 負責訓練、驗證、整理與封存。
+
+當模型確認可用後，將推論所需的正式權重檔放入：
+
+```text
+models/
+```
+
+本專案的推論流程應只從 `models/` 載入正式模型，不應依賴 `training/runs/` 中的實驗輸出。
 
 ---
 
@@ -39,40 +73,11 @@ YOLOv8 (Ultralytics)
 PyTorch (CUDA)
 ```
 
----
-
-## 安裝與執行（Training）
-
-```bash
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r training/requirements.txt
-```
-
-測試 YOLO：
-
-```bash
-yolo predict model=yolov8n.pt source=bus.jpg
-```
+實際推論執行所需套件應以 `app/` 後續實作為準；訓練環境與訓練依賴由 YOLO-TrainKit 維護。
 
 ---
 
-## 資料集規範
-
-* 原始資料：`training/data/raw/`
-* 標註資料：`training/data/labeled/`
-* 訓練格式（YOLO）：`training/data/yolo_dataset/`
-
-影像來源為四面：
-
-* front
-* back
-* left
-* right
-
----
-
-## 標註類別（初版）
+## 檢測類別（初版）
 
 ```text
 screw_ok
@@ -84,11 +89,13 @@ label_ok
 label_missing
 ```
 
-詳細標註規則請見：
+類別與判定規格請見：
 
 ```text
 docs/annotation_spec.md
 ```
+
+該文件目前仍保留部分訓練標註規則，後續應遷移到 YOLO-TrainKit，或改寫為本專案使用的「檢測類別與判定規格」。
 
 ---
 
@@ -97,29 +104,31 @@ docs/annotation_spec.md
 以下內容不納入 Git 版本控制：
 
 ```text
-- dataset（影像與標註）
 - 模型權重（*.pt）
-- training/runs（訓練輸出）
+- dataset（影像與標註）
+- training/runs（歷史訓練輸出）
 ```
 
 ---
 
 ## 開發狀態
 
-目前進行中：
+目前專案責任已調整為：
 
-* 專案架構建立
-* 環境建置（GPU / YOLO）
-* 標註規則設計（進行中）
+* 推論流程
+* 檢測結果解析
+* UI / API / 展示
+* 檢測規格文件維護
 
 ---
 
 ## 分工建議
 
 ```text
-training/：模型訓練與資料處理
-app/：推論與主程式
-docs/：規格與文件
+app/：推論、檢測、UI、API
+models/：正式推論模型放置位置
+docs/：檢測規格、協作文件、展示文件
+YOLO-TrainKit：模型訓練、資料集、實驗管理、模型封存
 ```
 
 ---
@@ -152,7 +161,7 @@ refactor: 重構（不改功能）
 
 ---
 
-##  未來擴充
+## 未來擴充
 
 * OCR / 條碼辨識
 * 多模型融合（檢測 + 分類）
