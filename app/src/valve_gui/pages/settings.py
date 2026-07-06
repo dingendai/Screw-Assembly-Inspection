@@ -81,6 +81,7 @@ class SettingsPage(QWidget):
 
     def build_camera_group(self):
         group = QGroupBox("相機、方向與指定模型")
+        group.setObjectName("cameraSettingsGroup")
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
@@ -146,6 +147,7 @@ class SettingsPage(QWidget):
             manual_focus.valueChanged.connect(self._queue_preview_restart)
 
             camera_box = QGroupBox(f"Camera {config.slot}")
+            camera_box.setObjectName("cameraSettingsCard")
             card = QGridLayout(camera_box)
             card.setContentsMargins(12, 14, 12, 12)
             card.setHorizontalSpacing(10)
