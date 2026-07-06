@@ -8,8 +8,6 @@ export async function renderSettings(view) {
   const modelNames = () => cfg.models.map((m) => m.name);
 
   // ---------- camera / general section ----------
-  const simBox = h("input", { type: "checkbox" });
-  simBox.checked = !!cfg.use_simulation;
   const opCamInput = h("input", { type: "number", value: cfg.operator_camera_index, style: "width:80px" });
   const detectedLabel = h("span", { class: "muted" }, cfg.detected_cameras?.length ? "偵測到：" + cfg.detected_cameras.join(", ") : "尚未掃描");
 
@@ -30,7 +28,6 @@ export async function renderSettings(view) {
 
   async function saveCameras() {
     const payload = {
-      use_simulation: simBox.checked,
       operator_camera_index: parseInt(opCamInput.value) || 0,
       cameras: camRows.map((r) => r.read()),
     };
@@ -52,7 +49,6 @@ export async function renderSettings(view) {
   const leftCol = h("div", { style: "flex:2; min-width:420px; display:flex; flex-direction:column; gap:14px" },
     h("h2", {}, "相機設定"),
     h("div", { class: "row" },
-      h("label", {}, simBox, " 使用模擬相機"),
       h("div", { class: "col" }, h("label", {}, "操作者相機 index"), opCamInput),
       h("button", { class: "btn", onclick: scan }, "掃描相機"),
       detectedLabel

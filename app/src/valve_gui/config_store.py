@@ -20,7 +20,7 @@ def load_app_config(state):
         data = json.load(file)
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
-    state.use_simulation = bool(data.get("use_simulation", state.use_simulation))
+    state.use_simulation = False
     state.barcode_label_classes = normalise_model_names(data.get("barcode_label_classes", []))
     role_labels = data.get("role_labels", {})
     default_labels = default_role_labels()
@@ -163,7 +163,7 @@ def save_app_config(state):
     APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "operator_camera_index": state.operator_camera_index,
-        "use_simulation": state.use_simulation,
+        "use_simulation": False,
         "barcode_label_classes": list(state.barcode_label_classes),
         "display": asdict(state.display),
         "decision": asdict(state.decision),

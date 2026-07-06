@@ -53,8 +53,6 @@ class LoginPage(QWidget):
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.camera_index = QComboBox()
         self.populate_camera_indexes(state.operator_camera_index)
-        self.simulation_box = QCheckBox("使用模擬影像")
-        self.simulation_box.setChecked(state.use_simulation)
         self.photo_status = QLabel("尚未拍照")
         self.photo_status.setObjectName("mutedText")
         self.camera_visibility_group = QGroupBox("相機顯示")
@@ -86,7 +84,6 @@ class LoginPage(QWidget):
         form.addRow("登入角色", self.role_input)
         form.addRow("登入密鑰", self.password_input)
         form.addRow("登入拍照相機", self.camera_index)
-        form.addRow("", self.simulation_box)
 
         panel = QGroupBox("登入與操作者照片")
         panel_layout = QVBoxLayout(panel)
@@ -148,21 +145,21 @@ class LoginPage(QWidget):
         self.scan_button.setText("搜尋可用相機")
         self.state.detected_cameras = found
         if not found:
-            QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，可勾選模擬影像測試。")
+            QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，請確認相機已連接。")
         self.populate_camera_indexes(self.state.operator_camera_index)
         self.start_preview()
 
     def start_preview(self):
         self.stop()
         self.state.operator_camera_index = int(self.camera_index.currentData())
-        self.state.use_simulation = self.simulation_box.isChecked()
+        self.state.use_simulation = False
 
         indexes = self.preview_indexes()
         self.clear_preview_grid()
         self.build_camera_visibility_controls(indexes)
         for camera_index in indexes:
             view = CameraView(f"Camera Device {camera_index}")
-            source = VideoSource(f"CAMERA {camera_index}", camera_index, self.state.use_simulation)
+            source = VideoSource(f"CAMERA {camera_index}", camera_index, False)
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
             self.views[camera_index] = view
@@ -218,9 +215,6 @@ class LoginPage(QWidget):
             view.setVisible(camera_index in self.visible_camera_indexes)
 
     def preview_indexes(self):
-        if self.state.use_simulation:
-            configured = [camera.device_index for camera in self.state.inspection_cameras if camera.enabled]
-            return sorted(set(configured + [self.state.operator_camera_index]))
         if self.state.detected_cameras:
             return self.state.detected_cameras
         return [self.state.operator_camera_index]
@@ -265,7 +259,6 @@ class LoginPage(QWidget):
         self.set_form_row_visible(self.name_input, needs_name)
         self.set_form_row_visible(self.password_input, needs_password)
         self.set_form_row_visible(self.camera_index, needs_photo)
-        self.set_form_row_visible(self.simulation_box, needs_photo)
 
         self.scan_button.setVisible(needs_photo)
         self.start_button.setVisible(needs_photo)

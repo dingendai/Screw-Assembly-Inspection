@@ -79,8 +79,7 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
 
 @router.put("/cameras")
 def update_cameras(req: CamerasUpdate, ctx: WebContext = Depends(_settings_dep)):
-    if req.use_simulation is not None:
-        ctx.state.use_simulation = bool(req.use_simulation)
+    ctx.state.use_simulation = False
     if req.operator_camera_index is not None:
         ctx.state.operator_camera_index = int(req.operator_camera_index)
     _apply_cameras(ctx, req.cameras, regions_only=False)

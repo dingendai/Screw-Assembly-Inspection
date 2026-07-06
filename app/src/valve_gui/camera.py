@@ -116,7 +116,7 @@ class VideoSource:
                 self.capture = None
                 self.last_error = (
                     f"{label} / Device {index}: 無法開啟相機。"
-                    "請確認相機已連接、未被其他程式占用，或改用模擬影像。"
+                    "請確認相機已連接，且未被其他程式占用。"
                 )
             else:
                 self.apply_focus_settings(focus_mode, manual_focus_value)

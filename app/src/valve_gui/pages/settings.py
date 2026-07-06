@@ -31,7 +31,6 @@ from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_SETTINGS,
-    PERMISSION_USE_SIMULATION,
     has_permission,
 )
 from valve_gui.utils import decision_rule_key as _rule_key
@@ -195,10 +194,6 @@ class SettingsPage(QWidget):
                 barcode, focus_mode, manual_focus, manual_focus_value,
             ))
 
-        self.simulation_box = QCheckBox("無相機或測試時使用模擬影像")
-        self.simulation_box.setChecked(self.state.use_simulation)
-        self.simulation_box.stateChanged.connect(self._queue_preview_restart)
-
         search_button = QPushButton("搜尋相機")
         search_button.clicked.connect(self.search_cameras)
         self.search_camera_button = search_button
@@ -218,7 +213,6 @@ class SettingsPage(QWidget):
 
         layout.addLayout(camera_grid)
         layout.addLayout(action_row)
-        layout.addWidget(self.simulation_box)
         layout.addLayout(barcode_row)
         layout.addWidget(self.detected_label)
         return group
@@ -302,7 +296,7 @@ class SettingsPage(QWidget):
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
             return
         ensure_model_configs(self.state)
-        self.simulation_box.setChecked(self.state.use_simulation)
+        self.state.use_simulation = False
         self.refresh_camera_index_combos()
         for config, controls in zip(self.state.inspection_cameras, self.rows):
             enabled, index, model_list, flip_h, flip_v, rotation, barcode, focus_mode, manual_focus, manual_focus_value = controls
@@ -324,16 +318,13 @@ class SettingsPage(QWidget):
         self.restart_preview()
 
     def apply_role_permissions(self):
-        can_use_simulation = has_permission(self.state.operator_role, PERMISSION_USE_SIMULATION, self.state.role_permissions)
-        self.simulation_box.setEnabled(can_use_simulation)
+        pass
 
     def _queue_preview_restart(self):
         self._preview_debounce.start()
 
     def search_cameras(self):
         self.release_external_cameras()
-        self._previous_simulation = self.simulation_box.isChecked()
-        self.simulation_box.setChecked(False)
         self.search_camera_button.setEnabled(False)
         self.search_camera_button.setText("搜尋中…")
         self._scan_worker = CameraScanWorker(parent=self)
@@ -348,7 +339,6 @@ class SettingsPage(QWidget):
             self.detected_label.setText("已找到相機索引：" + ", ".join(str(index) for index in found))
         else:
             self.detected_label.setText("未找到可讀取的相機，已保留目前設定。")
-            self.simulation_box.setChecked(self._previous_simulation)
         self.refresh_camera_index_combos()
         self.restart_preview()
 
@@ -368,7 +358,7 @@ class SettingsPage(QWidget):
             source = VideoSource(
                 f"CAMERA {camera['slot']}",
                 camera["device_index"],
-                self.simulation_box.isChecked(),
+                False,
                 camera["focus_mode"],
                 camera["manual_focus_value"],
             )
@@ -474,7 +464,7 @@ class SettingsPage(QWidget):
             )
             return
 
-        self.state.use_simulation = self.simulation_box.isChecked()
+        self.state.use_simulation = False
         self.state.barcode_label_classes = [
             name.strip() for name in self.barcode_classes_input.text().split(",") if name.strip()
         ]
