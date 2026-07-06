@@ -339,10 +339,7 @@ class MonitorPage(QWidget):
         roi_id = region.get("roi_id")
         if roi_id is not None:
             return f"#{roi_id}"
-        model_names = region.get("model_names", [])
-        if not model_names:
-            return f"{label} {index}"
-        return f"{label} {index}: {', '.join(model_names)}"
+        return f"{label} {index}"
 
     def update_barcode_label(self, text, source=""):
         if text and source:
