@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QCheckBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +58,7 @@ class MonitorPage(QWidget):
         self.router = InferenceRouter(state)
         self.sources = []
         self.views = []
+        self.single_views = {}
         self.last_frames = {}
         self.latest_annotated_frames = {}
         self.continuous_detection = False
@@ -117,6 +119,8 @@ class MonitorPage(QWidget):
         self.grid = QGridLayout(self.grid_holder)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(12)
+        self.monitor_tabs = QTabWidget()
+        self.monitor_tabs.addTab(self.grid_holder, "總覽")
 
         start_button = QPushButton("重新啟動所有相機")
         start_button.clicked.connect(self.start)
@@ -169,7 +173,7 @@ class MonitorPage(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(self.grid_holder, 1)
+        layout.addWidget(self.monitor_tabs, 1)
         layout.addWidget(side, 0)
 
     def toggle_info_labels(self, checked):
@@ -198,13 +202,23 @@ class MonitorPage(QWidget):
             widget = item.widget()
             if widget:
                 widget.setParent(None)
+        self.monitor_tabs.clear()
+        self.monitor_tabs.addTab(self.grid_holder, "總覽")
         self.views = []
+        self.single_views = {}
         enabled = [config for config in self.state.inspection_cameras if config.enabled]
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
             view = CameraView(f"Camera {config.slot}")
+            single_view = CameraView(f"Camera {config.slot}")
+            single_page = QWidget()
+            single_layout = QVBoxLayout(single_page)
+            single_layout.setContentsMargins(12, 12, 12, 12)
+            single_layout.addWidget(single_view, 1)
             self.views.append((config, view))
+            self.single_views[config.slot] = single_view
             self.grid.addWidget(view, idx // columns, idx % columns)
+            self.monitor_tabs.addTab(single_page, f"Camera {config.slot}")
 
     def start(self):
         continuous_requested = self.continuous_detection
@@ -261,6 +275,9 @@ class MonitorPage(QWidget):
             frame = source.read()
             if frame is None:
                 view.set_message(source.last_error or "沒有相機影像。", is_error=True)
+                single_view = self.single_views.get(config.slot)
+                if single_view:
+                    single_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
                 self.camera_status_label.setText(f"相機狀態：{source.last_error or '沒有相機影像。'}")
                 continue
             model_frame = apply_frame_transform(
@@ -273,10 +290,19 @@ class MonitorPage(QWidget):
             # happens only after inference/overlay rendering.
             self.last_frames[config.slot] = model_frame
             display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
-            view.set_frame(
+            self.set_monitor_frame(
+                config,
                 self.display_frame_for(config, display_frame if display_frame is not None else model_frame),
                 input_fps=source.input_fps,
             )
+
+    def set_monitor_frame(self, config, frame, input_fps=None):
+        overview_view = self._view_by_slot.get(config.slot)
+        if overview_view:
+            overview_view.set_frame(frame, input_fps=input_fps)
+        single_view = self.single_views.get(config.slot)
+        if single_view:
+            single_view.set_frame(frame, input_fps=input_fps)
 
     def display_frame_for(self, config, frame):
         return self.compress_frame_for_gui(self.frame_with_region_overlay(config, frame))
@@ -467,10 +493,9 @@ class MonitorPage(QWidget):
         if self.continuous_detection:
             self.latest_annotated_frames = dict(annotated_frames)
         for slot, frame in annotated_frames.items():
-            view = self._view_by_slot.get(slot)
-            if view:
-                config = self._config_by_slot.get(slot)
-                view.set_frame(self.display_frame_for(config, frame) if config else self.compress_frame_for_gui(frame))
+            config = self._config_by_slot.get(slot)
+            if config:
+                self.set_monitor_frame(config, self.display_frame_for(config, frame))
 
     def record_detection(self, inference):
         if self.continuous_detection:
