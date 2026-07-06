@@ -137,7 +137,7 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         action_specs = [
             ("login", "登入", self.show_login, True),
-            ("models", "Step1：模型清單匯入", self.show_models, True),
+            ("models", "S1 模型清單", self.show_models, True),
             ("settings", "S2 相機設定", self.show_settings, True),
             ("regions", "指定範圍監視", self.show_region_settings, True),
             ("display", "GUI 顯示設定", self.show_display_settings, True),
