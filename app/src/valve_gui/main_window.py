@@ -452,8 +452,8 @@ class MainWindow(QMainWindow):
         self.update_navigation()
         self.release_all_hardware()
         if has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
-            self.settings_page.refresh()
-            self.stack.setCurrentWidget(self.settings_page)
+            self.model_page.refresh()
+            self.stack.setCurrentWidget(self.model_page)
         elif has_permission(self.state.operator_role, PERMISSION_OPEN_MONITOR, self.state.role_permissions):
             self.state.settings_applied = True
             self.update_navigation()
