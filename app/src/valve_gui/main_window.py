@@ -307,7 +307,6 @@ class MainWindow(QMainWindow):
     def apply_camera_settings_without_navigation(self):
         if self.settings_page.apply(enter_monitor=False):
             self.monitor_page.router.clear_model_cache()
-            self.apply_display_config()
             self.update_navigation()
 
     def require_login(self):
