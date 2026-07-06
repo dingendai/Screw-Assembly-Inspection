@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -96,10 +97,9 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
-        camera_grid = QGridLayout()
-        camera_grid.setSpacing(10)
+        self.camera_tabs = QTabWidget()
 
-        for row, config in enumerate(self.state.inspection_cameras):
+        for config in self.state.inspection_cameras:
             enabled = QCheckBox("啟用")
             enabled.setChecked(config.enabled)
 
@@ -188,7 +188,7 @@ class SettingsPage(QWidget):
             card.addWidget(model_list, 7, 0, 1, 3)
             card.setColumnStretch(2, 1)
 
-            camera_grid.addWidget(camera_box, row // 2, row % 2)
+            self.camera_tabs.addTab(camera_box, f"Camera {config.slot}")
             self.rows.append((
                 enabled, index, model_list, flip_h, flip_v, rotation,
                 barcode, focus_mode, manual_focus, manual_focus_value,
@@ -211,7 +211,7 @@ class SettingsPage(QWidget):
         action_row.addWidget(search_button)
         action_row.addStretch()
 
-        layout.addLayout(camera_grid)
+        layout.addWidget(self.camera_tabs, 1)
         layout.addLayout(action_row)
         layout.addLayout(barcode_row)
         layout.addWidget(self.detected_label)
