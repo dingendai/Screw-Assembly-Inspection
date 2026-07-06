@@ -86,6 +86,8 @@ class LoginPage(QWidget):
         form.addRow("登入拍照相機", self.camera_index)
 
         panel = QGroupBox("登入與操作者照片")
+        panel.setMinimumWidth(420)
+        panel.setMaximumWidth(560)
         panel_layout = QVBoxLayout(panel)
         panel_layout.addLayout(form)
         panel_layout.addWidget(scan_button)
@@ -104,8 +106,10 @@ class LoginPage(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
+        layout.addStretch(1)
         layout.addWidget(panel, 0)
-        layout.addWidget(preview_group, 1)
+        layout.addWidget(preview_group, 2)
+        layout.addStretch(1)
         self.update_login_requirements()
 
     def refresh_role_options(self):
