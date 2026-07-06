@@ -102,7 +102,6 @@ class LoginPage(QWidget):
         panel_layout.addWidget(self.camera_visibility_group)
         panel_layout.addWidget(capture_button)
         panel_layout.addWidget(self.photo_status)
-        panel_layout.addStretch()
         panel_layout.addWidget(login_button)
 
         preview_group = QGroupBox("可用相機畫面")
@@ -110,11 +109,16 @@ class LoginPage(QWidget):
         self.preview_grid = QGridLayout(preview_group)
         self.preview_grid.setSpacing(12)
 
-        layout = QHBoxLayout(self)
+        content = QHBoxLayout()
+        content.addStretch(1)
+        content.addWidget(panel, 0)
+        content.addWidget(preview_group, 2)
+        content.addStretch(1)
+
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addStretch(1)
-        layout.addWidget(panel, 0)
-        layout.addWidget(preview_group, 2)
+        layout.addLayout(content)
         layout.addStretch(1)
         self.update_login_requirements()
 
