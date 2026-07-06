@@ -884,7 +884,7 @@ class DecisionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
-        self.overview_rows = {}
+        self.rule_tab_slots = []
         self.loading_rules = False
         self.camera_preview_views = {}
         self.camera_preview_source = None
@@ -928,6 +928,7 @@ class DecisionSettingsPage(QWidget):
         global_row.addStretch()
 
         self.model_tabs = QTabWidget()
+        self.model_tabs.currentChanged.connect(self.sync_camera_preview_to_rule_tab)
 
         layout.addLayout(global_row)
         layout.addWidget(self.model_tabs, 1)
@@ -959,43 +960,24 @@ class DecisionSettingsPage(QWidget):
 
     def load_rule_table(self):
         self.rule_rows = []
-        self.overview_rows = {}
+        self.rule_tab_slots = []
         self.model_tabs.clear()
-        grouped_rules = {}
-        all_rules = []
         for camera in self.state.inspection_cameras:
-            if not camera.enabled:
-                continue
-            for model_name in camera_model_names(camera):
-                grouped_rules.setdefault(model_name, []).append(camera.slot)
-                all_rules.append((camera.slot, model_name))
-
-        if not grouped_rules:
-            empty_page = QWidget()
-            empty_layout = QVBoxLayout(empty_page)
-            empty_label = QLabel("目前沒有啟用的 Camera / 模型判定規則。")
-            empty_label.setObjectName("mutedText")
-            empty_layout.addWidget(empty_label)
-            empty_layout.addStretch()
-            self.model_tabs.addTab(empty_page, "未設定")
-            return
-
-        overview_page = QWidget()
-        overview_layout = QVBoxLayout(overview_page)
-        overview_table = self.create_overview_table()
-        overview_layout.addWidget(overview_table)
-        for slot, model_name in sorted(all_rules, key=lambda item: (item[0], item[1])):
-            self.add_overview_row(overview_table, slot, model_name)
-        self.model_tabs.addTab(overview_page, "一覽表")
-
-        for model_name in sorted(grouped_rules):
             page = QWidget()
             page_layout = QVBoxLayout(page)
-            table = self.create_rule_table()
-            page_layout.addWidget(table)
-            for slot in sorted(grouped_rules[model_name]):
-                self.add_rule_row(table, slot, model_name)
-            self.model_tabs.addTab(page, model_name)
+            model_names = camera_model_names(camera) if camera.enabled else []
+            if model_names:
+                table = self.create_rule_table(show_model=True)
+                page_layout.addWidget(table)
+                for model_name in model_names:
+                    self.add_rule_row(table, camera.slot, model_name, show_model=True)
+            else:
+                empty_label = QLabel("此 Camera 目前沒有啟用的模型判定規則。")
+                empty_label.setObjectName("mutedText")
+                page_layout.addWidget(empty_label)
+                page_layout.addStretch()
+            self.model_tabs.addTab(page, f"Camera {camera.slot}")
+            self.rule_tab_slots.append(camera.slot)
 
     def create_rule_table(self, show_model=False):
         table = QTableWidget(0, 4 if show_model else 3)
@@ -1015,35 +997,6 @@ class DecisionSettingsPage(QWidget):
             table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         table.setAlternatingRowColors(True)
         return table
-
-    def create_overview_table(self):
-        table = QTableWidget(0, 4)
-        table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
-        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
-        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        table.setAlternatingRowColors(True)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        return table
-
-    def add_overview_row(self, table, slot, model_name):
-        row = table.rowCount()
-        table.insertRow(row)
-        table.setRowHeight(row, self.RULE_ROW_HEIGHT)
-        rule = self.state.decision.model_rules.get(_rule_key(slot, model_name), {})
-        confidence = float(rule.get("confidence_threshold", self.state.decision.pass_confidence_threshold))
-        required_count = int(rule.get("required_object_count", 1))
-        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
-        table.setItem(row, 1, QTableWidgetItem(model_name))
-        table.setItem(row, 2, QTableWidgetItem(f"{confidence:.3f}"))
-        table.setItem(row, 3, QTableWidgetItem(str(required_count)))
-        self.overview_rows[_rule_key(slot, model_name)] = {
-            "confidence": table.item(row, 2),
-            "count": table.item(row, 3),
-        }
 
     def add_rule_row(self, table, slot, model_name, show_model=False):
         row = table.rowCount()
@@ -1091,7 +1044,6 @@ class DecisionSettingsPage(QWidget):
     def queue_auto_save(self):
         if self.loading_rules:
             return
-        self.sync_overview_table()
         self.autosave_timer.start(300)
 
     def autosave_decision_settings(self):
@@ -1110,16 +1062,16 @@ class DecisionSettingsPage(QWidget):
                 "required_object_count": int(row["count"].currentData()),
             }
         self.state.decision.model_rules = rules
-        self.sync_overview_table()
         save_app_config(self.state)
 
-    def sync_overview_table(self):
-        for row in self.rule_rows:
-            overview = self.overview_rows.get(_rule_key(row["slot"], row["model_name"]))
-            if not overview:
-                continue
-            overview["confidence"].setText(f"{row['confidence'].value():.3f}")
-            overview["count"].setText(str(int(row["count"].currentData())))
+    def sync_camera_preview_to_rule_tab(self, index):
+        if index < 0 or index >= len(self.rule_tab_slots):
+            return
+        slot = self.rule_tab_slots[index]
+        for preview_index, camera in enumerate(self.state.inspection_cameras):
+            if camera.slot == slot:
+                self.camera_preview_tabs.setCurrentIndex(preview_index)
+                return
 
     def update_camera_preview_tab(self, index):
         self.stop_camera_preview()
