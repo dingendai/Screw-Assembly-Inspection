@@ -511,6 +511,7 @@ class MainWindow(QMainWindow):
     def release_all_hardware(self):
         self.monitor_page.stop()
         self.settings_page.stop_preview()
+        self.model_page.stop_camera_photo_preview()
         self.region_page.stop()
         self.login_page.stop()
 

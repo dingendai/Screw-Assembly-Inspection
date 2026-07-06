@@ -30,7 +30,6 @@ from valve_gui.model_registry import (
     camera_model_names,
     enabled_model_names,
     ensure_model_configs,
-    model_by_name,
     set_camera_model_names,
 )
 from valve_gui.models import AppState, ModelConfig
@@ -418,6 +417,10 @@ class ModelSettingsPage(QWidget):
         self.on_saved = on_saved
         self.on_logout = on_logout
         self.camera_model_tables = []
+        self.camera_photo_views = {}
+        self.camera_photo_source = None
+        self.camera_photo_timer = QTimer(self)
+        self.camera_photo_timer.timeout.connect(self.update_camera_photo_preview)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -431,6 +434,7 @@ class ModelSettingsPage(QWidget):
         self.model_tabs.addTab(model_list_page, "模型清單")
         for camera in self.state.inspection_cameras:
             self.model_tabs.addTab(self.build_camera_model_page(camera), f"Camera {camera.slot}")
+        self.model_tabs.currentChanged.connect(self.update_model_tab_preview)
 
         layout.addWidget(self.model_tabs, 1)
 
@@ -466,19 +470,34 @@ class ModelSettingsPage(QWidget):
 
     def build_camera_model_page(self, camera):
         page = QWidget()
-        layout = QVBoxLayout(page)
+        layout = QHBoxLayout(page)
         layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
 
-        table = QTableWidget(0, 3)
-        table.setHorizontalHeaderLabels(["模型名稱", "模態", "模型檔案"])
+        model_group = QGroupBox("選項模型")
+        model_layout = QVBoxLayout(model_group)
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["指定", "模型名稱", "模態", "模型檔案"])
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.horizontalHeader().setStretchLastSection(True)
-        table.setColumnWidth(0, 180)
-        table.setColumnWidth(1, 120)
+        table.setColumnWidth(0, 54)
+        table.setColumnWidth(1, 180)
+        table.setColumnWidth(2, 120)
+        model_layout.addWidget(table, 1)
 
-        layout.addWidget(table, 1)
+        photo_tabs = QTabWidget()
+        photo_page = QWidget()
+        photo_layout = QVBoxLayout(photo_page)
+        photo_layout.setContentsMargins(12, 12, 12, 12)
+        photo_view = CameraView(f"Camera {camera.slot}")
+        photo_layout.addWidget(photo_view, 1)
+        photo_tabs.addTab(photo_page, "照片")
+
+        layout.addWidget(model_group, 1)
+        layout.addWidget(photo_tabs, 1)
         self.camera_model_tables.append((camera, table))
+        self.camera_photo_views[camera.slot] = photo_view
         return page
 
     def refresh(self):
@@ -486,6 +505,7 @@ class ModelSettingsPage(QWidget):
         self.load_model_table()
         self.load_camera_model_tabs()
         self.apply_role_permissions()
+        self.update_model_tab_preview(self.model_tabs.currentIndex())
 
     def apply_role_permissions(self):
         can_manage_models = has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions)
@@ -499,6 +519,8 @@ class ModelSettingsPage(QWidget):
         self.remove_model_button.setVisible(can_manage_models)
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
+        for _, table in self.camera_model_tables:
+            table.setEnabled(can_manage_models)
 
     def load_model_table(self):
         self.model_table.setRowCount(0)
@@ -508,13 +530,79 @@ class ModelSettingsPage(QWidget):
     def load_camera_model_tabs(self):
         for camera, table in self.camera_model_tables:
             table.setRowCount(0)
-            for model_name in camera_model_names(camera):
-                model = model_by_name(self.state, model_name)
+            selected_names = set(camera_model_names(camera))
+            for model in self.state.model_configs:
+                if not model.enabled:
+                    continue
                 row = table.rowCount()
                 table.insertRow(row)
-                table.setItem(row, 0, QTableWidgetItem(model_name))
-                table.setItem(row, 1, QTableWidgetItem(model.modality if model else ""))
-                table.setItem(row, 2, QTableWidgetItem(model.file_path if model else ""))
+                assigned = QCheckBox()
+                assigned.setChecked(model.name in selected_names)
+                table.setCellWidget(row, 0, assigned)
+                table.setItem(row, 1, QTableWidgetItem(model.name))
+                table.setItem(row, 2, QTableWidgetItem(model.modality))
+                table.setItem(row, 3, QTableWidgetItem(model.file_path))
+
+    def collect_camera_model_assignments(self):
+        valid_names = set(enabled_model_names(self.state))
+        for camera, table in self.camera_model_tables:
+            selected_names = []
+            for row in range(table.rowCount()):
+                assigned = table.cellWidget(row, 0)
+                name_item = table.item(row, 1)
+                model_name = name_item.text().strip() if name_item else ""
+                if assigned and assigned.isChecked() and model_name in valid_names:
+                    selected_names.append(model_name)
+            set_camera_model_names(camera, selected_names)
+
+    def update_model_tab_preview(self, index):
+        self.stop_camera_photo_preview()
+        if index <= 0:
+            return
+        camera_index = index - 1
+        if camera_index >= len(self.state.inspection_cameras):
+            return
+        camera = self.state.inspection_cameras[camera_index]
+        view = self.camera_photo_views.get(camera.slot)
+        if not view:
+            return
+        source = VideoSource(
+            f"CAMERA {camera.slot}",
+            camera.device_index,
+            False,
+            getattr(camera, "focus_mode", "auto"),
+            getattr(camera, "manual_focus_value", 120),
+        )
+        self.camera_photo_source = (camera, source)
+        if source.has_error():
+            view.set_message(source.last_error, is_error=True)
+        self.camera_photo_timer.start(33)
+
+    def update_camera_photo_preview(self):
+        if not self.camera_photo_source:
+            return
+        camera, source = self.camera_photo_source
+        view = self.camera_photo_views.get(camera.slot)
+        if not view:
+            return
+        frame = source.read()
+        if frame is None:
+            view.set_message(source.last_error or "沒有相機影像。", is_error=True)
+            return
+        frame = apply_frame_transform(
+            frame,
+            flip_horizontal=camera.flip_horizontal,
+            flip_vertical=camera.flip_vertical,
+            rotation_degrees=camera.rotation_degrees,
+        )
+        view.set_frame(frame, input_fps=source.input_fps)
+
+    def stop_camera_photo_preview(self):
+        self.camera_photo_timer.stop()
+        if self.camera_photo_source:
+            _, source = self.camera_photo_source
+            source.release()
+            self.camera_photo_source = None
 
     def add_model_row(self, config=None):
         if config is None and not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
@@ -596,12 +684,14 @@ class ModelSettingsPage(QWidget):
             return
         self.state.model_configs = self.collect_model_configs()
         ensure_model_configs(self.state)
+        self.collect_camera_model_assignments()
         self.load_camera_model_tabs()
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()
 
     def logout(self):
+        self.stop_camera_photo_preview()
         if self.on_logout:
             self.on_logout()
 
