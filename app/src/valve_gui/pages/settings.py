@@ -85,7 +85,7 @@ class SettingsPage(QWidget):
         self.camera_tabs = QTabWidget()
 
         for config in self.state.inspection_cameras:
-            enabled = QCheckBox("啟用")
+            enabled = QCheckBox("啟用相機")
             enabled.setChecked(config.enabled)
 
             index = QComboBox()
