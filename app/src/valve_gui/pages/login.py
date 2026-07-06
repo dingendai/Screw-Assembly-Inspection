@@ -1,11 +1,12 @@
 from datetime import datetime
 
 import cv2
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -88,6 +89,11 @@ class LoginPage(QWidget):
         panel = QGroupBox("登入與操作者照片")
         panel.setMinimumWidth(420)
         panel.setMaximumWidth(560)
+        panel_shadow = QGraphicsDropShadowEffect(panel)
+        panel_shadow.setBlurRadius(28)
+        panel_shadow.setOffset(0, 8)
+        panel_shadow.setColor(Qt.GlobalColor.gray)
+        panel.setGraphicsEffect(panel_shadow)
         panel_layout = QVBoxLayout(panel)
         panel_layout.addLayout(form)
         panel_layout.addWidget(scan_button)
