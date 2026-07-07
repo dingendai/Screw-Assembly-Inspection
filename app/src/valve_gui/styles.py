@@ -277,6 +277,30 @@ def apply_styles(app: QApplication, font_size: int = 14):
             border: 2px solid #c4cdd2;
             background: #eef2f4;
         }
+        QRadioButton {
+            color: #25323a;
+            font-weight: 700;
+            spacing: 8px;
+            padding: 4px 2px;
+        }
+        QRadioButton::indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 9px;
+            border: 2px solid #7c8d96;
+            background: #ffffff;
+        }
+        QRadioButton::indicator:hover {
+            border: 2px solid #176b5d;
+            background: #eef7f4;
+        }
+        QRadioButton::indicator:checked {
+            border: 2px solid #176b5d;
+            background: #176b5d;
+        }
+        QRadioButton::indicator:checked:hover {
+            background: #135b50;
+        }
         QPushButton {
             background: #eef3f5;
             border: 1px solid #c9d4d9;
