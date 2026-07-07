@@ -55,8 +55,7 @@ class SettingsPage(QWidget):
         self.on_logout = on_logout
         self.rows = []
         self.preview_sources = []
-        self.preview_views = []
-        self.single_preview_views = {}
+        self.preview_cameras = {}
         self.preview_timer = QTimer(self)
         self.preview_timer.timeout.connect(self.update_camera_previews)
         self._preview_debounce = QTimer(self)
@@ -91,6 +90,7 @@ class SettingsPage(QWidget):
         layout.setSpacing(10)
 
         self.camera_tabs = QTabWidget()
+        self.camera_tabs.currentChanged.connect(lambda _index: self.update_camera_previews())
 
         for config in self.state.inspection_cameras:
             enabled = QCheckBox("啟用相機")
@@ -241,13 +241,9 @@ class SettingsPage(QWidget):
         group = QGroupBox("相機設定即時預覽")
         group.setObjectName("cameraPreviewGroup")
         layout = QVBoxLayout(group)
-        self.preview_tabs = QTabWidget()
-        self.preview_overview = QWidget()
-        self.preview_grid = QGridLayout()
-        self.preview_overview.setLayout(self.preview_grid)
-        self.preview_tabs.addTab(self.preview_overview, "總覽")
+        self.preview_view = CameraView("Camera")
 
-        layout.addWidget(self.preview_tabs, 1)
+        layout.addWidget(self.preview_view, 1)
         return group
 
     def camera_index_options(self, selected_index=None):
@@ -323,15 +319,11 @@ class SettingsPage(QWidget):
         self.clear_preview_grid()
         enabled_rows = self.current_enabled_camera_rows()
         if not enabled_rows:
+            self.preview_view.set_message("目前沒有啟用的相機。", is_error=True)
             return
 
-        for idx, camera in enumerate(enabled_rows):
-            view = CameraView(f"Camera {camera['slot']}")
-            single_view = CameraView(f"Camera {camera['slot']}")
-            single_page = QWidget()
-            single_layout = QVBoxLayout(single_page)
-            single_layout.setContentsMargins(12, 12, 12, 12)
-            single_layout.addWidget(single_view, 1)
+        self.preview_cameras = {camera["slot"]: camera for camera in enabled_rows}
+        for camera in enabled_rows:
             source = VideoSource(
                 f"CAMERA {camera['slot']}",
                 camera["device_index"],
@@ -340,12 +332,8 @@ class SettingsPage(QWidget):
                 camera["manual_focus_value"],
             )
             if source.has_error():
-                view.set_message(source.last_error, is_error=True)
-            self.preview_views.append((camera, view))
-            self.single_preview_views[camera["slot"]] = single_view
+                self.preview_view.set_message(source.last_error, is_error=True)
             self.preview_sources.append((camera["slot"], source))
-            self.preview_grid.addWidget(view, idx // 2, idx % 2)
-            self.preview_tabs.addTab(single_page, f"Camera {camera['slot']}")
         self.preview_timer.start(33)
 
     def stop_preview(self):
@@ -355,38 +343,36 @@ class SettingsPage(QWidget):
         self.preview_sources = []
 
     def clear_preview_grid(self):
-        while self.preview_grid.count():
-            item = self.preview_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.setParent(None)
-        self.preview_tabs.clear()
-        self.preview_tabs.addTab(self.preview_overview, "總覽")
-        self.preview_views = []
-        self.single_preview_views = {}
+        self.preview_cameras = {}
+        self.preview_view.set_message("No Signal")
 
     def update_camera_previews(self):
+        if not hasattr(self, "preview_view"):
+            return
+        slot = self.camera_tabs.currentIndex() + 1
+        camera = self.preview_cameras.get(slot)
+        if not camera:
+            self.preview_view.base_title = f"Camera {slot}"
+            self.preview_view.update_fps_label()
+            self.preview_view.set_message("此 Camera 未啟用。")
+            return
         source_by_slot = {slot: source for slot, source in self.preview_sources}
-        for camera, view in self.preview_views:
-            source = source_by_slot.get(camera["slot"])
-            if source:
-                frame = source.read()
-                if frame is None:
-                    view.set_message(source.last_error or "沒有相機影像。", is_error=True)
-                    single_view = self.single_preview_views.get(camera["slot"])
-                    if single_view:
-                        single_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
-                    continue
-                frame = apply_frame_transform(
-                    frame,
-                    flip_horizontal=camera["flip_horizontal"],
-                    flip_vertical=camera["flip_vertical"],
-                    rotation_degrees=camera["rotation_degrees"],
-                )
-                view.set_frame(frame, input_fps=source.input_fps)
-                single_view = self.single_preview_views.get(camera["slot"])
-                if single_view:
-                    single_view.set_frame(frame, input_fps=source.input_fps)
+        source = source_by_slot.get(slot)
+        if not source:
+            self.preview_view.set_message("沒有相機來源。", is_error=True)
+            return
+        frame = source.read()
+        if frame is None:
+            self.preview_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
+            return
+        frame = apply_frame_transform(
+            frame,
+            flip_horizontal=camera["flip_horizontal"],
+            flip_vertical=camera["flip_vertical"],
+            rotation_degrees=camera["rotation_degrees"],
+        )
+        self.preview_view.base_title = f"Camera {slot}"
+        self.preview_view.set_frame(frame, input_fps=source.input_fps)
 
     def current_enabled_camera_rows(self):
         enabled_rows = []
