@@ -88,16 +88,16 @@ def apply_styles(app: QApplication, font_size: int = 14):
             color: #082f49;
         }
         QToolButton:checked {
-            background: #176b5d;
-            color: #ffffff;
-            border: 1px solid #176b5d;
+            background: #ffffff;
+            color: #172026;
+            border: 2px solid #dc2626;
             border-radius: 6px;
             font-weight: 800;
         }
         QToolButton:checked:hover {
-            background: #135b50;
-            border: 1px solid #135b50;
-            color: #ffffff;
+            background: #fff7f7;
+            border: 2px solid #b91c1c;
+            color: #172026;
         }
         QToolButton#setupNavButton:checked {
             background: #ffffff;
@@ -112,15 +112,15 @@ def apply_styles(app: QApplication, font_size: int = 14):
             color: #172026;
         }
         QToolButton#infoNavButton:checked {
-            background: #bae6fd;
+            background: #e0f2fe;
             color: #082f49;
-            border: 2px solid #38bdf8;
+            border: 2px solid #dc2626;
             border-radius: 6px;
             font-weight: 800;
         }
         QToolButton#infoNavButton:checked:hover {
-            background: #7dd3fc;
-            border: 2px solid #0284c7;
+            background: #dff4ff;
+            border: 2px solid #b91c1c;
             color: #082f49;
         }
         #roleBadge {
