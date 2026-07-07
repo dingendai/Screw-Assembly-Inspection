@@ -16,7 +16,7 @@ export async function renderRegions(view) {
   const modelNames = (cfg.models || []).map((m) => m.name);
   let decisionPanel = null;
 
-  const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
+  const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `相機 ${c.slot}`)));
   const enableBox = h("input", { type: "checkbox" });
   const modeSel = h("select", {}, h("option", { value: "detection" }, "偵測區 ROI"), h("option", { value: "exclusion" }, "排除區 EX"));
   const regionList = h("div", {});
@@ -114,7 +114,7 @@ export async function renderRegions(view) {
     decisionMount.innerHTML = "";
     decisionPanel = createDecisionSettingsCard(cfg, {
       cameraSlot: cam.slot,
-      title: `Camera ${cam.slot} 判定設定`,
+      title: `相機 ${cam.slot} 判定設定`,
       buttonText: "儲存判定設定",
       showToast: false,
     });

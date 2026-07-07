@@ -101,7 +101,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
         globalInput,
       ),
     ),
-    h("h3", {}, "Camera / 模型判定規則"),
+    h("h3", {}, "相機 / 模型判定規則"),
     rows.length
       ? h("div", { class: "table-wrap" }, h("table", {},
           h("thead", {}, h("tr", {},
@@ -109,7 +109,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
           )),
           h("tbody", {}, ...rows.map((r) => r.tr)),
         ))
-      : h("p", { class: "muted" }, "目前沒有啟用的 Camera / 模型判定規則。"),
+      : h("p", { class: "muted" }, "目前沒有啟用的相機 / 模型判定規則。"),
     h("div", { class: "row", style: "margin-top:12px" },
       h("button", {
         class: "btn btn-success",

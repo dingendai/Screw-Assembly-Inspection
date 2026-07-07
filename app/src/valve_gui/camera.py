@@ -199,7 +199,7 @@ class VideoSource:
         cv2.circle(frame, (480, 360), 70, (34, 40, 44), -1)
         cv2.line(frame, (310, 360), (650, 360), (164, 176, 180), 24)
         cv2.putText(frame, self.label, (40, 58), cv2.FONT_HERSHEY_SIMPLEX, 1.25, (235, 239, 241), 2)
-        cv2.putText(frame, "SIMULATED CAMERA", (40, 700), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (165, 176, 180), 2)
+        cv2.putText(frame, "SIMULATED", (40, 700), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (165, 176, 180), 2)
         return frame
 
 

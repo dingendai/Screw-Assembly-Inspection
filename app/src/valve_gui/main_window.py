@@ -421,7 +421,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "相機設定", "至少需要啟用一顆檢測相機，才能進入監測。")
             return False
         missing_model_slots = [
-            f"Camera {camera.slot}"
+            f"相機 {camera.slot}"
             for camera in enabled_cameras
             if not camera_model_names(camera)
         ]

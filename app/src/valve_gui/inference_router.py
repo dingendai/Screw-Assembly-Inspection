@@ -55,7 +55,7 @@ class InferenceRouter:
                 continue
             model_names = camera_model_names(camera)
             if not model_names:
-                missing.append(f"Camera {camera.slot}")
+                missing.append(f"相機 {camera.slot}")
                 camera_results[camera.slot] = {
                     "result": "NG",
                     "confidence": 0.0,
@@ -72,7 +72,7 @@ class InferenceRouter:
             for model_name in model_names:
                 model = models_by_name.get(model_name)
                 if not model or not model.enabled:
-                    missing.append(f"Camera {camera.slot}->{model_name}")
+                    missing.append(f"相機 {camera.slot}->{model_name}")
                     camera_confidences.append(0.0)
                     camera_reasons.append(f"{model_name}: 模型未啟用或不存在")
                     continue

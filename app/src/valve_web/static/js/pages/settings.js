@@ -40,7 +40,7 @@ export async function renderSettings(view) {
   // Live preview of a chosen running slot (reflects last-saved config).
   const previewImg = h("img", { alt: "preview",
     style: "width:100%; aspect-ratio:4/3; object-fit:contain; background:#000; border:1px solid var(--border); border-radius:10px; display:block" });
-  const previewSel = h("select", {}, ...cfg.cameras.filter((c) => c.enabled).map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
+  const previewSel = h("select", {}, ...cfg.cameras.filter((c) => c.enabled).map((c) => h("option", { value: c.slot }, `相機 ${c.slot}`)));
   function loadPreview() { if (previewSel.value) previewImg.src = `/api/stream/${previewSel.value}`; }
   previewSel.addEventListener("change", loadPreview);
   setCleanup(() => { previewImg.src = ""; });

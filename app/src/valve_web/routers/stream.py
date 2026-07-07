@@ -36,7 +36,7 @@ def _compose_frame(ctx: WebContext, slot: int):
     """Build the JPEG bytes for one slot (runs off the event loop)."""
     frame = ctx.cameras.latest_frame(slot)
     if frame is None:
-        frame = _placeholder(f"Camera {slot}: no frame")
+        frame = _placeholder(f"相機 {slot}: no frame")
     else:
         annotated = None
         if ctx.continuous and ctx.latest_result:
@@ -61,7 +61,7 @@ def snapshot(slot: int, overlay: bool = True, ctx: WebContext = Depends(require_
     ctx.cameras.ensure_started(ctx.state)
     frame = ctx.cameras.latest_frame(slot)
     if frame is None:
-        frame = _placeholder(f"Camera {slot}: no frame")
+        frame = _placeholder(f"相機 {slot}: no frame")
     elif overlay:
         camera = _camera_by_slot(ctx, slot)
         if camera is not None:

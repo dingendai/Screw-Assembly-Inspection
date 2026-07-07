@@ -32,7 +32,7 @@ class _SlotWorker:
 
     def start(self):
         self._source = VideoSource(
-            f"CAMERA {self.slot}",
+            f"相機 {self.slot}",
             self.device_index,
             self.simulate,
             self.focus.get("focus_mode", "auto"),

@@ -27,11 +27,11 @@ export async function renderMonitor(view) {
 
   const tiles = slots.map((slot) =>
     h("div", { class: "cam-tile" },
-      h("div", { class: "cam-title" }, `Camera ${slot}`),
+      h("div", { class: "cam-title" }, `相機 ${slot}`),
       // No cache-buster: MJPEG is a live stream; a ?t= query forces the browser
       // to open a brand-new connection on every render and exhaust the per-host
       // connection limit.
-      h("img", { src: `/api/stream/${slot}`, alt: `camera ${slot}` })
+      h("img", { src: `/api/stream/${slot}`, alt: `相機 ${slot}` })
     )
   );
   const grid = h("div", { class: "grid-cams" }, ...(tiles.length ? tiles : [h("div", { class: "card" }, "沒有啟用的相機，請至『相機設定』啟用。")]));
@@ -48,7 +48,7 @@ export async function renderMonitor(view) {
     Object.keys(cams).sort().forEach((slot) => {
       const c = cams[slot];
       const box = h("div", { class: "reason-box " + (c.result === "PASS" ? "reason-pass" : "reason-ng") },
-        h("strong", {}, `Camera ${slot}: ${c.result} (${fmtConf(c.confidence)})`),
+        h("strong", {}, `相機 ${slot}: ${c.result} (${fmtConf(c.confidence)})`),
         ...(c.reasons || []).map((x) => h("div", {}, "• " + x))
       );
       reasons.append(box);

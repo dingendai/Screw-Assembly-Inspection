@@ -69,7 +69,7 @@ class CameraView(QFrame):
     def update_fps_label(self):
         input_text = f"{self.input_fps:.1f}" if self.input_fps > 0 else "--"
         suffix = f"  {self.extra_info}" if self.extra_info else ""
-        self.title.setText(f"{self.base_title}  FPS: {input_text}{suffix}")
+        self.title.setText(f"{self.base_title}  每秒顯示影格數: {input_text}{suffix}")
 
     def set_extra_info(self, text: str):
         self.extra_info = text.strip()

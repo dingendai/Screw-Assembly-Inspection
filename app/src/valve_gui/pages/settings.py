@@ -248,7 +248,7 @@ class SettingsPage(QWidget):
             card.setColumnStretch(2, 1)
             card.setRowStretch(7, 1)
 
-            self.camera_tabs.addTab(camera_box, f"Camera {config.slot}")
+            self.camera_tabs.addTab(camera_box, f"相機 {config.slot}")
             self.rows.append((
                 enabled, index, flip_h, flip_v, rotation,
                 barcode_enabled, barcode_disabled, auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
@@ -261,7 +261,7 @@ class SettingsPage(QWidget):
         group = QGroupBox("相機設定即時預覽")
         group.setObjectName("cameraPreviewGroup")
         layout = QVBoxLayout(group)
-        self.preview_view = CameraView("Camera")
+        self.preview_view = CameraView("相機")
 
         layout.addWidget(self.preview_view, 1)
         return group
@@ -361,7 +361,7 @@ class SettingsPage(QWidget):
         self.preview_cameras = {camera["slot"]: camera for camera in enabled_rows}
         for camera in enabled_rows:
             source = VideoSource(
-                f"CAMERA {camera['slot']}",
+                f"相機 {camera['slot']}",
                 camera["device_index"],
                 False,
                 camera["focus_mode"],
@@ -388,10 +388,10 @@ class SettingsPage(QWidget):
         slot = self.camera_tabs.currentIndex() + 1
         camera = self.preview_cameras.get(slot)
         if not camera:
-            self.preview_view.base_title = f"Camera {slot}"
+            self.preview_view.base_title = f"相機 {slot}"
             self.preview_view.set_extra_info("")
             self.preview_view.update_fps_label()
-            self.preview_view.set_message("此 Camera 未啟用。")
+            self.preview_view.set_message("此相機未啟用。")
             return
         source_by_slot = {slot: source for slot, source in self.preview_sources}
         source = source_by_slot.get(slot)
@@ -408,7 +408,7 @@ class SettingsPage(QWidget):
             flip_vertical=camera["flip_vertical"],
             rotation_degrees=camera["rotation_degrees"],
         )
-        self.preview_view.base_title = f"Camera {slot}"
+        self.preview_view.base_title = f"相機 {slot}"
         self.preview_view.set_extra_info(self.format_focus_info(camera, source))
         self.preview_view.set_frame(frame, input_fps=source.input_fps)
 
@@ -472,7 +472,7 @@ class SettingsPage(QWidget):
             config.manual_focus_value = manual_focus.value()
             enabled_count += int(config.enabled)
             if config.enabled and not camera_model_names(config):
-                missing_model_slots.append(f"Camera {config.slot}")
+                missing_model_slots.append(f"相機 {config.slot}")
         if enabled_count == 0:
             QMessageBox.warning(self, "相機設定", "至少需要啟用一顆檢測相機。")
             return False
@@ -698,7 +698,7 @@ class CameraModelSettingsPage(QWidget):
 
         self.camera_model_tabs = QTabWidget()
         for camera in self.state.inspection_cameras:
-            self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"Camera {camera.slot}")
+            self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"相機 {camera.slot}")
         self.camera_model_tabs.currentChanged.connect(self.update_model_tab_preview)
         layout.addWidget(self.camera_model_tabs, 1)
 
@@ -724,7 +724,7 @@ class CameraModelSettingsPage(QWidget):
         photo_page = QWidget()
         photo_layout = QVBoxLayout(photo_page)
         photo_layout.setContentsMargins(12, 12, 12, 12)
-        photo_view = CameraView(f"Camera {camera.slot}")
+        photo_view = CameraView(f"相機 {camera.slot}")
         photo_layout.addWidget(photo_view, 1)
         photo_tabs.addTab(photo_page, "照片")
 
@@ -782,7 +782,7 @@ class CameraModelSettingsPage(QWidget):
         if not view:
             return
         source = VideoSource(
-            f"CAMERA {camera.slot}",
+            f"相機 {camera.slot}",
             camera.device_index,
             False,
             getattr(camera, "focus_mode", "auto"),
@@ -988,7 +988,7 @@ class DecisionSettingsPage(QWidget):
     def build_camera_preview_group(self):
         group = QGroupBox("相機影像")
         layout = QVBoxLayout(group)
-        self.camera_preview_view = CameraView("Camera")
+        self.camera_preview_view = CameraView("相機")
         layout.addWidget(self.camera_preview_view, 1)
         return group
 
@@ -1014,11 +1014,11 @@ class DecisionSettingsPage(QWidget):
                 for model_name in model_names:
                     self.add_rule_row(table, camera.slot, model_name, show_model=True)
             else:
-                empty_label = QLabel("此 Camera 目前沒有啟用的模型判定規則。")
+                empty_label = QLabel("此相機目前沒有啟用的模型判定規則。")
                 empty_label.setObjectName("mutedText")
                 page_layout.addWidget(empty_label)
                 page_layout.addStretch()
-            self.model_tabs.addTab(page, f"Camera {camera.slot}")
+            self.model_tabs.addTab(page, f"相機 {camera.slot}")
             self.rule_tab_slots.append(camera.slot)
 
     def create_rule_table(self, show_model=False):
@@ -1061,7 +1061,7 @@ class DecisionSettingsPage(QWidget):
         rule_key = _rule_key(slot, model_name)
         rule = self.state.decision.model_rules.get(rule_key, {})
 
-        table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
+        table.setItem(row, 0, QTableWidgetItem(f"相機 {slot}"))
         confidence_operator_column = 1
         confidence_column = 2
         count_operator_column = 3
@@ -1149,11 +1149,11 @@ class DecisionSettingsPage(QWidget):
             return
         if not view:
             return
-        view.base_title = f"Camera {camera.slot}"
+        view.base_title = f"相機 {camera.slot}"
         if view.show_info:
             view.update_fps_label()
         source = VideoSource(
-            f"CAMERA {camera.slot}",
+            f"相機 {camera.slot}",
             camera.device_index,
             False,
             getattr(camera, "focus_mode", "auto"),

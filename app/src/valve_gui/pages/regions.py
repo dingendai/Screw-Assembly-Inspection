@@ -305,7 +305,7 @@ class CameraRegionEditor(QWidget):
     def start(self):
         self.stop()
         self.source = VideoSource(
-            f"CAMERA {self.camera_config.slot}",
+            f"相機 {self.camera_config.slot}",
             self.camera_config.device_index,
             self.state.use_simulation,
             getattr(self.camera_config, "focus_mode", "auto"),
@@ -585,7 +585,7 @@ class RegionSettingsPage(QWidget):
         for camera in self.state.inspection_cameras:
             editor = CameraRegionEditor(camera, self.state)
             self.editors.append(editor)
-            self.tabs.addTab(editor, f"Camera {camera.slot}")
+            self.tabs.addTab(editor, f"相機 {camera.slot}")
         self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
         self.start()
 

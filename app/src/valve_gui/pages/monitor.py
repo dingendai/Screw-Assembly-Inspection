@@ -168,8 +168,8 @@ class MonitorPage(QWidget):
         enabled = [config for config in self.state.inspection_cameras if config.enabled]
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
-            view = CameraView(f"Camera {config.slot}")
-            single_view = CameraView(f"Camera {config.slot}")
+            view = CameraView(f"相機 {config.slot}")
+            single_view = CameraView(f"相機 {config.slot}")
             single_page = QWidget()
             single_layout = QVBoxLayout(single_page)
             single_layout.setContentsMargins(12, 12, 12, 12)
@@ -177,7 +177,7 @@ class MonitorPage(QWidget):
             self.views.append((config, view))
             self.single_views[config.slot] = single_view
             self.grid.addWidget(view, idx // columns, idx % columns)
-            self.monitor_tabs.addTab(single_page, f"Camera {config.slot}")
+            self.monitor_tabs.addTab(single_page, f"相機 {config.slot}")
 
     def start(self):
         continuous_requested = self.continuous_detection
@@ -187,7 +187,7 @@ class MonitorPage(QWidget):
         self.refresh()
         for config, _ in self.views:
             source = VideoSource(
-                f"CAMERA {config.slot}",
+                f"相機 {config.slot}",
                 config.device_index,
                 self.state.use_simulation,
                 getattr(config, "focus_mode", "auto"),
@@ -528,7 +528,7 @@ class MonitorPage(QWidget):
 
         for slot in sorted(camera_results):
             result_info = camera_results[slot]
-            title = "系統" if slot == 0 else f"Camera {slot}"
+            title = "系統" if slot == 0 else f"相機 {slot}"
             self.add_reason_card(
                 title,
                 result_info.get("result", "NG"),

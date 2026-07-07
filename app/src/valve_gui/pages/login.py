@@ -173,8 +173,8 @@ class LoginPage(QWidget):
         self.clear_preview_grid()
         self.build_camera_visibility_controls(indexes)
         for camera_index in indexes:
-            view = CameraView(f"Camera Device {camera_index}", show_info=False)
-            source = VideoSource(f"CAMERA {camera_index}", camera_index, False)
+            view = CameraView(f"相機裝置 {camera_index}", show_info=False)
+            source = VideoSource(f"相機 {camera_index}", camera_index, False)
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
             self.views[camera_index] = view
@@ -198,7 +198,7 @@ class LoginPage(QWidget):
                 self.visible_camera_indexes = set(indexes)
 
         for camera_index in indexes:
-            checkbox = QCheckBox(f"Camera Device {camera_index}")
+            checkbox = QCheckBox(f"相機裝置 {camera_index}")
             checkbox.setChecked(camera_index in self.visible_camera_indexes)
             checkbox.stateChanged.connect(self.update_camera_visibility)
             self.camera_visibility_layout.addWidget(checkbox)
