@@ -76,6 +76,17 @@ def apply_styles(app: QApplication, font_size: int = 14):
             border: 1px solid #c8d1d6;
             color: #172026;
         }
+        QToolButton#infoNavButton {
+            background: #e0f2fe;
+            color: #0f3554;
+            border: 1px solid #bae6fd;
+            border-radius: 6px;
+        }
+        QToolButton#infoNavButton:hover {
+            background: #bae6fd;
+            border: 1px solid #7dd3fc;
+            color: #082f49;
+        }
         QToolButton:checked {
             background: #176b5d;
             color: #ffffff;
@@ -99,6 +110,18 @@ def apply_styles(app: QApplication, font_size: int = 14):
             background: #fff7f7;
             border: 2px solid #b91c1c;
             color: #172026;
+        }
+        QToolButton#infoNavButton:checked {
+            background: #bae6fd;
+            color: #082f49;
+            border: 2px solid #38bdf8;
+            border-radius: 6px;
+            font-weight: 800;
+        }
+        QToolButton#infoNavButton:checked:hover {
+            background: #7dd3fc;
+            border: 2px solid #0284c7;
+            color: #082f49;
         }
         #roleBadge {
             background: #172026;

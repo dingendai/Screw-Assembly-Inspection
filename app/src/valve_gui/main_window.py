@@ -41,6 +41,7 @@ from valve_gui.storage import append_record_csv, read_sessions_csv, write_sessio
 
 
 SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision"}
+INFO_ACTION_KEYS = {"history", "qc_stats", "users"}
 
 
 class MainWindow(QMainWindow):
@@ -172,6 +173,8 @@ class MainWindow(QMainWindow):
             tool_button = toolbar.widgetForAction(action)
             if key in SETUP_ACTION_KEYS and tool_button:
                 tool_button.setObjectName("setupNavButton")
+            if key in INFO_ACTION_KEYS and tool_button:
+                tool_button.setObjectName("infoNavButton")
             if key == "logout":
                 if tool_button:
                     tool_button.setObjectName("logoutButton")
