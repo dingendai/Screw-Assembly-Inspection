@@ -205,6 +205,12 @@ def apply_styles(app: QApplication, font_size: int = 14):
         #cameraPreviewGroup QGroupBox::title {
             background: #ffffff;
         }
+        #displaySettingsGroup,
+        #displaySettingsGroup QWidget,
+        #displaySettingsGroup QLabel,
+        #displaySettingsGroup QGroupBox::title {
+            background: #ffffff;
+        }
         #regionSidePanel,
         #regionSidePanel QWidget,
         #regionSidePanel QLabel,

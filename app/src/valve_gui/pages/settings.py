@@ -866,6 +866,7 @@ class DisplaySettingsPage(QWidget):
 
     def build_display_group(self):
         group = QGroupBox()
+        group.setObjectName("displaySettingsGroup")
         form = QGridLayout(group)
 
         self.display_mode = QComboBox()
