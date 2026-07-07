@@ -201,13 +201,12 @@ class CameraRegionEditor(QWidget):
         left.addWidget(self.canvas, 1)
 
         side = QGroupBox("已標示區域")
+        side.setObjectName("regionSidePanel")
         side_layout = QVBoxLayout(side)
         self.enable_box = QCheckBox("啟用本相機範圍辨識")
         self.enable_box.setChecked(getattr(self.camera_config, "region_detection_enabled", False))
         self.enable_box.stateChanged.connect(self.toggle_region_detection)
         side_layout.addWidget(self.enable_box)
-
-        side_layout.addWidget(QLabel("畫框模式"))
 
         mode_buttons = QHBoxLayout()
         self.include_button = QPushButton("新增辨識區域")
@@ -227,7 +226,7 @@ class CameraRegionEditor(QWidget):
         side_layout.addLayout(mode_buttons)
 
         self.region_table = QTableWidget(0, 7)
-        self.region_table.setHorizontalHeaderLabels(["Type", "ROI ID", "X", "Y", "W", "H", "Models"])
+        self.region_table.setHorizontalHeaderLabels(["類型", "ROI 編號", "模型", "X", "Y", "W", "H"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
@@ -421,16 +420,16 @@ class CameraRegionEditor(QWidget):
         self.region_table.setRowCount(0)
         for row_index, (kind, source_index, region) in enumerate(rows):
             self.region_table.insertRow(row_index)
-            type_item = QTableWidgetItem("ROI" if kind == "include" else "Exclude")
+            type_item = QTableWidgetItem("辨識區域" if kind == "include" else "排除區域")
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
             roi_id = region.get("roi_id")
             self.region_table.setItem(row_index, 1, QTableWidgetItem(f"#{roi_id}" if roi_id is not None else "—"))
-            self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['x']:.3f}"))
-            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['y']:.3f}"))
-            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['w']:.3f}"))
-            self.region_table.setItem(row_index, 5, QTableWidgetItem(f"{region['h']:.3f}"))
-            self.region_table.setItem(row_index, 6, QTableWidgetItem(self.format_region_models(region)))
+            self.region_table.setItem(row_index, 2, QTableWidgetItem(self.format_region_models(region)))
+            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['x']:.3f}"))
+            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['y']:.3f}"))
+            self.region_table.setItem(row_index, 5, QTableWidgetItem(f"{region['w']:.3f}"))
+            self.region_table.setItem(row_index, 6, QTableWidgetItem(f"{region['h']:.3f}"))
             if selected == (kind, source_index):
                 self.region_table.selectRow(row_index)
         if not keep_selection:

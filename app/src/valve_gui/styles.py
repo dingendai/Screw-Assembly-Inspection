@@ -205,6 +205,16 @@ def apply_styles(app: QApplication, font_size: int = 14):
         #cameraPreviewGroup QGroupBox::title {
             background: #ffffff;
         }
+        #regionSidePanel,
+        #regionSidePanel QWidget,
+        #regionSidePanel QLabel,
+        #regionSidePanel QCheckBox,
+        #regionSidePanel QGroupBox,
+        #regionSidePanel QGroupBox::title,
+        #regionSidePanel QTableWidget,
+        #regionSidePanel QHeaderView::section {
+            background: #ffffff;
+        }
         QLineEdit, QSpinBox {
             background: #ffffff;
             border: 1px solid #bcc8ce;
