@@ -156,12 +156,12 @@ class MainWindow(QMainWindow):
             ("camera_models", "S3 相機模型設定", self.show_camera_models, True),
             ("regions", "S4 範圍監視", self.show_region_settings, True),
             ("decision", "S5 判定設定", self.show_decision_settings, True),
-            ("display", "GUI 顯示設定", self.show_display_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
             ("qc_stats", "品管統計", self.show_qc_stats, True),
             ("qc_products", "品項主檔", self.show_qc_products, True),
             ("users", "用戶管理", self.show_users, True),
+            ("display", "顯示設定", self.show_display_settings, True),
             ("help", "說明", self.show_help, True),
             ("logout", "登出", self.logout, False),
         ]
@@ -461,7 +461,7 @@ class MainWindow(QMainWindow):
             PERMISSION_OPEN_SETTINGS,
             self.state.role_permissions,
         ):
-            QMessageBox.warning(self, "權限不足", "目前角色不能進入 GUI 顯示設定。")
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入顯示設定。")
             self.show_monitor()
             return
         self.release_all_hardware()
