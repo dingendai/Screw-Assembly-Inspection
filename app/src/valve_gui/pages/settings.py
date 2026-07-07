@@ -381,6 +381,7 @@ class SettingsPage(QWidget):
         camera = self.preview_cameras.get(slot)
         if not camera:
             self.preview_view.base_title = f"Camera {slot}"
+            self.preview_view.set_extra_info("")
             self.preview_view.update_fps_label()
             self.preview_view.set_message("此 Camera 未啟用。")
             return
@@ -400,7 +401,13 @@ class SettingsPage(QWidget):
             rotation_degrees=camera["rotation_degrees"],
         )
         self.preview_view.base_title = f"Camera {slot}"
+        self.preview_view.set_extra_info(self.format_focus_info(camera))
         self.preview_view.set_frame(frame, input_fps=source.input_fps)
+
+    def format_focus_info(self, camera):
+        if camera["focus_mode"] == "manual":
+            return f"焦距: {camera['manual_focus_value']}"
+        return "焦距: 自動"
 
     def current_enabled_camera_rows(self):
         enabled_rows = []

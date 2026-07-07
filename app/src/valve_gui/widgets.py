@@ -13,6 +13,7 @@ class CameraView(QFrame):
         self.base_title = title
         self.show_info = show_info
         self.fill_mode = fill_mode
+        self.extra_info = ""
         self.input_fps = 0.0
         self.gui_fps = 0.0
         self._last_gui_frame_time = None
@@ -67,7 +68,13 @@ class CameraView(QFrame):
 
     def update_fps_label(self):
         input_text = f"{self.input_fps:.1f}" if self.input_fps > 0 else "--"
-        self.title.setText(f"{self.base_title}  FPS: {input_text}")
+        suffix = f"  {self.extra_info}" if self.extra_info else ""
+        self.title.setText(f"{self.base_title}  FPS: {input_text}{suffix}")
+
+    def set_extra_info(self, text: str):
+        self.extra_info = text.strip()
+        if self.show_info:
+            self.update_fps_label()
 
     def set_message(self, message: str, is_error: bool = False):
         self.image.clear()
