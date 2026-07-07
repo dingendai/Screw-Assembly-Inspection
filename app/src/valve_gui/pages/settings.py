@@ -56,6 +56,7 @@ class SettingsPage(QWidget):
         self.rows = []
         self.preview_sources = []
         self.preview_views = []
+        self.single_preview_views = {}
         self.preview_timer = QTimer(self)
         self.preview_timer.timeout.connect(self.update_camera_previews)
         self._preview_debounce = QTimer(self)
@@ -240,9 +241,13 @@ class SettingsPage(QWidget):
         group = QGroupBox("相機設定即時預覽")
         group.setObjectName("cameraPreviewGroup")
         layout = QVBoxLayout(group)
+        self.preview_tabs = QTabWidget()
+        self.preview_overview = QWidget()
         self.preview_grid = QGridLayout()
+        self.preview_overview.setLayout(self.preview_grid)
+        self.preview_tabs.addTab(self.preview_overview, "總覽")
 
-        layout.addLayout(self.preview_grid, 1)
+        layout.addWidget(self.preview_tabs, 1)
         return group
 
     def camera_index_options(self, selected_index=None):
@@ -322,6 +327,11 @@ class SettingsPage(QWidget):
 
         for idx, camera in enumerate(enabled_rows):
             view = CameraView(f"Camera {camera['slot']}")
+            single_view = CameraView(f"Camera {camera['slot']}")
+            single_page = QWidget()
+            single_layout = QVBoxLayout(single_page)
+            single_layout.setContentsMargins(12, 12, 12, 12)
+            single_layout.addWidget(single_view, 1)
             source = VideoSource(
                 f"CAMERA {camera['slot']}",
                 camera["device_index"],
@@ -332,8 +342,10 @@ class SettingsPage(QWidget):
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
             self.preview_views.append((camera, view))
+            self.single_preview_views[camera["slot"]] = single_view
             self.preview_sources.append((camera["slot"], source))
             self.preview_grid.addWidget(view, idx // 2, idx % 2)
+            self.preview_tabs.addTab(single_page, f"Camera {camera['slot']}")
         self.preview_timer.start(33)
 
     def stop_preview(self):
@@ -348,7 +360,10 @@ class SettingsPage(QWidget):
             widget = item.widget()
             if widget:
                 widget.setParent(None)
+        self.preview_tabs.clear()
+        self.preview_tabs.addTab(self.preview_overview, "總覽")
         self.preview_views = []
+        self.single_preview_views = {}
 
     def update_camera_previews(self):
         source_by_slot = {slot: source for slot, source in self.preview_sources}
@@ -358,6 +373,9 @@ class SettingsPage(QWidget):
                 frame = source.read()
                 if frame is None:
                     view.set_message(source.last_error or "沒有相機影像。", is_error=True)
+                    single_view = self.single_preview_views.get(camera["slot"])
+                    if single_view:
+                        single_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
                     continue
                 frame = apply_frame_transform(
                     frame,
@@ -366,6 +384,9 @@ class SettingsPage(QWidget):
                     rotation_degrees=camera["rotation_degrees"],
                 )
                 view.set_frame(frame, input_fps=source.input_fps)
+                single_view = self.single_preview_views.get(camera["slot"])
+                if single_view:
+                    single_view.set_frame(frame, input_fps=source.input_fps)
 
     def current_enabled_camera_rows(self):
         enabled_rows = []
