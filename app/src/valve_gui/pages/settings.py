@@ -43,7 +43,20 @@ from valve_gui.utils import (
 from valve_gui.widgets import CameraView
 
 
-MODEL_MODALITIES = ["vision", "text", "multimodal", "ocr", "classifier"]
+MODEL_MODALITIES = [
+    ("vision", "視覺"),
+    ("text", "文字"),
+    ("multimodal", "多模態"),
+    ("ocr", "文字辨識"),
+    ("classifier", "分類器"),
+]
+
+
+def model_modality_label(value):
+    labels = dict(MODEL_MODALITIES)
+    return labels.get(value, value)
+
+
 ROTATION_OPTIONS = ["0", "90", "180", "270"]
 DISPLAY_MODE_OPTIONS = [
     ("auto", "自動適應目前螢幕"),
@@ -606,9 +619,10 @@ class ModelSettingsPage(QWidget):
         self.model_table.setItem(row, 1, QTableWidgetItem(config.name))
 
         modality = QComboBox()
-        modality.addItems(MODEL_MODALITIES)
-        if config.modality in MODEL_MODALITIES:
-            modality.setCurrentText(config.modality)
+        for value, label in MODEL_MODALITIES:
+            modality.addItem(label, value)
+        match = modality.findData(config.modality)
+        modality.setCurrentIndex(match if match >= 0 else 0)
         self.model_table.setCellWidget(row, 2, modality)
 
         self.model_table.setItem(row, 3, QTableWidgetItem(config.file_path))
@@ -657,7 +671,7 @@ class ModelSettingsPage(QWidget):
             configs.append(
                 ModelConfig(
                     name=name or f"Model {row + 1}",
-                    modality=modality_widget.currentText() if modality_widget else "vision",
+                    modality=modality_widget.currentData() if modality_widget else "vision",
                     file_path=path,
                     enabled=enabled_widget.isChecked() if enabled_widget else True,
                 )
@@ -758,7 +772,7 @@ class CameraModelSettingsPage(QWidget):
                 assigned.setChecked(model.name in selected_names)
                 table.setCellWidget(row, 0, assigned)
                 table.setItem(row, 1, QTableWidgetItem(model.name))
-                table.setItem(row, 2, QTableWidgetItem(model.modality))
+                table.setItem(row, 2, QTableWidgetItem(model_modality_label(model.modality)))
                 table.setItem(row, 3, QTableWidgetItem(model.file_path))
 
     def collect_camera_model_assignments(self):
