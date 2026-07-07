@@ -24,7 +24,6 @@ from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
-from valve_gui.permissions import role_label
 from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
 
@@ -85,10 +84,6 @@ class MonitorPage(QWidget):
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
-        self.confidence_label = QLabel("Confidence: --")
-        self.confidence_label.setObjectName("mutedText")
-        self.camera_status_label = QLabel("相機狀態：--")
-        self.camera_status_label.setObjectName("mutedText")
         self.reason_cards = {}
         self.reason_list = QWidget()
         self.reason_layout = QVBoxLayout(self.reason_list)
@@ -99,15 +94,6 @@ class MonitorPage(QWidget):
         self.roi_section_layout.setContentsMargins(8, 8, 8, 8)
         self.roi_section_layout.setSpacing(4)
         self.roi_section.setVisible(False)
-        self.operator_label = QLabel()
-        self.operator_label.setObjectName("mutedText")
-        self.operator_label.setVisible(False)
-        self.model_label = QLabel()
-        self.model_label.setObjectName("mutedText")
-        self.model_label.setVisible(False)
-        self.info_toggle_button = QPushButton("顯示資訊")
-        self.info_toggle_button.setCheckable(True)
-        self.info_toggle_button.toggled.connect(self.toggle_info_labels)
         self.region_overlay_box = QCheckBox("顯示指定範圍")
         self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
         self.continuous_button = QPushButton("連續檢測")
@@ -133,16 +119,11 @@ class MonitorPage(QWidget):
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
-        side_layout.addWidget(self.info_toggle_button)
-        side_layout.addWidget(self.operator_label)
-        side_layout.addWidget(self.model_label)
         side_layout.addWidget(self.region_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
         side_layout.addWidget(self.barcode_label)
         side_layout.addWidget(self.result_label)
-        side_layout.addWidget(self.confidence_label)
-        side_layout.addWidget(self.camera_status_label)
         side_layout.addWidget(QLabel("相機檢測狀態"))
         side_layout.addWidget(self.reason_list)
         side_layout.addWidget(self.roi_section)
@@ -161,10 +142,8 @@ class MonitorPage(QWidget):
         camera_actions.addWidget(start_button)
         camera_actions.addWidget(stop_button)
 
-        bottom_controls.addWidget(QLabel("檢測控制"))
         bottom_controls.addLayout(detection_actions)
         side_layout.addSpacing(8)
-        bottom_controls.addWidget(QLabel("相機控制"))
         bottom_controls.addLayout(camera_actions)
 
         side_layout.addLayout(bottom_controls)
@@ -173,27 +152,10 @@ class MonitorPage(QWidget):
         layout.addWidget(self.monitor_tabs, 6)
         layout.addWidget(side, 4)
 
-    def toggle_info_labels(self, checked):
-        self.operator_label.setVisible(checked)
-        self.model_label.setVisible(checked)
-        self.info_toggle_button.setText("隱藏資訊" if checked else "顯示資訊")
-
     def refresh(self):
         self.region_overlay_box.blockSignals(True)
         self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
         self.region_overlay_box.blockSignals(False)
-        self.operator_label.setText(
-            f"操作者：{self.state.operator_name or '--'}"
-            f" / 角色：{role_label(self.state.operator_role, self.state.role_labels)}"
-            f" / 登入：{self.state.login_time or '--'}"
-        )
-        routes = [
-            f"C{camera.slot}->{format_camera_model_names(camera)}"
-            for camera in self.state.inspection_cameras
-            if camera.enabled
-        ]
-        self.model_label.setText("相機模型：" + (" / ".join(routes) if routes else "--"))
-
         while self.grid.count():
             item = self.grid.takeAt(0)
             widget = item.widget()
@@ -223,7 +185,6 @@ class MonitorPage(QWidget):
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.continuous_detection = continuous_requested
         self.refresh()
-        errors = []
         for config, _ in self.views:
             source = VideoSource(
                 f"CAMERA {config.slot}",
@@ -232,10 +193,7 @@ class MonitorPage(QWidget):
                 getattr(config, "focus_mode", "auto"),
                 getattr(config, "manual_focus_value", 120),
             )
-            if source.has_error():
-                errors.append(source.last_error)
             self.sources.append((config.slot, source))
-        self.camera_status_label.setText("相機狀態：" + ("；".join(errors) if errors else "正常"))
         self._source_by_slot = {slot: source for slot, source in self.sources}
         self._config_by_slot = {config.slot: config for config, _ in self.views}
         self._view_by_slot = {config.slot: view for config, view in self.views}
@@ -275,7 +233,6 @@ class MonitorPage(QWidget):
                 single_view = self.single_views.get(config.slot)
                 if single_view:
                     single_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
-                self.camera_status_label.setText(f"相機狀態：{source.last_error or '沒有相機影像。'}")
                 continue
             model_frame = apply_frame_transform(
                 frame,
@@ -533,7 +490,6 @@ class MonitorPage(QWidget):
         self.result_label.setObjectName("resultPass" if result == "PASS" else "resultNg")
         self.result_label.style().unpolish(self.result_label)
         self.result_label.style().polish(self.result_label)
-        self.confidence_label.setText(f"Confidence: {confidence:.3f}")
 
     def set_ng_reason(self, inference):
         self.set_reason_cards(inference.camera_results)
