@@ -146,6 +146,17 @@ class VideoSource:
         except Exception as exc:
             self.focus_status = f"manual focus requested={value} error={exc}"
 
+    def current_focus_value(self):
+        if not self.capture or not self.capture.isOpened():
+            return None
+        try:
+            value = self.capture.get(cv2.CAP_PROP_FOCUS)
+        except Exception:
+            return None
+        if value < 0:
+            return None
+        return value
+
     def read(self):
         if self.capture and self.capture.isOpened():
             ok, frame = self.capture.read()

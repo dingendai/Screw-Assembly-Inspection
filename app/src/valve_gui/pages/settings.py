@@ -401,13 +401,15 @@ class SettingsPage(QWidget):
             rotation_degrees=camera["rotation_degrees"],
         )
         self.preview_view.base_title = f"Camera {slot}"
-        self.preview_view.set_extra_info(self.format_focus_info(camera))
+        self.preview_view.set_extra_info(self.format_focus_info(camera, source))
         self.preview_view.set_frame(frame, input_fps=source.input_fps)
 
-    def format_focus_info(self, camera):
+    def format_focus_info(self, camera, source=None):
+        current_focus = source.current_focus_value() if source else None
+        current_text = "--" if current_focus is None else f"{current_focus:.0f}"
         if camera["focus_mode"] == "manual":
-            return f"焦距: {camera['manual_focus_value']}"
-        return "焦距: 自動"
+            return f"焦距: {camera['manual_focus_value']} / 目前 {current_text}"
+        return f"焦距: 自動 / 目前 {current_text}"
 
     def current_enabled_camera_rows(self):
         enabled_rows = []
