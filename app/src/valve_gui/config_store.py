@@ -102,6 +102,9 @@ def load_app_config(state):
             pass_confidence_threshold=float(
                 decision.get("pass_confidence_threshold", state.decision.pass_confidence_threshold)
             ),
+            confidence_threshold_mode=normalise_confidence_threshold_mode(
+                decision.get("confidence_threshold_mode", state.decision.confidence_threshold_mode)
+            ),
             model_rules=normalise_decision_rules(decision.get("model_rules", {})),
         )
 
@@ -246,6 +249,11 @@ def normalise_decision_rules(value):
             "required_object_count": max(0, required_object_count),
         }
     return rules
+
+
+def normalise_confidence_threshold_mode(value):
+    mode = str(value).strip().lower()
+    return mode if mode in {"global", "custom"} else "custom"
 
 
 def normalise_color(value, fallback):

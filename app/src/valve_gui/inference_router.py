@@ -300,6 +300,13 @@ class InferenceRouter:
         rule = rules.get(_rule_key(slot, model_name), {})
         if not isinstance(rule, dict):
             return default_rule
+        if getattr(self.state.decision, "confidence_threshold_mode", "custom") == "global":
+            return {
+                "confidence_operator": ">=",
+                "confidence_threshold": default_threshold,
+                "required_object_count_operator": rule.get("required_object_count_operator", "="),
+                "required_object_count": rule.get("required_object_count", 1),
+            }
         return {
             "confidence_operator": rule.get("confidence_operator", ">="),
             "confidence_threshold": rule.get("confidence_threshold", default_threshold),

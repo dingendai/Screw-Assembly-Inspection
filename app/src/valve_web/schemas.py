@@ -65,6 +65,7 @@ class DecisionRule(BaseModel):
 
 class DecisionUpdate(BaseModel):
     pass_confidence_threshold: float = 0.5
+    confidence_threshold_mode: str = "custom"
     model_rules: dict[str, DecisionRule] = Field(default_factory=dict)
 
 

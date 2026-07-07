@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QSlider,
     QSpinBox,
     QTableWidget,
@@ -989,7 +990,16 @@ class DecisionSettingsPage(QWidget):
         self.global_threshold.setSingleStep(0.05)
         self.global_threshold.setDecimals(3)
         self.global_threshold.valueChanged.connect(self.queue_auto_save)
+        self.global_threshold.valueChanged.connect(self.update_threshold_mode_controls)
         global_row.addWidget(self.global_threshold)
+        self.global_threshold_mode = QRadioButton("使用全域")
+        self.custom_threshold_mode = QRadioButton("自訂")
+        self.global_threshold_mode.toggled.connect(self.update_threshold_mode_controls)
+        self.custom_threshold_mode.toggled.connect(self.update_threshold_mode_controls)
+        self.global_threshold_mode.toggled.connect(self.queue_auto_save)
+        self.custom_threshold_mode.toggled.connect(self.queue_auto_save)
+        global_row.addWidget(self.global_threshold_mode)
+        global_row.addWidget(self.custom_threshold_mode)
         global_row.addStretch()
 
         self.model_tabs = QTabWidget()
@@ -1010,8 +1020,12 @@ class DecisionSettingsPage(QWidget):
         ensure_model_configs(self.state)
         self.loading_rules = True
         self.global_threshold.setValue(self.state.decision.pass_confidence_threshold)
+        use_global = getattr(self.state.decision, "confidence_threshold_mode", "custom") == "global"
+        self.global_threshold_mode.setChecked(use_global)
+        self.custom_threshold_mode.setChecked(not use_global)
         self.load_rule_table()
         self.loading_rules = False
+        self.update_threshold_mode_controls()
         self.update_camera_preview_tab(self.model_tabs.currentIndex())
 
     def load_rule_table(self):
@@ -1129,6 +1143,15 @@ class DecisionSettingsPage(QWidget):
     def autosave_decision_settings(self):
         self.persist_decision_settings()
 
+    def update_threshold_mode_controls(self):
+        use_global = self.global_threshold_mode.isChecked()
+        for row in self.rule_rows:
+            row["confidence_operator"].setEnabled(not use_global)
+            row["confidence"].setEnabled(not use_global)
+            if use_global:
+                row["confidence_operator"].setCurrentIndex(row["confidence_operator"].findData(">="))
+                row["confidence"].setValue(self.global_threshold.value())
+
     def save_decision_settings(self):
         self.persist_decision_settings()
         QMessageBox.information(self, "儲存完成", "PASS / NG 判定設定已儲存。")
@@ -1136,11 +1159,20 @@ class DecisionSettingsPage(QWidget):
 
     def persist_decision_settings(self):
         self.state.decision.pass_confidence_threshold = self.global_threshold.value()
+        self.state.decision.confidence_threshold_mode = (
+            "global" if self.global_threshold_mode.isChecked() else "custom"
+        )
         rules = {}
         for row in self.rule_rows:
+            confidence_operator = ">=" if self.global_threshold_mode.isChecked() else row["confidence_operator"].currentData()
+            confidence_threshold = (
+                self.global_threshold.value()
+                if self.global_threshold_mode.isChecked()
+                else row["confidence"].value()
+            )
             rules[_rule_key(row["slot"], row["model_name"])] = {
-                "confidence_operator": row["confidence_operator"].currentData(),
-                "confidence_threshold": row["confidence"].value(),
+                "confidence_operator": confidence_operator,
+                "confidence_threshold": confidence_threshold,
                 "required_object_count_operator": row["count_operator"].currentData(),
                 "required_object_count": int(row["count"].currentData()),
             }

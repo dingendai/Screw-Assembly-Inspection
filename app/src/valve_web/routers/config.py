@@ -13,6 +13,7 @@ from valve_gui.camera import detect_camera_indexes
 from valve_gui.config_store import (
     normalise_color,
     normalise_color_map,
+    normalise_confidence_threshold_mode,
     normalise_decision_rules,
     normalise_focus_mode,
     normalise_focus_value,
@@ -117,6 +118,7 @@ def update_decision(req: DecisionUpdate, ctx: WebContext = Depends(_settings_dep
     rules = {key: rule.model_dump() for key, rule in req.model_rules.items()}
     ctx.state.decision = DecisionConfig(
         pass_confidence_threshold=max(0.0, min(1.0, float(req.pass_confidence_threshold))),
+        confidence_threshold_mode=normalise_confidence_threshold_mode(req.confidence_threshold_mode),
         model_rules=normalise_decision_rules(rules),
     )
     save_app_config(ctx.state)

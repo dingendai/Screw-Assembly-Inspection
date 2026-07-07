@@ -18,6 +18,10 @@ export function createDecisionSettingsCard(cfg, options = {}) {
     value: dec.pass_confidence_threshold,
     style: "width:100px",
   });
+  const modeGlobal = h("input", { type: "radio", name: "confidence-threshold-mode", value: "global" });
+  const modeCustom = h("input", { type: "radio", name: "confidence-threshold-mode", value: "custom" });
+  if ((dec.confidence_threshold_mode || "custom") === "global") modeGlobal.checked = true;
+  else modeCustom.checked = true;
 
   const rows = [];
   function operatorSelect(value, fallback) {
@@ -85,6 +89,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
     }
     const updated = await api.put("/api/config/decision", {
       pass_confidence_threshold: parseFloat(globalInput.value) || 0,
+      confidence_threshold_mode: modeGlobal.checked ? "global" : "custom",
       model_rules,
     });
     cfg.decision = updated.decision;
@@ -99,6 +104,13 @@ export function createDecisionSettingsCard(cfg, options = {}) {
       h("div", { class: "col" },
         h("label", {}, "全域 PASS 信心門檻 (0~1)"),
         globalInput,
+      ),
+      h("div", { class: "col" },
+        h("label", {}, "信心門檻模式"),
+        h("div", { class: "row" },
+          h("label", {}, modeGlobal, " 使用全域"),
+          h("label", {}, modeCustom, " 自訂"),
+        ),
       ),
     ),
     h("h3", {}, "相機 / 模型判定規則"),
