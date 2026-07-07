@@ -122,7 +122,14 @@ class VideoSource:
                 self.apply_focus_settings(focus_mode, manual_focus_value)
 
     def apply_focus_settings(self, focus_mode, manual_focus_value):
-        if focus_mode != "manual" or not self.capture or not self.capture.isOpened():
+        if not self.capture or not self.capture.isOpened():
+            return
+        if focus_mode != "manual":
+            try:
+                set_auto = self.capture.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+                self.focus_status = f"auto focus set_auto={set_auto}"
+            except Exception as exc:
+                self.focus_status = f"auto focus error={exc}"
             return
         try:
             value = max(0, min(255, int(manual_focus_value)))

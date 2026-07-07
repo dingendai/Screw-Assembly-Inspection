@@ -138,7 +138,7 @@ class SettingsPage(QWidget):
                 value_label.setEnabled(enabled_manual)
                 value_label.setText(str(slider.value()))
 
-            def set_auto_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode):
+            def set_auto_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode, slot=config.slot):
                 if checked:
                     manual_check.blockSignals(True)
                     manual_check.setChecked(False)
@@ -148,9 +148,9 @@ class SettingsPage(QWidget):
                     auto_check.setChecked(True)
                     auto_check.blockSignals(False)
                 update_focus_controls()
-                self._queue_preview_restart()
+                self._apply_focus_change_immediately(slot)
 
-            def set_manual_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode):
+            def set_manual_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode, slot=config.slot):
                 if checked:
                     auto_check.blockSignals(True)
                     auto_check.setChecked(False)
@@ -160,7 +160,7 @@ class SettingsPage(QWidget):
                     manual_check.setChecked(True)
                     manual_check.blockSignals(False)
                 update_focus_controls()
-                self._queue_preview_restart()
+                self._apply_focus_change_immediately(slot)
 
             def set_barcode_enabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
                 if checked:
@@ -196,7 +196,7 @@ class SettingsPage(QWidget):
             auto_focus.toggled.connect(set_auto_focus)
             manual_focus_mode.toggled.connect(set_manual_focus)
             manual_focus.valueChanged.connect(update_focus_controls)
-            manual_focus.valueChanged.connect(self._queue_preview_restart)
+            manual_focus.valueChanged.connect(lambda _value, slot=config.slot: self._apply_focus_change_immediately(slot))
 
             camera_box = QGroupBox()
             camera_box.setObjectName("cameraSettingsCard")
@@ -313,6 +313,22 @@ class SettingsPage(QWidget):
             return
         self._preview_debounce.start()
         self._camera_autosave_timer.start()
+
+    def _apply_focus_change_immediately(self, slot):
+        if self._loading_camera_controls:
+            return
+        if slot < 1 or slot > len(self.rows):
+            return
+        self.persist_camera_settings()
+        controls = self.rows[slot - 1]
+        _, _, _, _, _, _, _, auto_focus, manual_focus_mode, manual_focus, _ = controls
+        focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
+        manual_focus_value = manual_focus.value()
+        for source_slot, source in self.preview_sources:
+            if source_slot == slot:
+                source.apply_focus_settings(focus_mode, manual_focus_value)
+                break
+        self.update_camera_previews()
 
     def restart_preview(self):
         self.stop_preview()
