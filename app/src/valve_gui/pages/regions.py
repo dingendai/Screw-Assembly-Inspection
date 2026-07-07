@@ -565,6 +565,7 @@ class RegionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.editors = []
+        self.active_editor = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frames)
 
@@ -584,6 +585,7 @@ class RegionSettingsPage(QWidget):
         layout.addWidget(hint)
 
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs, 1)
 
     def refresh(self):
@@ -599,14 +601,29 @@ class RegionSettingsPage(QWidget):
         self.start()
 
     def start(self):
-        for editor in self.editors:
-            editor.start()
+        self.start_current_editor()
         self.timer.start(33)
 
     def stop(self):
         self.timer.stop()
         for editor in self.editors:
             editor.stop()
+        self.active_editor = None
+
+    def on_tab_changed(self, _index):
+        if self.timer.isActive():
+            self.start_current_editor()
+
+    def start_current_editor(self):
+        current = self.tabs.currentWidget()
+        next_editor = current if current in self.editors else None
+        if self.active_editor == next_editor:
+            return
+        if self.active_editor:
+            self.active_editor.stop()
+        self.active_editor = next_editor
+        if self.active_editor:
+            self.active_editor.start()
 
     def update_frames(self):
         current = self.tabs.currentWidget()

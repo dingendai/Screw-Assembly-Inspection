@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QSize
+from PyQt6.QtCore import QSize, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QWidget
 
 from valve_gui import qc_db
@@ -307,6 +307,39 @@ class MainWindow(QMainWindow):
         if hasattr(self, "enter_monitor_action"):
             self.enter_monitor_action.setVisible(monitor_visible)
 
+    def switch_to_page(self, page, refresh_callback=None):
+        previous_page = self.stack.currentWidget()
+        if previous_page == page:
+            return
+        self.stack.setCurrentWidget(page)
+        QTimer.singleShot(
+            10,
+            lambda previous_page=previous_page, target_page=page, refresh_callback=refresh_callback: self.finish_page_switch(
+                previous_page,
+                target_page,
+                refresh_callback,
+            ),
+        )
+
+    def finish_page_switch(self, previous_page, target_page, refresh_callback=None):
+        self.release_page_hardware(previous_page)
+        if refresh_callback and self.stack.currentWidget() == target_page:
+            refresh_callback()
+
+    def release_page_hardware(self, page):
+        if page == self.monitor_page:
+            self.monitor_page.stop()
+        elif page == self.settings_page:
+            self.settings_page.stop_preview()
+        elif page == self.camera_model_page:
+            self.camera_model_page.stop_camera_photo_preview()
+        elif page == self.decision_page:
+            self.decision_page.stop_camera_preview()
+        elif page == self.region_page:
+            self.region_page.stop()
+        elif page == self.login_page:
+            self.login_page.stop()
+
     def current_page_save_handler(self):
         current = self.stack.currentWidget()
         if current == self.login_page:
@@ -429,9 +462,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入相機設定。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.settings_page.refresh()
-        self.stack.setCurrentWidget(self.settings_page)
+        self.switch_to_page(self.settings_page, self.settings_page.refresh)
 
     def show_models(self):
         if not self.require_login():
@@ -440,9 +471,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入模型清單。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.model_page.refresh()
-        self.stack.setCurrentWidget(self.model_page)
+        self.switch_to_page(self.model_page, self.model_page.refresh)
 
     def show_camera_models(self):
         if not self.require_login():
@@ -451,9 +480,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入相機模型設定。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.camera_model_page.refresh()
-        self.stack.setCurrentWidget(self.camera_model_page)
+        self.switch_to_page(self.camera_model_page, self.camera_model_page.refresh)
 
     def show_display_settings(self):
         if self.state.is_logged_in and not has_permission(
@@ -464,9 +491,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入顯示設定。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.display_page.refresh()
-        self.stack.setCurrentWidget(self.display_page)
+        self.switch_to_page(self.display_page, self.display_page.refresh)
 
     def show_region_settings(self):
         if not self.require_login():
@@ -475,9 +500,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色無法進入範圍監視。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.region_page.refresh()
-        self.stack.setCurrentWidget(self.region_page)
+        self.switch_to_page(self.region_page, self.region_page.refresh)
 
     def show_decision_settings(self):
         if not self.require_login():
@@ -486,9 +509,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入判定設定。")
             self.show_monitor()
             return
-        self.release_all_hardware()
-        self.decision_page.refresh()
-        self.stack.setCurrentWidget(self.decision_page)
+        self.switch_to_page(self.decision_page, self.decision_page.refresh)
 
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
