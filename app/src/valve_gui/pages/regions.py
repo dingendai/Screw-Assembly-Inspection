@@ -244,10 +244,10 @@ class CameraRegionEditor(QWidget):
         roi_id_row.addStretch()
         side_layout.addLayout(roi_id_row)
 
-        self.model_group = QGroupBox("Region models")
+        self.model_group = QGroupBox("區域模型")
         self.model_layout = QVBoxLayout(self.model_group)
         self.model_hint = QLabel(
-            "Choose one or more models first, then draw a region. Empty means all models."
+            "請先選擇一個或多個模型，再繪製區域；未勾選代表套用所有模型。"
         )
         self.model_hint.setWordWrap(True)
         self.model_hint.setObjectName("mutedText")
