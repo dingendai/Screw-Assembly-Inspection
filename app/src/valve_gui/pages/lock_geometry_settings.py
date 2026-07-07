@@ -114,7 +114,6 @@ class LockGeometryCanvas(QLabel):
             color = QColor("#ef4444") if region.get("enabled", True) else QColor("#7c8d96")
             painter.setPen(QPen(color, 2))
             painter.drawRect(rect)
-            painter.drawText(rect.adjusted(5, 5, -5, -5), Qt.AlignmentFlag.AlignTop, region.get("name", "ROI"))
             self.draw_line(painter, rect, region.get("split_line_y"), QColor("#999999"))
             self.draw_line(painter, rect, region.get("red_line_y"), QColor("#ef4444"))
             self.draw_line(painter, rect, region.get("base_line_y"), QColor("#eab308"))
@@ -238,8 +237,14 @@ class LockGeometryCameraEditor(QWidget):
         self.edge_count_spin = QSpinBox()
         self.edge_count_spin.setRange(1, 5)
         self.edge_count_spin.valueChanged.connect(self.save_form_to_region)
+        self.x_spin = self.region_value_spin()
+        self.y_spin = self.region_value_spin()
+        self.w_spin = self.region_value_spin()
+        self.h_spin = self.region_value_spin()
         form.addRow("名稱", self.name_edit)
         form.addRow("ROI 狀態", self.region_enabled)
+        form.addRow("位置 X / Y", self.two_spin_row(self.x_spin, self.y_spin))
+        form.addRow("寬高 W / H", self.two_spin_row(self.w_spin, self.h_spin))
         form.addRow("判斷模式", self.mode_combo)
         form.addRow("間隙門檻 px", self.gap_spin)
         form.addRow("暗區比例門檻", self.dark_ratio_spin)
@@ -257,6 +262,22 @@ class LockGeometryCameraEditor(QWidget):
         layout.addWidget(side, 5)
         self.refresh_table()
         self.update_controls_enabled()
+
+    def region_value_spin(self):
+        spin = QDoubleSpinBox()
+        spin.setRange(0.0, 1.0)
+        spin.setSingleStep(0.001)
+        spin.setDecimals(3)
+        spin.valueChanged.connect(self.save_form_to_region)
+        return spin
+
+    def two_spin_row(self, first, second):
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(first)
+        layout.addWidget(second)
+        return row
 
     def line_controls(self, form, label, disabled_label="自動"):
         row = QWidget()
@@ -381,6 +402,10 @@ class LockGeometryCameraEditor(QWidget):
         for widget in [
             self.name_edit,
             self.region_enabled,
+            self.x_spin,
+            self.y_spin,
+            self.w_spin,
+            self.h_spin,
             self.mode_combo,
             self.gap_spin,
             self.dark_ratio_spin,
@@ -397,6 +422,10 @@ class LockGeometryCameraEditor(QWidget):
         if region:
             self.name_edit.setText(region.get("name", "ROI"))
             self.region_enabled.setChecked(region.get("enabled", True))
+            self.x_spin.setValue(float(region.get("x", 0.0)))
+            self.y_spin.setValue(float(region.get("y", 0.0)))
+            self.w_spin.setValue(float(region.get("w", 0.0)))
+            self.h_spin.setValue(float(region.get("h", 0.0)))
             self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(region.get("mode", "both"))))
             self.gap_spin.setValue(int(region.get("gap_threshold_px", 6)))
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
@@ -426,6 +455,10 @@ class LockGeometryCameraEditor(QWidget):
             return
         region["name"] = self.name_edit.text().strip() or region.get("name", "ROI")
         region["enabled"] = self.region_enabled.isChecked()
+        region["x"] = self.x_spin.value()
+        region["y"] = self.y_spin.value()
+        region["w"] = self.w_spin.value()
+        region["h"] = self.h_spin.value()
         region["mode"] = self.mode_combo.currentData() or "both"
         region["gap_threshold_px"] = self.gap_spin.value()
         region["dark_threshold_ratio"] = self.dark_ratio_spin.value()

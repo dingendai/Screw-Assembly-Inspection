@@ -291,18 +291,8 @@ def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show
         roi = analysis.region
         result = analysis.result
         frame_color = (36, 36, 240)
-        if result.prediction == "locked":
-            color = (34, 197, 94)
-        elif result.prediction == "separated":
-            color = (36, 36, 240)
-        else:
-            color = (0, 165, 255)
         x1, y1, x2, y2 = roi.x, roi.y, roi.x + roi.w, roi.y + roi.h
         cv2.rectangle(frame, (x1, y1), (x2, y2), frame_color, 2)
-        label = str(analysis.region_config.get("name") or analysis.region_config.get("id") or "ROI")
-        if show_result:
-            label = f"{label} {result.prediction}"
-        cv2.putText(frame, label, (x1 + 4, max(12, y1 + 14)), cv2.FONT_HERSHEY_SIMPLEX, 0.36, color, 1)
 
         split_y = roi_y_to_frame_y(roi, result.split_line_y if result.split_line_y is not None else roi.split_line_y)
         if split_y is not None:
