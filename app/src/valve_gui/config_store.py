@@ -18,7 +18,7 @@ from valve_gui.permissions import (
     default_role_labels,
     default_role_permissions,
 )
-from valve_gui.utils import hash_password
+from valve_gui.utils import hash_password, normalise_decision_operator
 
 
 def load_app_config(state):
@@ -238,7 +238,11 @@ def normalise_decision_rules(value):
         except (TypeError, ValueError):
             required_object_count = 1
         rules[rule_key] = {
+            "confidence_operator": normalise_decision_operator(rule.get("confidence_operator", ">="), ">="),
             "confidence_threshold": max(0.0, min(1.0, confidence_threshold)),
+            "required_object_count_operator": normalise_decision_operator(
+                rule.get("required_object_count_operator", "="), "="
+            ),
             "required_object_count": max(0, required_object_count),
         }
     return rules

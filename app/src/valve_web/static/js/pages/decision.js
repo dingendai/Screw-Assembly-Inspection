@@ -3,6 +3,7 @@ import { h, toast } from "../app.js";
 
 export function createDecisionSettingsCard(cfg, options = {}) {
   const dec = cfg.decision || { pass_confidence_threshold: 0.5, model_rules: {} };
+  const operators = ["<", ">", "=", "<=", ">="];
   const title = options.title || "判定設定";
   const buttonText = options.buttonText || "儲存判定設定";
   const showToast = options.showToast !== false;
@@ -19,6 +20,13 @@ export function createDecisionSettingsCard(cfg, options = {}) {
   });
 
   const rows = [];
+  function operatorSelect(value, fallback) {
+    const selected = operators.includes(value) ? value : fallback;
+    return h("select", { style: "width:72px" },
+      ...operators.map((op) => h("option", { value: op, selected: op === selected }, op)),
+    );
+  }
+
   const cameras = cameraSlot == null
     ? (cfg.cameras || [])
     : (cfg.cameras || []).filter((c) => String(c.slot) === String(cameraSlot));
@@ -27,6 +35,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
     for (const name of (c.assigned_model_names || [])) {
       const key = `${c.slot}::${name}`;
       const rule = dec.model_rules[key] || {};
+      const confOp = operatorSelect(rule.confidence_operator, ">=");
       const conf = h("input", {
         type: "number",
         step: "0.01",
@@ -35,6 +44,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
         value: rule.confidence_threshold ?? dec.pass_confidence_threshold,
         style: "width:100px",
       });
+      const countOp = operatorSelect(rule.required_object_count_operator, "=");
       const count = h("input", {
         type: "number",
         min: "0",
@@ -46,11 +56,15 @@ export function createDecisionSettingsCard(cfg, options = {}) {
         tr: h("tr", {},
           h("td", {}, `C${c.slot}`),
           h("td", {}, name),
+          h("td", {}, confOp),
           h("td", {}, conf),
+          h("td", {}, countOp),
           h("td", {}, count),
         ),
         read: () => [key, {
+          confidence_operator: confOp.value,
           confidence_threshold: parseFloat(conf.value) || 0,
+          required_object_count_operator: countOp.value,
           required_object_count: parseInt(count.value) || 0,
         }],
       });
@@ -91,7 +105,7 @@ export function createDecisionSettingsCard(cfg, options = {}) {
     rows.length
       ? h("div", { class: "table-wrap" }, h("table", {},
           h("thead", {}, h("tr", {},
-            ...["相機", "模型", "信心門檻", "必要數量"].map((text) => h("th", {}, text)),
+            ...["相機", "模型", "信心比較", "信心門檻", "數量比較", "必要數量"].map((text) => h("th", {}, text)),
           )),
           h("tbody", {}, ...rows.map((r) => r.tr)),
         ))

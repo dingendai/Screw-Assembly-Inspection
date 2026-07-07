@@ -34,7 +34,12 @@ from valve_gui.permissions import (
     PERMISSION_OPEN_SETTINGS,
     has_permission,
 )
-from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
+from valve_gui.utils import (
+    DECISION_OPERATORS,
+    decision_rule_key as _rule_key,
+    hex_to_bgr,
+    normalise_decision_operator,
+)
 from valve_gui.widgets import CameraView
 
 
@@ -1017,11 +1022,11 @@ class DecisionSettingsPage(QWidget):
             self.rule_tab_slots.append(camera.slot)
 
     def create_rule_table(self, show_model=False):
-        table = QTableWidget(0, 4 if show_model else 3)
+        table = QTableWidget(0, 6 if show_model else 5)
         if show_model:
-            table.setHorizontalHeaderLabels(["畫面", "模型", "信心值閥值", "必須偵測標籤框數"])
+            table.setHorizontalHeaderLabels(["畫面", "模型", "信心值比較", "信心值", "數量比較", "必須偵測標籤框數"])
         else:
-            table.setHorizontalHeaderLabels(["畫面", "信心值閥值", "必須偵測標籤框數"])
+            table.setHorizontalHeaderLabels(["畫面", "信心值比較", "信心值", "數量比較", "必須偵測標籤框數"])
         table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
         table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -1029,11 +1034,24 @@ class DecisionSettingsPage(QWidget):
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
             table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         else:
             table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         table.setAlternatingRowColors(True)
         return table
+
+    def create_operator_combo(self, value, fallback):
+        combo = QComboBox()
+        for operator in DECISION_OPERATORS:
+            combo.addItem(operator, operator)
+        selected = normalise_decision_operator(value, fallback)
+        combo.setCurrentIndex(max(0, combo.findData(selected)))
+        combo.currentIndexChanged.connect(self.queue_auto_save)
+        return combo
 
     def add_rule_row(self, table, slot, model_name, show_model=False):
         row = table.rowCount()
@@ -1044,12 +1062,19 @@ class DecisionSettingsPage(QWidget):
         rule = self.state.decision.model_rules.get(rule_key, {})
 
         table.setItem(row, 0, QTableWidgetItem(f"Camera {slot}"))
-        confidence_column = 1
-        count_column = 2
+        confidence_operator_column = 1
+        confidence_column = 2
+        count_operator_column = 3
+        count_column = 4
         if show_model:
             table.setItem(row, 1, QTableWidgetItem(model_name))
-            confidence_column = 2
-            count_column = 3
+            confidence_operator_column = 2
+            confidence_column = 3
+            count_operator_column = 4
+            count_column = 5
+
+        confidence_operator = self.create_operator_combo(rule.get("confidence_operator", ">="), ">=")
+        table.setCellWidget(row, confidence_operator_column, confidence_operator)
 
         confidence = QDoubleSpinBox()
         confidence.setRange(0.0, 1.0)
@@ -1067,13 +1092,17 @@ class DecisionSettingsPage(QWidget):
             count.addItem(str(required_count), required_count)
         count.setCurrentIndex(count.findData(required_count))
         count.currentIndexChanged.connect(self.queue_auto_save)
+        count_operator = self.create_operator_combo(rule.get("required_object_count_operator", "="), "=")
+        table.setCellWidget(row, count_operator_column, count_operator)
         table.setCellWidget(row, count_column, count)
 
         self.rule_rows.append(
             {
                 "slot": slot,
                 "model_name": model_name,
+                "confidence_operator": confidence_operator,
                 "confidence": confidence,
+                "count_operator": count_operator,
                 "count": count,
             }
         )
@@ -1096,7 +1125,9 @@ class DecisionSettingsPage(QWidget):
         rules = {}
         for row in self.rule_rows:
             rules[_rule_key(row["slot"], row["model_name"])] = {
+                "confidence_operator": row["confidence_operator"].currentData(),
                 "confidence_threshold": row["confidence"].value(),
+                "required_object_count_operator": row["count_operator"].currentData(),
                 "required_object_count": int(row["count"].currentData()),
             }
         self.state.decision.model_rules = rules

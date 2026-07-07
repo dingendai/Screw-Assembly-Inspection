@@ -6,7 +6,12 @@ import cv2
 from valve_gui import barcode_reader
 from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
 from valve_gui.model_registry import camera_model_names
-from valve_gui.utils import decision_rule_key as _rule_key, hex_to_bgr
+from valve_gui.utils import (
+    compare_decision_value,
+    decision_rule_key as _rule_key,
+    hex_to_bgr,
+    normalise_decision_operator,
+)
 
 
 @dataclass
@@ -94,16 +99,20 @@ class InferenceRouter:
                     for rid, detected in per_roi.items():
                         camera_roi_detected[rid] = camera_roi_detected.get(rid, False) or detected
                 rule = self.decision_rule_for(camera.slot, model.name)
+                confidence_operator = normalise_decision_operator(rule.get("confidence_operator", ">="), ">=")
                 threshold = float(rule.get("confidence_threshold", 0.5))
+                count_operator = normalise_decision_operator(rule.get("required_object_count_operator", "="), "=")
                 required_count = int(rule.get("required_object_count", 1))
-                model_pass = confidence >= threshold and object_count == required_count
+                confidence_pass = compare_decision_value(confidence, confidence_operator, threshold)
+                count_pass = compare_decision_value(object_count, count_operator, required_count)
+                model_pass = confidence_pass and count_pass
                 confidences.append(confidence)
                 notes.append(note)
                 camera_confidences.append(confidence)
                 camera_reasons.append(
                     f"{model.name}: {'PASS' if model_pass else 'NG'} / "
-                    f"confidence {confidence:.3f} (門檻 >= {threshold:.3f}) / "
-                    f"標籤框 {object_count} (需求 = {required_count})"
+                    f"confidence {confidence:.3f} (門檻 {confidence_operator} {threshold:.3f}) / "
+                    f"標籤框 {object_count} (需求 {count_operator} {required_count})"
                 )
                 if not model_pass:
                     failed_slots.add(camera.slot)
@@ -292,7 +301,9 @@ class InferenceRouter:
         if not isinstance(rule, dict):
             return default_rule
         return {
+            "confidence_operator": rule.get("confidence_operator", ">="),
             "confidence_threshold": rule.get("confidence_threshold", default_threshold),
+            "required_object_count_operator": rule.get("required_object_count_operator", "="),
             "required_object_count": rule.get("required_object_count", 1),
         }
 

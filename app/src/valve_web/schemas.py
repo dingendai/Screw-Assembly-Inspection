@@ -57,7 +57,9 @@ class ModelsUpdate(BaseModel):
 
 
 class DecisionRule(BaseModel):
+    confidence_operator: str = ">="
     confidence_threshold: float = 0.5
+    required_object_count_operator: str = "="
     required_object_count: int = 1
 
 
