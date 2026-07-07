@@ -79,7 +79,7 @@ class RegionCanvas(QLabel):
             self._cached_widget_size = current_size
         scaled = self._cached_scaled
         canvas = QPixmap(self.size())
-        canvas.fill(QColor("#111827"))
+        canvas.fill(QColor("#ffffff"))
         painter = QPainter(canvas)
         x = (self.width() - scaled.width()) // 2
         y = (self.height() - scaled.height()) // 2
