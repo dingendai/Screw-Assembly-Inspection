@@ -138,7 +138,13 @@ class SettingsPage(QWidget):
                 value_label.setEnabled(enabled_manual)
                 value_label.setText(str(slider.value()))
 
-            def set_auto_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode, slot=config.slot):
+            def set_auto_focus(
+                checked,
+                auto_check=auto_focus,
+                manual_check=manual_focus_mode,
+                focus_updater=update_focus_controls,
+                slot=config.slot,
+            ):
                 if checked:
                     manual_check.blockSignals(True)
                     manual_check.setChecked(False)
@@ -147,10 +153,16 @@ class SettingsPage(QWidget):
                     auto_check.blockSignals(True)
                     auto_check.setChecked(True)
                     auto_check.blockSignals(False)
-                update_focus_controls()
+                focus_updater()
                 self._apply_focus_change_immediately(slot)
 
-            def set_manual_focus(checked, auto_check=auto_focus, manual_check=manual_focus_mode, slot=config.slot):
+            def set_manual_focus(
+                checked,
+                auto_check=auto_focus,
+                manual_check=manual_focus_mode,
+                focus_updater=update_focus_controls,
+                slot=config.slot,
+            ):
                 if checked:
                     auto_check.blockSignals(True)
                     auto_check.setChecked(False)
@@ -159,7 +171,7 @@ class SettingsPage(QWidget):
                     manual_check.blockSignals(True)
                     manual_check.setChecked(True)
                     manual_check.blockSignals(False)
-                update_focus_controls()
+                focus_updater()
                 self._apply_focus_change_immediately(slot)
 
             def set_barcode_enabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
