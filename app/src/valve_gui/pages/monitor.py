@@ -209,8 +209,8 @@ class MonitorPage(QWidget):
         enabled = [config for config in self.state.inspection_cameras if config.enabled]
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
-            view = CameraView(f"Camera {config.slot}", fill_mode=True)
-            single_view = CameraView(f"Camera {config.slot}", fill_mode=True)
+            view = CameraView(f"Camera {config.slot}")
+            single_view = CameraView(f"Camera {config.slot}")
             single_page = QWidget()
             single_layout = QVBoxLayout(single_page)
             single_layout.setContentsMargins(12, 12, 12, 12)
