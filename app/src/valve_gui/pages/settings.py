@@ -1141,9 +1141,9 @@ class DecisionSettingsPage(QWidget):
             cv2.putText(
                 frame,
                 self.format_region_label(label, index, region),
-                (x1 + 4, max(14, y1 + 16)),
+                (x1 + 3, max(10, y1 + 11)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.42,
+                0.28,
                 color,
                 1,
             )

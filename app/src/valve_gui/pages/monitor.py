@@ -168,13 +168,10 @@ class MonitorPage(QWidget):
         bottom_controls.addLayout(camera_actions)
 
         side_layout.addLayout(bottom_controls)
-        side.setMinimumWidth(560)
-        side.setMaximumWidth(680)
-
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(self.monitor_tabs, 1)
-        layout.addWidget(side, 0)
+        layout.addWidget(self.monitor_tabs, 6)
+        layout.addWidget(side, 4)
 
     def toggle_info_labels(self, checked):
         self.operator_label.setVisible(checked)
@@ -354,9 +351,9 @@ class MonitorPage(QWidget):
             cv2.putText(
                 frame,
                 self.format_region_label(label, index, region),
-                (x1 + 4, max(14, y1 + 16)),
+                (x1 + 3, max(10, y1 + 11)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.42,
+                0.28,
                 color,
                 1,
             )
