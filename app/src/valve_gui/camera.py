@@ -132,7 +132,7 @@ class VideoSource:
                 self.focus_status = f"auto focus error={exc}"
             return
         try:
-            value = max(0, min(255, int(manual_focus_value)))
+            value = max(0, min(1023, int(manual_focus_value)))
         except (TypeError, ValueError):
             value = 120
         try:

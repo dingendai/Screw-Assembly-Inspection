@@ -120,7 +120,7 @@ class SettingsPage(QWidget):
             manual_focus_mode.setChecked(is_manual_focus)
 
             manual_focus = QSlider(Qt.Orientation.Horizontal)
-            manual_focus.setRange(0, 255)
+            manual_focus.setRange(0, 1023)
             manual_focus.setSingleStep(1)
             manual_focus.setPageStep(10)
             manual_focus.setValue(int(getattr(config, "manual_focus_value", 120)))

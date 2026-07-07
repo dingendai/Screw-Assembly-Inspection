@@ -214,7 +214,7 @@ def normalise_focus_mode(value):
 
 def normalise_focus_value(value):
     try:
-        return max(0, min(255, int(value)))
+        return max(0, min(1023, int(value)))
     except (TypeError, ValueError):
         return 120
 
