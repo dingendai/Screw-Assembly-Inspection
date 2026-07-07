@@ -5,6 +5,11 @@ import cv2
 
 from valve_gui import barcode_reader
 from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
+from valve_gui.lock_geometry import (
+    analyze_lock_geometry_regions,
+    draw_lock_geometry_overlay,
+    geometry_summary,
+)
 from valve_gui.model_registry import camera_model_names
 from valve_gui.utils import (
     compare_decision_value,
@@ -129,6 +134,26 @@ class InferenceRouter:
                 barcode_sources.extend(
                     self.decode_label_barcodes(camera.slot, display_frame, camera_label_boxes)
                 )
+
+            geometry_regions = [
+                region
+                for region in getattr(camera, "lock_geometry_regions", [])
+                if bool(region.get("enabled", True))
+            ]
+            if getattr(camera, "lock_geometry_enabled", False):
+                if geometry_regions:
+                    geometry_analyses = analyze_lock_geometry_regions(display_frame, geometry_regions)
+                    annotated = draw_lock_geometry_overlay(annotated, geometry_analyses, show_result=True)
+                    geometry_failed = False
+                    for analysis in geometry_analyses:
+                        result = analysis.result
+                        camera_reasons.append(geometry_summary(analysis.region_config, result))
+                        if result.prediction in {"separated", "unknown"}:
+                            geometry_failed = True
+                    if geometry_failed:
+                        failed_slots.add(camera.slot)
+                else:
+                    camera_reasons.append("幾何檢測已啟用，但尚未設定啟用中的幾何 ROI")
 
             annotated_frames[camera.slot] = annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0

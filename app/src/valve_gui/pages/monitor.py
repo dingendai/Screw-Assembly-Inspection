@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
 from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
+from valve_gui.lock_geometry import draw_lock_geometry_config_overlay
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
 from valve_gui.utils import hex_to_bgr
@@ -275,13 +276,19 @@ class MonitorPage(QWidget):
         save_app_config(self.state)
 
     def frame_with_region_overlay(self, config, frame):
+        annotated = frame
+        if (
+            getattr(config, "lock_geometry_enabled", False)
+            and getattr(config, "lock_geometry_regions", None)
+        ):
+            annotated = draw_lock_geometry_config_overlay(annotated.copy(), config.lock_geometry_regions)
         if not self.state.region_overlay.show_on_monitor:
-            return frame
+            return annotated
         if not getattr(config, "region_detection_enabled", False):
-            return frame
+            return annotated
         if not config.detection_regions and not config.exclusion_regions:
-            return frame
-        annotated = frame.copy()
+            return annotated
+        annotated = annotated.copy()
         height, width = annotated.shape[:2]
         self.draw_region_list(
             annotated,

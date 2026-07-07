@@ -11,6 +11,7 @@ from valve_gui.models import AppState, InspectionRecord
 from valve_gui.pages.help import HelpPage
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
+from valve_gui.pages.lock_geometry_settings import LockGeometrySettingsPage
 from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.qc_products import ProductMasterPage
 from valve_gui.pages.qc_stats import StatisticsPage
@@ -40,7 +41,7 @@ from valve_gui.styles import apply_styles
 from valve_gui.storage import append_record_csv, read_sessions_csv, write_sessions_csv, write_user_records_csv
 
 
-SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision"}
+SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
 INFO_ACTION_KEYS = {"history", "qc_stats", "users"}
 
 
@@ -80,6 +81,7 @@ class MainWindow(QMainWindow):
         self.qc_products_page = ProductMasterPage(self.state)
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
         self.region_page = RegionSettingsPage(self.state, self.logout)
+        self.lock_geometry_page = LockGeometrySettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.help_page = HelpPage()
         self.stack.addWidget(self.login_page)
@@ -93,6 +95,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.qc_products_page)
         self.stack.addWidget(self.display_page)
         self.stack.addWidget(self.region_page)
+        self.stack.addWidget(self.lock_geometry_page)
         self.stack.addWidget(self.user_page)
         self.stack.addWidget(self.help_page)
         self.setCentralWidget(self.stack)
@@ -156,6 +159,7 @@ class MainWindow(QMainWindow):
             ("camera_models", "S3 相機模型設定", self.show_camera_models, True),
             ("regions", "S4 範圍監視", self.show_region_settings, True),
             ("decision", "S5 判定設定", self.show_decision_settings, True),
+            ("lock_geometry", "S6 鎖緊幾何檢測", self.show_lock_geometry_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
             ("qc_stats", "品管統計", self.show_qc_stats, True),
@@ -228,6 +232,13 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["lock_geometry"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["models"].setVisible(
             logged_in and has_permission(
                 self.state.operator_role,
@@ -277,6 +288,7 @@ class MainWindow(QMainWindow):
             self.camera_model_page: "camera_models",
             self.region_page: "regions",
             self.decision_page: "decision",
+            self.lock_geometry_page: "lock_geometry",
             self.monitor_page: "monitor",
             self.history_page: "history",
             self.qc_stats_page: "qc_stats",
@@ -337,6 +349,8 @@ class MainWindow(QMainWindow):
             self.decision_page.stop_camera_preview()
         elif page == self.region_page:
             self.region_page.stop()
+        elif page == self.lock_geometry_page:
+            self.lock_geometry_page.stop()
         elif page == self.login_page:
             self.login_page.stop()
 
@@ -374,6 +388,12 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.apply_decision_settings_without_navigation
+        if (
+            current == self.lock_geometry_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.apply_lock_geometry_settings_without_navigation
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -403,6 +423,10 @@ class MainWindow(QMainWindow):
 
     def apply_decision_settings_without_navigation(self):
         if self.decision_page.save_decision_settings():
+            self.mark_settings_applied()
+
+    def apply_lock_geometry_settings_without_navigation(self):
+        if self.lock_geometry_page.save_lock_geometry_settings():
             self.mark_settings_applied()
 
     def mark_settings_applied(self):
@@ -511,6 +535,15 @@ class MainWindow(QMainWindow):
             return
         self.switch_to_page(self.decision_page, self.decision_page.refresh)
 
+    def show_lock_geometry_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能進入鎖緊幾何檢測。")
+            self.show_monitor()
+            return
+        self.switch_to_page(self.lock_geometry_page, self.lock_geometry_page.refresh)
+
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
             self.state.settings_applied = True
@@ -558,7 +591,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入監視頁面。")
             return
         if not self.state.settings_applied:
-            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S5 設定頁按下「套用設定」。")
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S6 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.monitor_page.refresh()
@@ -572,7 +605,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入歷史紀錄。")
             return
         if not self.state.settings_applied:
-            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S5 設定頁按下「套用設定」。")
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S6 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.history_page.refresh()
@@ -667,6 +700,7 @@ class MainWindow(QMainWindow):
         self.camera_model_page.stop_camera_photo_preview()
         self.decision_page.stop_camera_preview()
         self.region_page.stop()
+        self.lock_geometry_page.stop()
         self.login_page.stop()
 
     def logout(self):

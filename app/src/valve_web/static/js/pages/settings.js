@@ -165,6 +165,8 @@ function buildCameraRow(c, modelNames) {
       region_detection_enabled: c.region_detection_enabled,
       detection_regions: c.detection_regions || [],
       exclusion_regions: c.exclusion_regions || [],
+      lock_geometry_enabled: !!c.lock_geometry_enabled,
+      lock_geometry_regions: c.lock_geometry_regions || [],
     }),
   };
 }
