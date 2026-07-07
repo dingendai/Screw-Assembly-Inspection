@@ -27,6 +27,11 @@ from valve_gui.config_store import normalise_lock_geometry_regions, save_app_con
 from valve_gui.lock_geometry import analyze_lock_geometry_regions, draw_lock_geometry_overlay
 
 
+BASE_LINE_MANUAL_DEFAULT = 0.8
+RED_LINE_MANUAL_DEFAULT = 0.1
+SPLIT_LINE_MANUAL_DEFAULT = 0.5
+
+
 def default_lock_geometry_region(index: int, region=None):
     data = {
         "id": f"lock_roi_{index}",
@@ -97,7 +102,7 @@ class LockGeometryCanvas(QLabel):
         painter.drawPixmap(self.image_rect.topLeft(), scaled)
         self.draw_regions(painter)
         if self.drag_start and self.drag_current:
-            painter.setPen(QPen(QColor("#176b5d"), 2, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(QColor("#ef4444"), 2, Qt.PenStyle.DashLine))
             painter.drawRect(QRect(self.drag_start, self.drag_current).normalized() & self.image_rect)
         painter.end()
         self.setPixmap(canvas)
@@ -106,7 +111,7 @@ class LockGeometryCanvas(QLabel):
         painter.setFont(QFont(painter.font().family(), 8))
         for region in getattr(self.camera_config, "lock_geometry_regions", []):
             rect = self.region_to_widget_rect(region)
-            color = QColor("#176b5d") if region.get("enabled", True) else QColor("#7c8d96")
+            color = QColor("#ef4444") if region.get("enabled", True) else QColor("#7c8d96")
             painter.setPen(QPen(color, 2))
             painter.drawRect(rect)
             painter.drawText(rect.adjusted(5, 5, -5, -5), Qt.AlignmentFlag.AlignTop, region.get("name", "ROI"))
@@ -397,16 +402,21 @@ class LockGeometryCameraEditor(QWidget):
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
             self.dark_gray_spin.setValue(int(region.get("dark_gray_threshold", 70)))
             self.edge_count_spin.setValue(int(region.get("metal_edge_count", 1)))
-            self.set_line_controls(self.base_auto, self.base_value, region.get("base_line_y"))
-            self.set_line_controls(self.red_disabled, self.red_value, region.get("red_line_y"))
-            self.set_line_controls(self.split_auto, self.split_value, region.get("split_line_y"))
+            self.set_line_controls(self.base_auto, self.base_value, region.get("base_line_y"), BASE_LINE_MANUAL_DEFAULT)
+            self.set_line_controls(self.red_disabled, self.red_value, region.get("red_line_y"), RED_LINE_MANUAL_DEFAULT)
+            self.set_line_controls(
+                self.split_auto,
+                self.split_value,
+                region.get("split_line_y"),
+                SPLIT_LINE_MANUAL_DEFAULT,
+            )
         self.loading = False
 
-    def set_line_controls(self, toggle, spin, value):
+    def set_line_controls(self, toggle, spin, value, default_value):
         auto = value is None
         toggle.setChecked(auto)
         spin.setEnabled(not auto)
-        spin.setValue(0.5 if value is None else float(value))
+        spin.setValue(default_value if value is None else float(value))
 
     def save_form_to_region(self, *_args):
         if self.loading:

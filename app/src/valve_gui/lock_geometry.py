@@ -290,6 +290,7 @@ def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show
     for analysis in analyses:
         roi = analysis.region
         result = analysis.result
+        frame_color = (36, 36, 240)
         if result.prediction == "locked":
             color = (34, 197, 94)
         elif result.prediction == "separated":
@@ -297,7 +298,7 @@ def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show
         else:
             color = (0, 165, 255)
         x1, y1, x2, y2 = roi.x, roi.y, roi.x + roi.w, roi.y + roi.h
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), frame_color, 2)
         label = str(analysis.region_config.get("name") or analysis.region_config.get("id") or "ROI")
         if show_result:
             label = f"{label} {result.prediction}"
