@@ -50,6 +50,9 @@ DISPLAY_MODE_OPTIONS = [
     ("custom", "指定 GUI 畫面大小"),
     ("fullscreen", "全螢幕"),
 ]
+FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28]
+
+
 class SettingsPage(QWidget):
     def __init__(self, state: AppState, on_apply, before_camera_scan=None, on_display_change=None, on_logout=None):
         super().__init__()
@@ -872,10 +875,9 @@ class DisplaySettingsPage(QWidget):
         self.display_height.setSingleStep(20)
         self.display_height.setSuffix(" px")
 
-        self.display_font_size = QSpinBox()
-        self.display_font_size.setRange(10, 28)
-        self.display_font_size.setSingleStep(1)
-        self.display_font_size.setSuffix(" px")
+        self.display_font_size = QComboBox()
+        for size in FONT_SIZE_OPTIONS:
+            self.display_font_size.addItem(f"{size} px", size)
 
         hint = QLabel("全螢幕會自動使用目前螢幕；非全螢幕可自動最大化或指定寬高。")
         hint.setObjectName("mutedText")
@@ -899,7 +901,7 @@ class DisplaySettingsPage(QWidget):
         self.state.display.mode = self.display_mode.currentData()
         self.state.display.width = self.display_width.value()
         self.state.display.height = self.display_height.value()
-        self.state.display.font_size = self.display_font_size.value()
+        self.state.display.font_size = int(self.display_font_size.currentData())
         save_app_config(self.state)
         if self.on_display_change:
             self.on_display_change()
@@ -914,7 +916,12 @@ class DisplaySettingsPage(QWidget):
         self.display_mode.blockSignals(False)
         self.display_width.setValue(self.state.display.width)
         self.display_height.setValue(self.state.display.height)
-        self.display_font_size.setValue(self.state.display.font_size)
+        font_size = int(self.state.display.font_size)
+        font_match = self.display_font_size.findData(font_size)
+        if font_match < 0:
+            self.display_font_size.addItem(f"{font_size} px", font_size)
+            font_match = self.display_font_size.findData(font_size)
+        self.display_font_size.setCurrentIndex(font_match)
         self.update_display_size_controls()
 
     def update_display_size_controls(self):
