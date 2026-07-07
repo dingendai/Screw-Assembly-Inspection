@@ -573,17 +573,6 @@ class RegionSettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        header = QHBoxLayout()
-        title = QLabel("指定範圍位置辨識")
-        title.setObjectName("pageTitle")
-        header.addWidget(title)
-        header.addStretch()
-        layout.addLayout(header)
-
-        hint = QLabel("拖曳畫面可新增辨識區域或排除區域；綠色為辨識區域，紅色為不需要辨識區域。")
-        hint.setObjectName("mutedText")
-        layout.addWidget(hint)
-
         self.tabs = QTabWidget()
         self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs, 1)
@@ -636,7 +625,7 @@ class RegionSettingsPage(QWidget):
 
     def save_region_settings(self):
         save_app_config(self.state)
-        QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
+        QMessageBox.information(self, "儲存完成", "範圍監視設定已儲存。")
         return True
 
     def logout(self):
