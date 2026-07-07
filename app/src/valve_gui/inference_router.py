@@ -258,15 +258,15 @@ class InferenceRouter:
             label = names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id)
             color = hex_to_bgr(self.yolo_color_for_model(model_name))
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
             cv2.putText(
                 frame,
                 f"{label} {confidence:.2f}",
-                (x1, max(18, y1 - 8)),
+                (x1, max(14, y1 - 6)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
+                0.42,
                 color,
-                2,
+                1,
             )
         return frame
 
@@ -330,23 +330,23 @@ class InferenceRouter:
         x2 = min(width - 20, x1 + width // 2)
         y2 = min(height - 20, y1 + height // 3)
         color = hex_to_bgr(self.yolo_color_for_model(model_name))
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
         cv2.putText(
             frame,
             f"C{slot} {model_name}",
-            (x1, max(24, y1 - 12)),
+            (x1, max(16, y1 - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.75,
+            0.45,
             color,
-            2,
+            1,
         )
         cv2.putText(
             frame,
             label,
-            (x1, min(height - 18, y2 + 30)),
+            (x1, min(height - 12, y2 + 20)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.42,
             color,
-            2,
+            1,
         )
         return frame
