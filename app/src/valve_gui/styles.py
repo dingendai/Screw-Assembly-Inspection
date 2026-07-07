@@ -211,6 +211,26 @@ def apply_styles(app: QApplication, font_size: int = 14):
         #displaySettingsGroup QGroupBox::title {
             background: #ffffff;
         }
+        #decisionSettingsPage QLabel,
+        #decisionSettingsPage QRadioButton,
+        #decisionRulesGroup,
+        #decisionRulesGroup QWidget,
+        #decisionRulesGroup QLabel,
+        #decisionRulesGroup QRadioButton,
+        #decisionRulesGroup QGroupBox::title,
+        #decisionRulesGroup QTabWidget::pane,
+        #decisionRulesGroup QTableWidget,
+        #decisionRulesGroup QTableWidget::item,
+        #decisionRulesGroup QHeaderView::section,
+        #decisionCameraPreviewGroup,
+        #decisionCameraPreviewGroup QWidget,
+        #decisionCameraPreviewGroup QLabel,
+        #decisionCameraPreviewGroup #cameraCard,
+        #decisionCameraPreviewGroup #cameraTitle,
+        #decisionCameraPreviewGroup #mutedText,
+        #decisionCameraPreviewGroup QGroupBox::title {
+            background: #ffffff;
+        }
         #regionSidePanel,
         #regionSidePanel QWidget,
         #regionSidePanel QLabel,

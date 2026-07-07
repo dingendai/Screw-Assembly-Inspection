@@ -948,6 +948,7 @@ class DecisionSettingsPage(QWidget):
 
     def __init__(self, state: AppState, on_logout=None):
         super().__init__()
+        self.setObjectName("decisionSettingsPage")
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
@@ -981,6 +982,7 @@ class DecisionSettingsPage(QWidget):
 
     def build_decision_group(self):
         group = QGroupBox("PASS / NG 條件")
+        group.setObjectName("decisionRulesGroup")
         layout = QVBoxLayout(group)
         layout.setSpacing(10)
 
@@ -1012,6 +1014,7 @@ class DecisionSettingsPage(QWidget):
 
     def build_camera_preview_group(self):
         group = QGroupBox("相機影像")
+        group.setObjectName("decisionCameraPreviewGroup")
         layout = QVBoxLayout(group)
         self.camera_preview_view = CameraView("相機")
         layout.addWidget(self.camera_preview_view, 1)
