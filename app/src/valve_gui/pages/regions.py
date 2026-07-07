@@ -1,7 +1,7 @@
 import cv2
 
 from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
-from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -100,6 +100,7 @@ class RegionCanvas(QLabel):
     def draw_region_list(self, painter, regions, color, label):
         pen = QPen(color, 3)
         painter.setPen(pen)
+        painter.setFont(QFont(painter.font().family(), 8))
         for index, region in enumerate(regions, start=1):
             rect = self.region_to_widget_rect(region)
             painter.drawRect(rect)

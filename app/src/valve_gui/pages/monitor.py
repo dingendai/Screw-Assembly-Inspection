@@ -350,15 +350,15 @@ class MonitorPage(QWidget):
     def draw_region_list(self, frame, regions, color, label, width, height):
         for index, region in enumerate(regions, start=1):
             x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
             cv2.putText(
                 frame,
                 self.format_region_label(label, index, region),
-                (x1 + 6, max(18, y1 + 22)),
+                (x1 + 4, max(14, y1 + 16)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
+                0.42,
                 color,
-                2,
+                1,
             )
 
     def format_region_label(self, label, index, region):
