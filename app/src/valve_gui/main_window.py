@@ -40,6 +40,9 @@ from valve_gui.styles import apply_styles
 from valve_gui.storage import append_record_csv, read_sessions_csv, write_sessions_csv, write_user_records_csv
 
 
+SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision"}
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -166,10 +169,12 @@ class MainWindow(QMainWindow):
             action.setCheckable(checkable)
             action.triggered.connect(callback)
             toolbar.addAction(action)
+            tool_button = toolbar.widgetForAction(action)
+            if key in SETUP_ACTION_KEYS and tool_button:
+                tool_button.setObjectName("setupNavButton")
             if key == "logout":
-                logout_tool_button = toolbar.widgetForAction(action)
-                if logout_tool_button:
-                    logout_tool_button.setObjectName("logoutButton")
+                if tool_button:
+                    tool_button.setObjectName("logoutButton")
             self.actions[key] = action
 
         spacer = QWidget()

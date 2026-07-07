@@ -846,18 +846,11 @@ class DisplaySettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        header = QHBoxLayout()
-        title = QLabel("GUI 顯示設定")
-        title.setObjectName("pageTitle")
-        header.addWidget(title)
-        header.addStretch()
-
-        layout.addLayout(header)
         layout.addWidget(self.build_display_group())
         layout.addStretch()
 
     def build_display_group(self):
-        group = QGroupBox("GUI 顯示設定")
+        group = QGroupBox()
         form = QGridLayout(group)
 
         self.display_mode = QComboBox()
