@@ -263,8 +263,8 @@ class CameraRegionEditor(QWidget):
         actions.addWidget(self.clear_button)
         side_layout.addLayout(actions)
 
-        layout.addLayout(left, 3)
-        layout.addWidget(side, 1)
+        layout.addLayout(left, 6)
+        layout.addWidget(side, 4)
         self.refresh_region_table()
         self.update_region_controls_enabled()
 
