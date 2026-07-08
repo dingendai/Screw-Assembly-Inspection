@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from valve_gui import barcode_reader
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
 from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
@@ -30,6 +31,7 @@ from valve_gui.widgets import CameraView
 
 
 MAX_GUI_FRAME_DIMENSION = 960
+BARCODE_PREVIEW_INTERVAL_SEC = 0.7
 
 
 class _DetectionWorker(QThread):
@@ -68,6 +70,7 @@ class MonitorPage(QWidget):
         self._last_record_time: float = 0.0
         self._last_barcode: str | None = None
         self._last_barcode_source: str = ""
+        self._last_live_barcode_scan_time: float = 0.0
         self._source_by_slot: dict = {}
         self._config_by_slot: dict = {}
         self._view_by_slot: dict = {}
@@ -244,6 +247,7 @@ class MonitorPage(QWidget):
             # Model input keeps the camera-provided resolution. GUI compression
             # happens only after inference/overlay rendering.
             self.last_frames[config.slot] = model_frame
+            self.update_live_barcode_preview(config, model_frame)
             display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
             self.set_monitor_frame(
                 config,
@@ -333,6 +337,21 @@ class MonitorPage(QWidget):
             self.barcode_label.setText(f"讀到條碼：{text}（{source}）")
         else:
             self.barcode_label.setText(f"讀到條碼：{text or '--'}")
+
+    def update_live_barcode_preview(self, config, frame):
+        if not getattr(config, "barcode_read_enabled", False):
+            return
+        now = time.time()
+        if now - self._last_live_barcode_scan_time < BARCODE_PREVIEW_INTERVAL_SEC:
+            return
+        self._last_live_barcode_scan_time = now
+        text = barcode_reader.decode_best(frame)
+        if text:
+            self._last_barcode = text
+            self._last_barcode_source = f"相機 {config.slot}"
+            self.update_barcode_label(text, self._last_barcode_source)
+        elif not self._last_barcode:
+            self.update_barcode_label(None)
 
     def inspect_once(self):
         if self._single_worker and self._single_worker.isRunning():
@@ -436,9 +455,13 @@ class MonitorPage(QWidget):
         self.set_ng_reason(inference)
         self.set_roi_confirmations(inference.roi_confirmations)
         self.show_annotated_frames(inference.annotated_frames)
-        self._last_barcode = getattr(inference, "barcode", None)
-        self._last_barcode_source = self._barcode_source_label(inference)
-        self.update_barcode_label(self._last_barcode, self._last_barcode_source)
+        detected_barcode = getattr(inference, "barcode", None)
+        if detected_barcode:
+            self._last_barcode = detected_barcode
+            self._last_barcode_source = self._barcode_source_label(inference)
+            self.update_barcode_label(self._last_barcode, self._last_barcode_source)
+        elif not self._last_barcode:
+            self.update_barcode_label(None)
         if record or self.continuous_detection:
             self.record_detection(inference)
 
