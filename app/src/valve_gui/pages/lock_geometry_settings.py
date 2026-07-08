@@ -62,6 +62,7 @@ class LockGeometryCanvas(QLabel):
         self.camera_config = camera_config
         self.on_region_added = on_region_added
         self.frame = None
+        self.region_result_by_id = {}
         self.image_rect = QRect()
         self.drag_start = None
         self.drag_current = None
@@ -80,6 +81,11 @@ class LockGeometryCanvas(QLabel):
         self.frame = frame
         self._cached_scaled = None
         self.repaint_frame()
+
+    def set_region_results(self, analyses):
+        self.region_result_by_id = {
+            id(analysis.region_config): analysis.result.prediction for analysis in analyses
+        }
 
     def repaint_frame(self):
         if self.frame is None:
@@ -177,12 +183,20 @@ class LockGeometryCanvas(QLabel):
         painter.setFont(QFont(painter.font().family(), 8))
         for region in getattr(self.camera_config, "lock_geometry_regions", []):
             rect = self.region_to_widget_rect(region)
-            color = QColor("#ef4444") if region.get("enabled", True) else QColor("#7c8d96")
-            painter.setPen(QPen(color, 2))
+            color = self.region_frame_color(region)
+            painter.setPen(QPen(color, 1))
             painter.drawRect(rect)
             self.draw_line(painter, rect, region.get("split_line_y"), QColor("#999999"))
             self.draw_line(painter, rect, region.get("red_line_y"), QColor("#ef4444"))
             self.draw_line(painter, rect, region.get("base_line_y"), QColor("#eab308"))
+
+    def region_frame_color(self, region):
+        if not region.get("enabled", True):
+            return QColor("#7c8d96")
+        prediction = self.region_result_by_id.get(id(region))
+        if prediction == "locked":
+            return QColor("#22c55e")
+        return QColor("#ef4444")
 
     def draw_line(self, painter, rect, ratio, color):
         if ratio is None:
@@ -456,6 +470,7 @@ class LockGeometryCameraEditor(QWidget):
         )
         analyses = analyze_lock_geometry_regions(frame, getattr(self.camera_config, "lock_geometry_regions", []))
         preview = draw_lock_geometry_overlay(frame.copy(), analyses, show_result=True)
+        self.canvas.set_region_results(analyses)
         self.canvas.set_frame(preview)
         self.update_analysis_label(analyses)
 
