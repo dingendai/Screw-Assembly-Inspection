@@ -1,6 +1,6 @@
 import cv2
 
-from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -64,8 +64,12 @@ class LockGeometryCanvas(QLabel):
         self.image_rect = QRect()
         self.drag_start = None
         self.drag_current = None
+        self.pan_start = None
+        self.pan_origin = QPoint(0, 0)
+        self.pan_offset = QPoint(0, 0)
+        self.zoom_factor = 1.0
         self._cached_scaled: QPixmap | None = None
-        self._cached_widget_size = None
+        self._cached_key = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(640, 420)
         self.setObjectName("cameraImage")
@@ -81,23 +85,23 @@ class LockGeometryCanvas(QLabel):
             self.clear()
             self.setText("No Signal")
             return
-        current_size = (self.width(), self.height())
-        if self._cached_scaled is None or self._cached_widget_size != current_size:
+        scaled_size = self.scaled_image_size()
+        cache_key = (self.width(), self.height(), round(self.zoom_factor, 3))
+        if self._cached_scaled is None or self._cached_key != cache_key:
             rgb = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             image = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
             self._cached_scaled = QPixmap.fromImage(image).scaled(
-                self.size(),
+                scaled_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            self._cached_widget_size = current_size
+            self._cached_key = cache_key
         scaled = self._cached_scaled
         canvas = QPixmap(self.size())
         canvas.fill(QColor("#ffffff"))
         painter = QPainter(canvas)
-        x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
+        x, y = self.clamped_image_origin(scaled.width(), scaled.height())
         self.image_rect = QRect(x, y, scaled.width(), scaled.height())
         painter.drawPixmap(self.image_rect.topLeft(), scaled)
         self.draw_regions(painter)
@@ -106,6 +110,67 @@ class LockGeometryCanvas(QLabel):
             painter.drawRect(QRect(self.drag_start, self.drag_current).normalized() & self.image_rect)
         painter.end()
         self.setPixmap(canvas)
+
+    def scaled_image_size(self):
+        if self.frame is None:
+            return self.size()
+        frame_h, frame_w = self.frame.shape[:2]
+        if frame_w <= 0 or frame_h <= 0:
+            return self.size()
+        fit_scale = min(self.width() / frame_w, self.height() / frame_h)
+        scale = max(0.01, fit_scale * self.zoom_factor)
+        return QSize(max(1, int(frame_w * scale)), max(1, int(frame_h * scale)))
+
+    def clamped_image_origin(self, scaled_width, scaled_height):
+        center_x = (self.width() - scaled_width) // 2
+        center_y = (self.height() - scaled_height) // 2
+        x = center_x + self.pan_offset.x()
+        y = center_y + self.pan_offset.y()
+        if scaled_width <= self.width():
+            x = center_x
+            self.pan_offset.setX(0)
+        else:
+            x = min(0, max(self.width() - scaled_width, x))
+            self.pan_offset.setX(x - center_x)
+        if scaled_height <= self.height():
+            y = center_y
+            self.pan_offset.setY(0)
+        else:
+            y = min(0, max(self.height() - scaled_height, y))
+            self.pan_offset.setY(y - center_y)
+        return x, y
+
+    def set_zoom(self, zoom_factor, anchor=None):
+        old_rect = QRect(self.image_rect)
+        old_zoom = self.zoom_factor
+        self.zoom_factor = max(1.0, min(4.0, float(zoom_factor)))
+        if old_zoom == self.zoom_factor:
+            return
+        if anchor is not None and old_rect.isValid() and old_rect.width() and old_rect.height():
+            ratio_x = (anchor.x() - old_rect.left()) / old_rect.width()
+            ratio_y = (anchor.y() - old_rect.top()) / old_rect.height()
+            scaled_size = self.scaled_image_size()
+            center_x = (self.width() - scaled_size.width()) // 2
+            center_y = (self.height() - scaled_size.height()) // 2
+            new_x = int(anchor.x() - ratio_x * scaled_size.width())
+            new_y = int(anchor.y() - ratio_y * scaled_size.height())
+            self.pan_offset = QPoint(new_x - center_x, new_y - center_y)
+        else:
+            self.pan_offset = QPoint(0, 0)
+        self._cached_scaled = None
+        self.repaint_frame()
+
+    def zoom_in(self):
+        self.set_zoom(self.zoom_factor * 1.25)
+
+    def zoom_out(self):
+        self.set_zoom(self.zoom_factor / 1.25)
+
+    def reset_zoom(self):
+        self.set_zoom(1.0)
+        self.pan_offset = QPoint(0, 0)
+        self._cached_scaled = None
+        self.repaint_frame()
 
     def draw_regions(self, painter):
         painter.setFont(QFont(painter.font().family(), 8))
@@ -144,6 +209,11 @@ class LockGeometryCanvas(QLabel):
         }
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton and self.zoom_factor > 1.0:
+            self.pan_start = event.position().toPoint()
+            self.pan_origin = QPoint(self.pan_offset)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
         if event.button() != Qt.MouseButton.LeftButton or not self.image_rect.contains(event.position().toPoint()):
             return
         if not getattr(self.camera_config, "lock_geometry_enabled", False):
@@ -152,11 +222,20 @@ class LockGeometryCanvas(QLabel):
         self.drag_current = self.drag_start
 
     def mouseMoveEvent(self, event):
+        if self.pan_start:
+            delta = event.position().toPoint() - self.pan_start
+            self.pan_offset = self.pan_origin + delta
+            self.repaint_frame()
+            return
         if self.drag_start:
             self.drag_current = event.position().toPoint()
             self.repaint_frame()
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton and self.pan_start:
+            self.pan_start = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
         if event.button() != Qt.MouseButton.LeftButton or not self.drag_start:
             return
         self.drag_current = event.position().toPoint()
@@ -166,6 +245,16 @@ class LockGeometryCanvas(QLabel):
         if region and self.on_region_added:
             self.on_region_added(region)
         self.repaint_frame()
+
+    def wheelEvent(self, event):
+        if self.frame is None:
+            return
+        if event.angleDelta().y() > 0:
+            next_zoom = self.zoom_factor * 1.15
+        else:
+            next_zoom = self.zoom_factor / 1.15
+        self.set_zoom(next_zoom, event.position().toPoint())
+        event.accept()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -195,6 +284,18 @@ class LockGeometryCameraEditor(QWidget):
         self.enable_box.setChecked(getattr(camera_config, "lock_geometry_enabled", False))
         self.enable_box.stateChanged.connect(self.toggle_enabled)
         side_layout.addWidget(self.enable_box)
+
+        zoom_actions = QHBoxLayout()
+        self.zoom_in_button = QPushButton("放大")
+        self.zoom_out_button = QPushButton("縮小")
+        self.zoom_reset_button = QPushButton("重設檢視")
+        self.zoom_in_button.clicked.connect(self.canvas.zoom_in)
+        self.zoom_out_button.clicked.connect(self.canvas.zoom_out)
+        self.zoom_reset_button.clicked.connect(self.canvas.reset_zoom)
+        zoom_actions.addWidget(self.zoom_in_button)
+        zoom_actions.addWidget(self.zoom_out_button)
+        zoom_actions.addWidget(self.zoom_reset_button)
+        side_layout.addLayout(zoom_actions)
 
         actions = QHBoxLayout()
         self.add_button = QPushButton("新增 ROI")
