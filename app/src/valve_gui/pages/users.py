@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from valve_gui import paths
 from valve_gui.config_store import save_app_config
 from valve_gui.models import AppState, UserAccount
 from valve_gui.utils import hash_password
@@ -59,7 +61,7 @@ class UserManagementPage(QWidget):
         header = QHBoxLayout()
         title = QLabel("使用者管理")
         title.setObjectName("pageTitle")
-        subtitle = QLabel("設定使用者密碼、角色位階排序，以及各角色可控制的操作介面權限。")
+        subtitle = QLabel("設定使用者密碼、角色權限，以及品管資料輸出位置。")
         subtitle.setObjectName("mutedText")
 
         title_block = QVBoxLayout()
@@ -74,6 +76,7 @@ class UserManagementPage(QWidget):
         self.tabs.setObjectName("userManagementTabs")
         self.tabs.addTab(self.build_rank_tab(), "使用者密碼設定")
         self.tabs.addTab(self.build_user_permission_tab(), "操作介面權限控制")
+        self.tabs.addTab(self.build_qc_output_tab(), "品管資料位置")
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("mutedText")
@@ -154,6 +157,33 @@ class UserManagementPage(QWidget):
         layout.addWidget(self.permission_table, 1)
         return page
 
+    def build_qc_output_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        hint = QLabel("指定品管資料輸出資料夾。檢測 CSV、SQLite 品管資料庫、操作者照片與個人紀錄都會寫入此位置。")
+        hint.setObjectName("mutedText")
+
+        output_box = QGroupBox("品管資料輸出位置")
+        form = QFormLayout(output_box)
+
+        self.qc_output_dir_input = QLineEdit()
+        self.qc_output_dir_input.setPlaceholderText(str(paths.DEFAULT_DATA_DIR))
+        browse_button = QPushButton("選擇資料夾")
+        browse_button.clicked.connect(self.browse_qc_output_dir)
+
+        row = QHBoxLayout()
+        row.addWidget(self.qc_output_dir_input, 1)
+        row.addWidget(browse_button)
+        form.addRow("輸出資料夾", row)
+
+        layout.addWidget(hint)
+        layout.addWidget(output_box)
+        layout.addStretch()
+        return page
+
     def refresh(self):
         self._loading = True
         self._preserved_hashes = {}
@@ -163,6 +193,8 @@ class UserManagementPage(QWidget):
             self.set_password_text(self.developer_password, "")
         else:
             self.set_password_text(self.developer_password, dev_pw)
+        if hasattr(self, "qc_output_dir_input"):
+            self.qc_output_dir_input.setText(self.state.qc_output_dir or str(paths.get_qc_output_dir()))
         self.load_roles()
         self.load_users()
         self._loading = False
@@ -543,6 +575,9 @@ class UserManagementPage(QWidget):
         if role_data is None:
             return
         role_labels, role_permissions, role_passwords, role_keys = role_data
+        qc_output_dir = self.collect_qc_output_dir()
+        if qc_output_dir is None:
+            return
 
         users = self.state.user_accounts
 
@@ -550,12 +585,13 @@ class UserManagementPage(QWidget):
         self.state.role_permissions = role_permissions
         self.state.role_passwords = role_passwords
         self.state.user_accounts = users
+        self.state.qc_output_dir = qc_output_dir
         save_app_config(self.state)
 
         if self.on_saved:
             self.on_saved()
 
-        QMessageBox.information(self, "儲存完成", "用戶、角色位階與畫面權限設定已更新。")
+        QMessageBox.information(self, "儲存完成", "用戶、角色位階、畫面權限與品管資料位置已更新。")
         self.refresh()
 
     def _resolve_password(self, role, plain_text):
@@ -642,6 +678,24 @@ class UserManagementPage(QWidget):
                 )
             )
         return users
+
+    def browse_qc_output_dir(self):
+        current = self.qc_output_dir_input.text().strip() if hasattr(self, "qc_output_dir_input") else ""
+        current_path = str(paths.resolve_qc_output_dir(current or self.state.qc_output_dir))
+        selected = QFileDialog.getExistingDirectory(self, "選擇品管資料輸出資料夾", current_path)
+        if selected:
+            self.qc_output_dir_input.setText(selected)
+
+    def collect_qc_output_dir(self):
+        if not hasattr(self, "qc_output_dir_input"):
+            return self.state.qc_output_dir or str(paths.get_qc_output_dir())
+        output_dir = paths.resolve_qc_output_dir(self.qc_output_dir_input.text().strip())
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.warning(self, "資料錯誤", f"無法建立品管資料輸出資料夾：\n{output_dir}\n\n{exc}")
+            return None
+        return str(output_dir)
 
     def next_role_key(self):
         index = 1

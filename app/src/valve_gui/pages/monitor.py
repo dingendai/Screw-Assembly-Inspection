@@ -513,7 +513,13 @@ class MonitorPage(QWidget):
             note=inference.note,
             barcode_source=source,
         )
-        self.add_record(record)
+        self.add_record(
+            record,
+            raw_frames=getattr(inference, "raw_frames", {}),
+            annotated_frames=getattr(inference, "annotated_frames", {}),
+            camera_results=getattr(inference, "camera_results", {}),
+            roi_confirmations=getattr(inference, "roi_confirmations", {}),
+        )
 
     def set_result(self, result, confidence):
         self.result_label.setText(result)

@@ -12,7 +12,7 @@ from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import InspectionRecord
 from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH
 from valve_gui.permissions import PERMISSION_OPEN_MONITOR
-from valve_gui.storage import append_record_csv
+from valve_gui.storage import append_record_csv, save_qc_object_snapshot
 
 from valve_web.deps import require_permission
 from valve_web.overlay import encode_jpeg
@@ -47,14 +47,15 @@ def _decode_barcode(ctx: WebContext, frames: dict) -> str | None:
     return None
 
 
-def _add_record(ctx: WebContext, record: InspectionRecord):
+def _add_record(ctx: WebContext, record: InspectionRecord, *, raw_frames=None, annotated_frames=None, inference=None):
     ctx.state.records.insert(0, record)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     append_record_csv(RECORDS_LOG_PATH, record)
     # SQLite 為品管查詢/統計的單一真相；CSV 暫時保留作過渡。
+    inspection_id = None
     if record.result in ("PASS", "NG") and record.part_id.strip():
         try:
-            qc_db.record_inspection(
+            inspection_id = qc_db.record_inspection(
                 record.part_id.strip(),
                 record.result,
                 note=record.note,
@@ -68,6 +69,18 @@ def _add_record(ctx: WebContext, record: InspectionRecord):
             )
         except Exception:
             # 入庫失敗不應中斷檢驗流程（CSV 已寫入）。
+            pass
+        try:
+            save_qc_object_snapshot(
+                record,
+                login_time=ctx.state.login_time,
+                raw_frames=raw_frames,
+                annotated_frames=annotated_frames,
+                camera_results=getattr(inference, "camera_results", {}) if inference else {},
+                roi_confirmations=getattr(inference, "roi_confirmations", {}) if inference else {},
+                inspection_id=inspection_id,
+            )
+        except Exception:
             pass
 
 
@@ -135,7 +148,13 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
             else:
                 ctx._last_record_time = now
         if do_record:
-            _add_record(ctx, _record_from(ctx, inference, effective_part_id, source))
+            _add_record(
+                ctx,
+                _record_from(ctx, inference, effective_part_id, source),
+                raw_frames=getattr(inference, "raw_frames", frames),
+                annotated_frames=getattr(inference, "annotated_frames", {}),
+                inference=inference,
+            )
     payload = _result_payload(inference, include_images=include_images)
     payload["barcode"] = decoded_barcode
     with ctx.lock:

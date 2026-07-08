@@ -4,8 +4,7 @@
 資料庫的地方：辨識/記錄端與後台查詢都透過本模組的函式存取。
 
 設計重點：
-- 條碼是「品項識別」非「單件識別」，故 ``products.barcode`` 為品項主鍵，
-  ``inspections`` 每筆檢驗另給自動流水號，以條碼為外鍵 → 一對多。
+- 條碼視為當天受測的唯一物件；同一條碼同一天只保留最後一次判定。
 - result 值域沿用本專案既有的 ``PASS`` / ``NG``（非文件示意的 OK/NG），
   以免與既有 YOLO 引擎與前端文案不一致。
 - 用內建 ``sqlite3``，啟用外鍵與 WAL（同機多進程讀寫）。
@@ -125,11 +124,11 @@ def record_inspection(
     session_id: int | None = None,
     source: str | None = None,
 ) -> int:
-    """寫入一筆檢驗記錄，回傳新流水號 id。
+    """寫入或更新一筆檢驗記錄，回傳流水號 id。
 
     result 僅接受 'PASS' / 'NG'；會先確保品項已建檔。
     session_id 關聯到當前工作時段（work_sessions）；source 記錄序號來源
-    （標籤類別名稱 / manual / auto）。
+    （標籤類別名稱 / manual / auto）。同一 barcode + 日期只保留最後一次判定。
     """
     barcode = (barcode or "").strip()
     if not barcode:
@@ -137,8 +136,49 @@ def record_inspection(
     if result not in _VALID_RESULTS:
         raise ValueError(f"result 必須是 {_VALID_RESULTS}，收到 {result!r}")
     inspected_at = inspected_at or f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+    inspection_date = inspected_at[:10]
     with _lock, _session() as conn:
         conn.execute("INSERT OR IGNORE INTO products (barcode) VALUES (?)", (barcode,))
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM inspections
+            WHERE barcode = ? AND substr(inspected_at, 1, 10) = ?
+            ORDER BY inspected_at DESC, id DESC
+            LIMIT 1
+            """,
+            (barcode, inspection_date),
+        ).fetchone()
+        if existing:
+            inspection_id = int(existing["id"])
+            conn.execute(
+                """
+                UPDATE inspections
+                SET result = ?, inspected_at = ?, note = ?, operator = ?, operator_role = ?,
+                    confidence = ?, active_cameras = ?, session_id = ?, source = ?
+                WHERE id = ?
+                """,
+                (
+                    result,
+                    inspected_at,
+                    note,
+                    operator,
+                    operator_role,
+                    confidence,
+                    active_cameras,
+                    session_id,
+                    source,
+                    inspection_id,
+                ),
+            )
+            conn.execute(
+                """
+                DELETE FROM inspections
+                WHERE barcode = ? AND substr(inspected_at, 1, 10) = ? AND id <> ?
+                """,
+                (barcode, inspection_date, inspection_id),
+            )
+            return inspection_id
         cur = conn.execute(
             """
             INSERT INTO inspections

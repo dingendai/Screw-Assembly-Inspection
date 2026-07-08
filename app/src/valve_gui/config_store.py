@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict
 
+from valve_gui import paths
 from valve_gui.models import (
     DEFAULT_INSPECTION_CAMERA_COUNT,
     CameraConfig,
@@ -22,10 +23,15 @@ from valve_gui.utils import hash_password, normalise_decision_operator
 
 
 def load_app_config(state):
-    if not APP_CONFIG_PATH.exists():
+    data = {}
+    if APP_CONFIG_PATH.exists():
+        with open(APP_CONFIG_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+    state.qc_output_dir = normalise_qc_output_dir(data.get("qc_output_dir", state.qc_output_dir))
+    paths.set_qc_output_dir(state.qc_output_dir)
+    if not data:
         return
-    with open(APP_CONFIG_PATH, "r", encoding="utf-8") as file:
-        data = json.load(file)
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = False
@@ -183,9 +189,12 @@ def ensure_default_camera_count(cameras):
 
 def save_app_config(state):
     APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    state.qc_output_dir = normalise_qc_output_dir(state.qc_output_dir)
+    paths.set_qc_output_dir(state.qc_output_dir)
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": False,
+        "qc_output_dir": state.qc_output_dir,
         "barcode_label_classes": list(state.barcode_label_classes),
         "display": asdict(state.display),
         "decision": asdict(state.decision),
@@ -210,6 +219,10 @@ def normalise_model_names(value):
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def normalise_qc_output_dir(value):
+    return str(paths.resolve_qc_output_dir(value))
 
 
 def normalise_focus_mode(value):

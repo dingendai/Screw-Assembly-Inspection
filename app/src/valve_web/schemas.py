@@ -99,5 +99,9 @@ class PermissionsUpdate(BaseModel):
     role_passwords: dict[str, str] | None = None
 
 
+class QcOutputUpdate(BaseModel):
+    qc_output_dir: str = ""
+
+
 class InspectRequest(BaseModel):
     part_id: str = ""

@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui import qc_db
 from valve_gui.models import AppState
+from valve_gui.paths import DATA_DIR
 
 
 class StatisticsPage(QWidget):
@@ -144,8 +145,9 @@ class StatisticsPage(QWidget):
         if not rows:
             QMessageBox.information(self, "匯出 CSV", "目前沒有符合條件的紀錄可匯出。")
             return
-        default_path = f"qc_inspections_{datetime.now():%Y%m%d_%H%M%S}.csv"
-        path, _ = QFileDialog.getSaveFileName(self, "匯出品管紀錄 CSV", default_path, "CSV Files (*.csv)")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        default_path = DATA_DIR / f"qc_inspections_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        path, _ = QFileDialog.getSaveFileName(self, "匯出品管紀錄 CSV", str(default_path), "CSV Files (*.csv)")
         if not path:
             return
         fields = [

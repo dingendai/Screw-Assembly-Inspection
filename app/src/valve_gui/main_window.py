@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPus
 from valve_gui import qc_db
 from valve_gui.config_store import load_app_config
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs
-from valve_gui.models import AppState, InspectionRecord
+from valve_gui.models import AppState, InspectionRecord, OperatorSession
 from valve_gui.pages.help import HelpPage
 from valve_gui.pages.history import HistoryPage
 from valve_gui.pages.login import LoginPage
@@ -38,11 +38,17 @@ from valve_gui.permissions import (
     role_label,
 )
 from valve_gui.styles import apply_styles
-from valve_gui.storage import append_record_csv, read_sessions_csv, write_sessions_csv, write_user_records_csv
+from valve_gui.storage import (
+    append_record_csv,
+    read_sessions_csv,
+    save_qc_object_snapshot,
+    write_sessions_csv,
+    write_user_records_csv,
+)
 
 
 SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
-INFO_ACTION_KEYS = {"history", "qc_stats", "users"}
+INFO_ACTION_KEYS = {"history", "qc_stats", "qc_products", "users"}
 
 
 class MainWindow(QMainWindow):
@@ -50,6 +56,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.state = AppState()
         load_app_config(self.state)
+        qc_db.init_db()
+        self._active_qc_output_dir = self.state.qc_output_dir
         # 載回先前的登入紀錄，避免登出時整檔覆寫把歷史 sessions 洗掉。
         self.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
         apply_styles(QApplication.instance(), self.state.display.font_size)
@@ -650,17 +658,49 @@ class MainWindow(QMainWindow):
         self.update_apply_settings_button()
 
     def after_user_management_saved(self):
+        if self._active_qc_output_dir != self.state.qc_output_dir:
+            self._active_qc_output_dir = self.state.qc_output_dir
+            qc_db.init_db()
+            self.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
+            if self.state.is_logged_in:
+                self.state.sessions.insert(
+                    0,
+                    OperatorSession(
+                        operator_name=self.state.operator_name,
+                        operator_role=self.state.operator_role,
+                        login_time=self.state.login_time,
+                        photo_path=self.state.operator_photo_path,
+                    ),
+                )
+                try:
+                    self.state.current_work_session_id = qc_db.start_work_session(
+                        self.state.operator_name,
+                        self.state.operator_role,
+                        self.state.login_time,
+                    )
+                except Exception:
+                    self.state.current_work_session_id = None
+            self.history_page.refresh()
         self.login_page.refresh_role_options()
         self.update_navigation()
 
-    def add_record(self, record: InspectionRecord):
+    def add_record(
+        self,
+        record: InspectionRecord,
+        *,
+        raw_frames=None,
+        annotated_frames=None,
+        camera_results=None,
+        roi_confirmations=None,
+    ):
         self.state.records.insert(0, record)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
         # SQLite 為歷史/品管查詢/統計的單一真相；CSV 暫時保留作過渡。
+        inspection_id = None
         if record.result in ("PASS", "NG") and record.part_id.strip():
             try:
-                qc_db.record_inspection(
+                inspection_id = qc_db.record_inspection(
                     record.part_id.strip(),
                     record.result,
                     note=record.note,
@@ -671,6 +711,18 @@ class MainWindow(QMainWindow):
                     inspected_at=record.timestamp,
                     session_id=self.state.current_work_session_id,
                     source=getattr(record, "barcode_source", ""),
+                )
+            except Exception:
+                pass
+            try:
+                save_qc_object_snapshot(
+                    record,
+                    login_time=self.state.login_time,
+                    raw_frames=raw_frames,
+                    annotated_frames=annotated_frames,
+                    camera_results=camera_results,
+                    roi_confirmations=roi_confirmations,
+                    inspection_id=inspection_id,
                 )
             except Exception:
                 pass

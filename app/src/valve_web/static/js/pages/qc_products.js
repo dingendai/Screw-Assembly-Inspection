@@ -12,7 +12,7 @@ export async function renderQcProducts(view) {
     const rows = (data.products || []).map((p) => {
       const name = h("input", { type: "text", value: p.name || "", style: "width:160px" });
       const spec = h("input", { type: "text", value: p.spec || "", style: "width:160px" });
-      const save = h("button", { class: "btn", onclick: async () => {
+      const save = h("button", { class: "btn btn-success", onclick: async () => {
         try {
           await api.put("/api/qc/products/" + encodeURIComponent(p.barcode), { name: name.value, spec: spec.value });
           toast("已儲存 " + p.barcode, "ok");

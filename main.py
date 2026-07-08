@@ -27,15 +27,11 @@ APP_SRC_DIR = ROOT_DIR / "app" / "src"
 if str(APP_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(APP_SRC_DIR))
 
-from valve_gui import qc_db # type: ignore
 from valve_gui.main_window import MainWindow # type: ignore
-from valve_gui.paths import DATA_DIR # type: ignore
 from valve_gui.styles import apply_styles # type: ignore
 
 
 def main():
-    DATA_DIR.mkdir(exist_ok=True)
-    qc_db.init_db()
     app = QApplication(sys.argv)
     apply_styles(app)
     window = MainWindow()

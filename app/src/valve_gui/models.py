@@ -110,6 +110,7 @@ class AppState:
     )
     operator_camera_index: int = 4
     use_simulation: bool = False
+    qc_output_dir: str = ""
     # 被設為「需要條碼辨識」的 YOLO 標籤類別名稱；偵測到這些類別才解碼。
     barcode_label_classes: list[str] = field(default_factory=list)
     display: DisplayConfig = field(default_factory=DisplayConfig)

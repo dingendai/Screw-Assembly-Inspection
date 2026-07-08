@@ -2,10 +2,12 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
+from valve_gui import paths, qc_db
 from valve_gui.config_store import save_app_config
-from valve_gui.models import UserAccount
+from valve_gui.models import OperatorSession, UserAccount
+from valve_gui.paths import SESSION_LOG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
     PERMISSION_LABELS,
@@ -13,9 +15,10 @@ from valve_gui.permissions import (
     ROLE_PERMISSIONS,
     default_role_permissions,
 )
+from valve_gui.storage import read_sessions_csv
 
 from valve_web.deps import require_developer
-from valve_web.schemas import PermissionsUpdate, UserItem
+from valve_web.schemas import PermissionsUpdate, QcOutputUpdate, UserItem
 from valve_web.state import WebContext
 
 router = APIRouter(prefix="/api", tags=["users"])
@@ -31,7 +34,44 @@ def _serialize(ctx: WebContext) -> dict:
         "configurable_permissions": CONFIGURABLE_PERMISSIONS,
         "permission_labels": PERMISSION_LABELS,
         "protected_role": ROLE_DEVELOPER,
+        "qc_output_dir": state.qc_output_dir or str(paths.get_qc_output_dir()),
     }
+
+
+def _activate_qc_output_dir(ctx: WebContext, output_dir: str) -> None:
+    target = paths.resolve_qc_output_dir(output_dir)
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"無法建立品管資料輸出資料夾：{target} ({exc})") from exc
+
+    old_output_dir = ctx.state.qc_output_dir
+    ctx.state.qc_output_dir = str(target)
+    paths.set_qc_output_dir(target)
+    save_app_config(ctx.state)
+    if old_output_dir == ctx.state.qc_output_dir:
+        return
+
+    qc_db.init_db()
+    ctx.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
+    if ctx.state.is_logged_in:
+        ctx.state.sessions.insert(
+            0,
+            OperatorSession(
+                operator_name=ctx.state.operator_name,
+                operator_role=ctx.state.operator_role,
+                login_time=ctx.state.login_time,
+                photo_path=ctx.state.operator_photo_path,
+            ),
+        )
+        try:
+            ctx.state.current_work_session_id = qc_db.start_work_session(
+                ctx.state.operator_name,
+                ctx.state.operator_role,
+                ctx.state.login_time,
+            )
+        except Exception:
+            ctx.state.current_work_session_id = None
 
 
 @router.get("/users")
@@ -82,4 +122,10 @@ def update_permissions(req: PermissionsUpdate, ctx: WebContext = Depends(require
         ctx.state.role_passwords = passwords
 
     save_app_config(ctx.state)
+    return _serialize(ctx)
+
+
+@router.put("/users/qc-output")
+def update_qc_output(req: QcOutputUpdate, ctx: WebContext = Depends(require_developer)):
+    _activate_qc_output_dir(ctx, req.qc_output_dir)
     return _serialize(ctx)

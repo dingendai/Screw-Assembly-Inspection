@@ -30,6 +30,7 @@ class InferenceResult:
     # 由偵測到的「標籤」類別框內解碼出的條碼；barcode 取第一個有效值。
     barcode: str | None = None
     barcode_sources: list[dict] = field(default_factory=list)
+    raw_frames: dict[int, object] = field(default_factory=dict)
 
 
 class InferenceRouter:
@@ -45,6 +46,11 @@ class InferenceRouter:
         if not frames_by_slot:
             return InferenceResult("NG", 0.0, "No frame available")
 
+        raw_frames = {
+            slot: frame.copy()
+            for slot, frame in frames_by_slot.items()
+            if frame is not None
+        }
         annotated_frames = {}
         camera_results = {}
         confidences = []
@@ -181,6 +187,7 @@ class InferenceRouter:
                 annotated_frames,
                 camera_results,
                 roi_confirmations,
+                raw_frames=raw_frames,
             )
 
         confidence = min(confidences) if confidences else 0.0
@@ -194,6 +201,7 @@ class InferenceRouter:
             roi_confirmations,
             barcode=barcode_sources[0]["text"] if barcode_sources else None,
             barcode_sources=barcode_sources,
+            raw_frames=raw_frames,
         )
 
     def decode_label_barcodes(self, slot, frame, label_boxes):
