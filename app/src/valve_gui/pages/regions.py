@@ -7,12 +7,12 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QColorDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -234,10 +234,13 @@ class CameraRegionEditor(QWidget):
 
         roi_id_row = QHBoxLayout()
         roi_id_row.addWidget(QLabel("ROI 編號（0=不共用）"))
-        self.roi_id_spin = QSpinBox()
-        self.roi_id_spin.setRange(0, 99)
+        self.roi_id_spin = QDoubleSpinBox()
+        self.roi_id_spin.setRange(0.0, 99.0)
+        self.roi_id_spin.setSingleStep(1.0)
+        self.roi_id_spin.setDecimals(0)
+        self.roi_id_spin.setMinimumWidth(90)
         self.roi_id_spin.setSpecialValueText("—")
-        self.roi_id_spin.setValue(0)
+        self.roi_id_spin.setValue(0.0)
         self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
         roi_id_row.addWidget(self.roi_id_spin)
         roi_id_row.addStretch()
@@ -358,7 +361,7 @@ class CameraRegionEditor(QWidget):
 
     def new_region_defaults(self):
         defaults = {"model_names": self.checked_region_model_names()}
-        rid = self.roi_id_spin.value()
+        rid = int(self.roi_id_spin.value())
         defaults["roi_id"] = rid if rid > 0 else None
         return defaults
 
@@ -382,11 +385,11 @@ class CameraRegionEditor(QWidget):
         if region:
             for model_name, box in self.model_boxes.items():
                 box.setChecked(model_name in selected_models)
-            self.roi_id_spin.setValue(region.get("roi_id") or 0)
+            self.roi_id_spin.setValue(float(region.get("roi_id") or 0))
         else:
             for box in self.model_boxes.values():
                 box.setChecked(False)
-            self.roi_id_spin.setValue(0)
+            self.roi_id_spin.setValue(0.0)
         self.loading_model_selection = False
 
     def save_selected_region_models(self, _state=None):
@@ -396,7 +399,7 @@ class CameraRegionEditor(QWidget):
         if region is None:
             return
         region["model_names"] = self.checked_region_model_names()
-        rid = self.roi_id_spin.value()
+        rid = int(self.roi_id_spin.value())
         region["roi_id"] = rid if rid > 0 else None
         self.refresh_region_table(keep_selection=True)
         self.canvas.repaint_frame()
