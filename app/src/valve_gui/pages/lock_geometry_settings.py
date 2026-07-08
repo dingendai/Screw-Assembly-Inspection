@@ -341,9 +341,9 @@ class LockGeometryCameraEditor(QWidget):
         form.addRow("暗區灰階門檻", self.dark_gray_spin)
         form.addRow("金屬邊緣線數", self.edge_count_spin)
 
-        self.base_auto, self.base_value = self.line_controls(form, "基準線")
+        self.base_auto, self.base_value = self.line_controls(form, "基準線（黃色）")
         self.red_disabled, self.red_value = self.line_controls(form, "紅線", disabled_label="停用")
-        self.split_auto, self.split_value = self.line_controls(form, "分割線")
+        self.split_auto, self.split_value = self.line_controls(form, "分割線（灰色）")
         side_layout.addWidget(form_group)
 
         self.analysis_label = QLabel("尚未分析")
@@ -595,6 +595,13 @@ class LockGeometryCameraEditor(QWidget):
         right = self.right_spin.value()
         bottom = self.bottom_spin.value()
         sender = self.sender()
+        old_top = float(region.get("y", 0.0))
+        old_height = max(0.001, float(region.get("h", 0.0)))
+        old_lines = {
+            "base_line_y": region.get("base_line_y"),
+            "red_line_y": region.get("red_line_y"),
+            "split_line_y": region.get("split_line_y"),
+        }
         if right <= left:
             if sender is self.left_spin:
                 left = max(0.0, right - 0.001)
@@ -629,6 +636,15 @@ class LockGeometryCameraEditor(QWidget):
         region["base_line_y"] = None if self.base_auto.isChecked() else self.base_value.value()
         region["red_line_y"] = None if self.red_disabled.isChecked() else self.red_value.value()
         region["split_line_y"] = None if self.split_auto.isChecked() else self.split_value.value()
+        if sender in {self.top_spin, self.bottom_spin}:
+            new_height = max(0.001, bottom - top)
+            for key, old_value in old_lines.items():
+                if old_value is not None:
+                    absolute_y = old_top + float(old_value) * old_height
+                    region[key] = max(0.0, min(1.0, (absolute_y - top) / new_height))
+        elif sender in {self.left_spin, self.right_spin}:
+            for key, old_value in old_lines.items():
+                region[key] = old_value
         self.base_value.setEnabled(not self.base_auto.isChecked())
         self.red_value.setEnabled(not self.red_disabled.isChecked())
         self.split_value.setEnabled(not self.split_auto.isChecked())
