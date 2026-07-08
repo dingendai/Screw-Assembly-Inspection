@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -272,14 +273,18 @@ class LockGeometryCameraEditor(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
 
         self.canvas = LockGeometryCanvas(camera_config, self.add_region_from_canvas)
-        layout.addWidget(self.canvas, 5)
+        layout.addWidget(self.canvas, 1)
 
         side = QGroupBox("鎖緊幾何檢測")
         side.setObjectName("regionSidePanel")
+        side.setFixedWidth(430)
+        side.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(10, 10, 10, 10)
+        side_layout.setSpacing(6)
         self.enable_box = QCheckBox("啟用本相機鎖緊幾何檢測")
         self.enable_box.setChecked(getattr(camera_config, "lock_geometry_enabled", False))
         self.enable_box.stateChanged.connect(self.toggle_enabled)
@@ -310,11 +315,15 @@ class LockGeometryCameraEditor(QWidget):
         self.table.setHorizontalHeaderLabels(["名稱", "狀態", "模式", "X", "Y", "W", "H"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setMaximumHeight(92)
         self.table.itemSelectionChanged.connect(self.load_selected_region)
-        side_layout.addWidget(self.table, 1)
+        side_layout.addWidget(self.table)
 
         form_group = QGroupBox("ROI 參數")
         form = QFormLayout(form_group)
+        form.setContentsMargins(8, 8, 8, 8)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(4)
         self.name_edit = QLineEdit()
         self.name_edit.editingFinished.connect(self.save_form_to_region)
         self.region_enabled = QCheckBox("啟用")
@@ -360,7 +369,9 @@ class LockGeometryCameraEditor(QWidget):
         self.analysis_label = QLabel("尚未分析")
         self.analysis_label.setWordWrap(True)
         side_layout.addWidget(self.analysis_label)
-        layout.addWidget(side, 5)
+        layout.addWidget(side)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
         self.refresh_table()
         self.update_controls_enabled()
 
@@ -369,6 +380,7 @@ class LockGeometryCameraEditor(QWidget):
         spin.setRange(0.0, 1.0)
         spin.setSingleStep(0.001)
         spin.setDecimals(3)
+        spin.setMinimumWidth(90)
         spin.valueChanged.connect(self.save_form_to_region)
         return spin
 
@@ -389,6 +401,7 @@ class LockGeometryCameraEditor(QWidget):
         spin.setRange(0.0, 1.0)
         spin.setSingleStep(0.01)
         spin.setDecimals(3)
+        spin.setMinimumWidth(90)
         toggle.stateChanged.connect(self.save_form_to_region)
         spin.valueChanged.connect(self.save_form_to_region)
         layout.addWidget(toggle)
@@ -603,8 +616,8 @@ class LockGeometrySettingsPage(QWidget):
         self.timer.timeout.connect(self.update_frames)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
         self.tabs = QTabWidget()
         self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs, 1)
