@@ -64,6 +64,7 @@ class LockGeometryCanvas(QLabel):
         self.on_region_added = on_region_added
         self.frame = None
         self.region_result_by_id = {}
+        self.region_analysis_by_id = {}
         self.image_rect = QRect()
         self.drag_start = None
         self.drag_current = None
@@ -87,6 +88,7 @@ class LockGeometryCanvas(QLabel):
         self.region_result_by_id = {
             id(analysis.region_config): analysis.result.prediction for analysis in analyses
         }
+        self.region_analysis_by_id = {id(analysis.region_config): analysis for analysis in analyses}
 
     def repaint_frame(self):
         if self.frame is None:
@@ -192,12 +194,21 @@ class LockGeometryCanvas(QLabel):
         painter.translate(rect.center())
         painter.rotate(angle)
         local = QRect(-rect.width() // 2, -rect.height() // 2, rect.width(), rect.height())
-        painter.setPen(QPen(color, 1))
+        painter.setPen(QPen(color, 2))
         painter.drawRect(local)
         self.draw_line(painter, local, region.get("split_line_y"), QColor("#999999"))
         self.draw_line(painter, local, region.get("red_line_y"), QColor("#ef4444"))
         self.draw_line(painter, local, region.get("base_line_y"), QColor("#eab308"))
+        self.draw_detected_edge_lines(painter, local, region)
         painter.restore()
+
+    def draw_detected_edge_lines(self, painter, rect, region):
+        analysis = self.region_analysis_by_id.get(id(region))
+        if not analysis:
+            return
+        roi_height = max(1, analysis.region.h)
+        for edge_y in analysis.result.metal_edge_ys:
+            self.draw_line(painter, rect, edge_y / roi_height, QColor("#2563eb"))
 
     def region_frame_color(self, region):
         if not region.get("enabled", True):
@@ -211,7 +222,7 @@ class LockGeometryCanvas(QLabel):
         if ratio is None:
             return
         y = rect.top() + int(float(ratio) * rect.height())
-        painter.setPen(QPen(color, 1))
+        painter.setPen(QPen(color, 2))
         painter.drawLine(rect.left(), y, rect.right(), y)
 
     def region_to_widget_rect(self, region):
