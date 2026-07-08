@@ -13,7 +13,11 @@ from valve_gui.camera import detect_camera_indexes
 from valve_gui.config_store import (
     normalise_color,
     normalise_color_map,
+    normalise_confidence_threshold_mode,
     normalise_decision_rules,
+    normalise_focus_mode,
+    normalise_focus_value,
+    normalise_lock_geometry_regions,
     normalise_regions,
     save_app_config,
 )
@@ -65,6 +69,11 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
                 region_detection_enabled=bool(item.region_detection_enabled),
                 detection_regions=normalise_regions([dict(r) for r in item.detection_regions]),
                 exclusion_regions=normalise_regions([dict(r) for r in item.exclusion_regions]),
+                lock_geometry_enabled=bool(item.lock_geometry_enabled),
+                lock_geometry_regions=normalise_lock_geometry_regions([dict(r) for r in item.lock_geometry_regions]),
+                barcode_read_enabled=bool(item.barcode_read_enabled),
+                focus_mode=normalise_focus_mode(item.focus_mode),
+                manual_focus_value=normalise_focus_value(item.manual_focus_value),
             )
         )
     for camera in cameras:
@@ -74,8 +83,7 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
 
 @router.put("/cameras")
 def update_cameras(req: CamerasUpdate, ctx: WebContext = Depends(_settings_dep)):
-    if req.use_simulation is not None:
-        ctx.state.use_simulation = bool(req.use_simulation)
+    ctx.state.use_simulation = False
     if req.operator_camera_index is not None:
         ctx.state.operator_camera_index = int(req.operator_camera_index)
     _apply_cameras(ctx, req.cameras, regions_only=False)
@@ -113,6 +121,7 @@ def update_decision(req: DecisionUpdate, ctx: WebContext = Depends(_settings_dep
     rules = {key: rule.model_dump() for key, rule in req.model_rules.items()}
     ctx.state.decision = DecisionConfig(
         pass_confidence_threshold=max(0.0, min(1.0, float(req.pass_confidence_threshold))),
+        confidence_threshold_mode=normalise_confidence_threshold_mode(req.confidence_threshold_mode),
         model_rules=normalise_decision_rules(rules),
     )
     save_app_config(ctx.state)

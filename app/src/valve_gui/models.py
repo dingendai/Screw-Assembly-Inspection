@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from valve_gui.permissions import default_role_labels, default_role_passwords, default_role_permissions
 
 
+DEFAULT_INSPECTION_CAMERA_COUNT = 5
+
+
 @dataclass
 class CameraConfig:
     slot: int
@@ -16,6 +19,11 @@ class CameraConfig:
     region_detection_enabled: bool = False
     detection_regions: list[dict] = field(default_factory=list)
     exclusion_regions: list[dict] = field(default_factory=list)
+    lock_geometry_enabled: bool = False
+    lock_geometry_regions: list[dict] = field(default_factory=list)
+    barcode_read_enabled: bool = False
+    focus_mode: str = "auto"
+    manual_focus_value: int = 120
 
 
 @dataclass
@@ -38,6 +46,7 @@ class DisplayConfig:
 @dataclass
 class DecisionConfig:
     pass_confidence_threshold: float = 0.5
+    confidence_threshold_mode: str = "custom"
     model_rules: dict[str, dict] = field(default_factory=dict)
 
 
@@ -60,6 +69,8 @@ class InspectionRecord:
     active_cameras: str
     confidence: str
     note: str
+    # 序號來源：標籤類別名稱 / "manual" / "auto"（CSV 不含此欄，僅供 SQLite）。
+    barcode_source: str = ""
 
 
 @dataclass
@@ -88,13 +99,20 @@ class AppState:
     login_time: str = ""
     is_logged_in: bool = False
     settings_applied: bool = False
+    current_work_session_id: int | None = None
     model_configs: list[ModelConfig] = field(default_factory=list)
     detected_cameras: list[int] = field(default_factory=list)
     inspection_cameras: list[CameraConfig] = field(
-        default_factory=lambda: [CameraConfig(slot=i + 1, device_index=i, enabled=True) for i in range(4)]
+        default_factory=lambda: [
+            CameraConfig(slot=i + 1, device_index=i, enabled=True)
+            for i in range(DEFAULT_INSPECTION_CAMERA_COUNT)
+        ]
     )
     operator_camera_index: int = 4
-    use_simulation: bool = True
+    use_simulation: bool = False
+    qc_output_dir: str = ""
+    # 被設為「需要條碼辨識」的 YOLO 標籤類別名稱；偵測到這些類別才解碼。
+    barcode_label_classes: list[str] = field(default_factory=list)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     decision: DecisionConfig = field(default_factory=DecisionConfig)
     region_overlay: RegionOverlayConfig = field(default_factory=RegionOverlayConfig)

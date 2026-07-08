@@ -14,21 +14,24 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QCheckBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from valve_gui import barcode_reader
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
 from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
+from valve_gui.lock_geometry import draw_lock_geometry_config_overlay
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord
-from valve_gui.permissions import role_label
 from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
 
 
 MAX_GUI_FRAME_DIMENSION = 960
+BARCODE_PREVIEW_INTERVAL_SEC = 0.7
 
 
 class _DetectionWorker(QThread):
@@ -57,6 +60,7 @@ class MonitorPage(QWidget):
         self.router = InferenceRouter(state)
         self.sources = []
         self.views = []
+        self.single_views = {}
         self.last_frames = {}
         self.latest_annotated_frames = {}
         self.continuous_detection = False
@@ -64,6 +68,9 @@ class MonitorPage(QWidget):
         self.pending_detection_future = None
         self._single_worker = None
         self._last_record_time: float = 0.0
+        self._last_barcode: str | None = None
+        self._last_barcode_source: str = ""
+        self._last_live_barcode_scan_time: float = 0.0
         self._source_by_slot: dict = {}
         self._config_by_slot: dict = {}
         self._view_by_slot: dict = {}
@@ -76,13 +83,11 @@ class MonitorPage(QWidget):
 
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
+        self.barcode_label = QLabel("讀到條碼：--")
+        self.barcode_label.setObjectName("mutedText")
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
-        self.confidence_label = QLabel("Confidence: --")
-        self.confidence_label.setObjectName("mutedText")
-        self.camera_status_label = QLabel("相機狀態：--")
-        self.camera_status_label.setObjectName("mutedText")
         self.reason_cards = {}
         self.reason_list = QWidget()
         self.reason_layout = QVBoxLayout(self.reason_list)
@@ -93,15 +98,6 @@ class MonitorPage(QWidget):
         self.roi_section_layout.setContentsMargins(8, 8, 8, 8)
         self.roi_section_layout.setSpacing(4)
         self.roi_section.setVisible(False)
-        self.operator_label = QLabel()
-        self.operator_label.setObjectName("mutedText")
-        self.operator_label.setVisible(False)
-        self.model_label = QLabel()
-        self.model_label.setObjectName("mutedText")
-        self.model_label.setVisible(False)
-        self.info_toggle_button = QPushButton("顯示資訊")
-        self.info_toggle_button.setCheckable(True)
-        self.info_toggle_button.toggled.connect(self.toggle_info_labels)
         self.region_overlay_box = QCheckBox("顯示指定範圍")
         self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
         self.continuous_button = QPushButton("連續檢測")
@@ -113,6 +109,8 @@ class MonitorPage(QWidget):
         self.grid = QGridLayout(self.grid_holder)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(12)
+        self.monitor_tabs = QTabWidget()
+        self.monitor_tabs.addTab(self.grid_holder, "總覽")
 
         start_button = QPushButton("重新啟動所有相機")
         start_button.clicked.connect(self.start)
@@ -125,15 +123,11 @@ class MonitorPage(QWidget):
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
-        side_layout.addWidget(self.info_toggle_button)
-        side_layout.addWidget(self.operator_label)
-        side_layout.addWidget(self.model_label)
         side_layout.addWidget(self.region_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
+        side_layout.addWidget(self.barcode_label)
         side_layout.addWidget(self.result_label)
-        side_layout.addWidget(self.confidence_label)
-        side_layout.addWidget(self.camera_status_label)
         side_layout.addWidget(QLabel("相機檢測狀態"))
         side_layout.addWidget(self.reason_list)
         side_layout.addWidget(self.roi_section)
@@ -152,54 +146,42 @@ class MonitorPage(QWidget):
         camera_actions.addWidget(start_button)
         camera_actions.addWidget(stop_button)
 
-        bottom_controls.addWidget(QLabel("檢測控制"))
         bottom_controls.addLayout(detection_actions)
         side_layout.addSpacing(8)
-        bottom_controls.addWidget(QLabel("相機控制"))
         bottom_controls.addLayout(camera_actions)
 
         side_layout.addLayout(bottom_controls)
-
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(self.grid_holder, 1)
-        layout.addWidget(side, 0)
-
-    def toggle_info_labels(self, checked):
-        self.operator_label.setVisible(checked)
-        self.model_label.setVisible(checked)
-        self.info_toggle_button.setText("隱藏資訊" if checked else "顯示資訊")
+        layout.addWidget(self.monitor_tabs, 6)
+        layout.addWidget(side, 4)
 
     def refresh(self):
         self.region_overlay_box.blockSignals(True)
         self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
         self.region_overlay_box.blockSignals(False)
-        self.operator_label.setText(
-            f"操作者：{self.state.operator_name or '--'}"
-            f" / 角色：{role_label(self.state.operator_role, self.state.role_labels)}"
-            f" / 登入：{self.state.login_time or '--'}"
-        )
-        routes = [
-            f"C{camera.slot}->{format_camera_model_names(camera)}"
-            for camera in self.state.inspection_cameras
-            if camera.enabled
-        ]
-        self.model_label.setText("相機模型：" + (" / ".join(routes) if routes else "--"))
-
         while self.grid.count():
             item = self.grid.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.setParent(None)
+        self.monitor_tabs.clear()
+        self.monitor_tabs.addTab(self.grid_holder, "總覽")
         self.views = []
+        self.single_views = {}
         enabled = [config for config in self.state.inspection_cameras if config.enabled]
         columns = 1 if len(enabled) == 1 else 2
         for idx, config in enumerate(enabled):
-            view = CameraView(
-                f"Camera {config.slot} / Device {config.device_index} / Model: {format_camera_model_names(config)}"
-            )
+            view = CameraView(f"相機 {config.slot}")
+            single_view = CameraView(f"相機 {config.slot}")
+            single_page = QWidget()
+            single_layout = QVBoxLayout(single_page)
+            single_layout.setContentsMargins(12, 12, 12, 12)
+            single_layout.addWidget(single_view, 1)
             self.views.append((config, view))
+            self.single_views[config.slot] = single_view
             self.grid.addWidget(view, idx // columns, idx % columns)
+            self.monitor_tabs.addTab(single_page, f"相機 {config.slot}")
 
     def start(self):
         continuous_requested = self.continuous_detection
@@ -207,13 +189,15 @@ class MonitorPage(QWidget):
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.continuous_detection = continuous_requested
         self.refresh()
-        errors = []
         for config, _ in self.views:
-            source = VideoSource(f"CAMERA {config.slot}", config.device_index, self.state.use_simulation)
-            if source.has_error():
-                errors.append(source.last_error)
+            source = VideoSource(
+                f"相機 {config.slot}",
+                config.device_index,
+                self.state.use_simulation,
+                getattr(config, "focus_mode", "auto"),
+                getattr(config, "manual_focus_value", 120),
+            )
             self.sources.append((config.slot, source))
-        self.camera_status_label.setText("相機狀態：" + ("；".join(errors) if errors else "正常"))
         self._source_by_slot = {slot: source for slot, source in self.sources}
         self._config_by_slot = {config.slot: config for config, _ in self.views}
         self._view_by_slot = {config.slot: view for config, view in self.views}
@@ -250,7 +234,9 @@ class MonitorPage(QWidget):
             frame = source.read()
             if frame is None:
                 view.set_message(source.last_error or "沒有相機影像。", is_error=True)
-                self.camera_status_label.setText(f"相機狀態：{source.last_error or '沒有相機影像。'}")
+                single_view = self.single_views.get(config.slot)
+                if single_view:
+                    single_view.set_message(source.last_error or "沒有相機影像。", is_error=True)
                 continue
             model_frame = apply_frame_transform(
                 frame,
@@ -261,11 +247,21 @@ class MonitorPage(QWidget):
             # Model input keeps the camera-provided resolution. GUI compression
             # happens only after inference/overlay rendering.
             self.last_frames[config.slot] = model_frame
+            self.update_live_barcode_preview(config, model_frame)
             display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
-            view.set_frame(
+            self.set_monitor_frame(
+                config,
                 self.display_frame_for(config, display_frame if display_frame is not None else model_frame),
                 input_fps=source.input_fps,
             )
+
+    def set_monitor_frame(self, config, frame, input_fps=None):
+        overview_view = self._view_by_slot.get(config.slot)
+        if overview_view:
+            overview_view.set_frame(frame, input_fps=input_fps)
+        single_view = self.single_views.get(config.slot)
+        if single_view:
+            single_view.set_frame(frame, input_fps=input_fps)
 
     def display_frame_for(self, config, frame):
         return self.compress_frame_for_gui(self.frame_with_region_overlay(config, frame))
@@ -284,13 +280,19 @@ class MonitorPage(QWidget):
         save_app_config(self.state)
 
     def frame_with_region_overlay(self, config, frame):
+        annotated = frame
+        if (
+            getattr(config, "lock_geometry_enabled", False)
+            and getattr(config, "lock_geometry_regions", None)
+        ):
+            annotated = draw_lock_geometry_config_overlay(annotated.copy(), config.lock_geometry_regions)
         if not self.state.region_overlay.show_on_monitor:
-            return frame
+            return annotated
         if not getattr(config, "region_detection_enabled", False):
-            return frame
+            return annotated
         if not config.detection_regions and not config.exclusion_regions:
-            return frame
-        annotated = frame.copy()
+            return annotated
+        annotated = annotated.copy()
         height, width = annotated.shape[:2]
         self.draw_region_list(
             annotated,
@@ -313,25 +315,43 @@ class MonitorPage(QWidget):
     def draw_region_list(self, frame, regions, color, label, width, height):
         for index, region in enumerate(regions, start=1):
             x1, y1, x2, y2 = normalised_region_to_pixels(region, width, height)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
             cv2.putText(
                 frame,
                 self.format_region_label(label, index, region),
-                (x1 + 6, max(18, y1 + 22)),
+                (x1 + 3, max(10, y1 + 11)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
+                0.28,
                 color,
-                2,
+                1,
             )
 
     def format_region_label(self, label, index, region):
         roi_id = region.get("roi_id")
         if roi_id is not None:
             return f"#{roi_id}"
-        model_names = region.get("model_names", [])
-        if not model_names:
-            return f"{label} {index}"
-        return f"{label} {index}: {', '.join(model_names)}"
+        return f"{label} {index}"
+
+    def update_barcode_label(self, text, source=""):
+        if text and source:
+            self.barcode_label.setText(f"讀到條碼：{text}（{source}）")
+        else:
+            self.barcode_label.setText(f"讀到條碼：{text or '--'}")
+
+    def update_live_barcode_preview(self, config, frame):
+        if not getattr(config, "barcode_read_enabled", False):
+            return
+        now = time.time()
+        if now - self._last_live_barcode_scan_time < BARCODE_PREVIEW_INTERVAL_SEC:
+            return
+        self._last_live_barcode_scan_time = now
+        text = barcode_reader.decode_best(frame)
+        if text:
+            self._last_barcode = text
+            self._last_barcode_source = f"相機 {config.slot}"
+            self.update_barcode_label(text, self._last_barcode_source)
+        elif not self._last_barcode:
+            self.update_barcode_label(None)
 
     def inspect_once(self):
         if self._single_worker and self._single_worker.isRunning():
@@ -435,17 +455,31 @@ class MonitorPage(QWidget):
         self.set_ng_reason(inference)
         self.set_roi_confirmations(inference.roi_confirmations)
         self.show_annotated_frames(inference.annotated_frames)
+        detected_barcode = getattr(inference, "barcode", None)
+        if detected_barcode:
+            self._last_barcode = detected_barcode
+            self._last_barcode_source = self._barcode_source_label(inference)
+            self.update_barcode_label(self._last_barcode, self._last_barcode_source)
+        elif not self._last_barcode:
+            self.update_barcode_label(None)
         if record or self.continuous_detection:
             self.record_detection(inference)
+
+    @staticmethod
+    def _barcode_source_label(inference):
+        sources = getattr(inference, "barcode_sources", None) or []
+        if not sources:
+            return ""
+        first = sources[0]
+        return first.get("class") or first.get("model") or ""
 
     def show_annotated_frames(self, annotated_frames):
         if self.continuous_detection:
             self.latest_annotated_frames = dict(annotated_frames)
         for slot, frame in annotated_frames.items():
-            view = self._view_by_slot.get(slot)
-            if view:
-                config = self._config_by_slot.get(slot)
-                view.set_frame(self.display_frame_for(config, frame) if config else self.compress_frame_for_gui(frame))
+            config = self._config_by_slot.get(slot)
+            if config:
+                self.set_monitor_frame(config, self.display_frame_for(config, frame))
 
     def record_detection(self, inference):
         if self.continuous_detection:
@@ -457,24 +491,41 @@ class MonitorPage(QWidget):
             f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
             for config, _ in self.views
         )
+        # 序號來源優先序：偵測到的標籤條碼 ▸ 手動輸入 ▸ 自動編號。
+        barcode = getattr(inference, "barcode", None)
+        if barcode:
+            part_id = barcode
+            source = self._barcode_source_label(inference) or "barcode"
+        elif self.part_id.text().strip():
+            part_id = self.part_id.text().strip()
+            source = "manual"
+        else:
+            part_id = f"PART-{datetime.now():%H%M%S}"
+            source = "auto"
         record = InspectionRecord(
             timestamp=f"{datetime.now():%Y-%m-%d %H:%M:%S}",
             operator_name=self.state.operator_name,
             operator_role=self.state.operator_role,
             result=inference.result,
-            part_id=self.part_id.text().strip() or f"PART-{datetime.now():%H%M%S}",
+            part_id=part_id,
             active_cameras=active,
             confidence=f"{inference.confidence:.3f}",
             note=inference.note,
+            barcode_source=source,
         )
-        self.add_record(record)
+        self.add_record(
+            record,
+            raw_frames=getattr(inference, "raw_frames", {}),
+            annotated_frames=getattr(inference, "annotated_frames", {}),
+            camera_results=getattr(inference, "camera_results", {}),
+            roi_confirmations=getattr(inference, "roi_confirmations", {}),
+        )
 
     def set_result(self, result, confidence):
         self.result_label.setText(result)
         self.result_label.setObjectName("resultPass" if result == "PASS" else "resultNg")
         self.result_label.style().unpolish(self.result_label)
         self.result_label.style().polish(self.result_label)
-        self.confidence_label.setText(f"Confidence: {confidence:.3f}")
 
     def set_ng_reason(self, inference):
         self.set_reason_cards(inference.camera_results)
@@ -513,7 +564,7 @@ class MonitorPage(QWidget):
 
         for slot in sorted(camera_results):
             result_info = camera_results[slot]
-            title = "系統" if slot == 0 else f"Camera {slot}"
+            title = "系統" if slot == 0 else f"相機 {slot}"
             self.add_reason_card(
                 title,
                 result_info.get("result", "NG"),

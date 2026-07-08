@@ -5,11 +5,14 @@ export async function renderDisplay(view) {
   let cfg;
   try { cfg = await api.get("/api/config"); } catch (e) { toast(e.message, "error"); return; }
   const d = cfg.display || { font_size: 18, mode: "auto", width: 1440, height: 900, theme: "dark" };
+  const fontSizes = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28];
+  if (!fontSizes.includes(parseInt(d.font_size))) fontSizes.push(parseInt(d.font_size) || 18);
+  fontSizes.sort((a, b) => a - b);
 
-  const size = h("input", { type: "range", min: "12", max: "40", value: d.font_size, style: "width:280px" });
-  const sizeLabel = h("span", {}, `${d.font_size}px`);
-  size.addEventListener("input", () => {
-    sizeLabel.textContent = size.value + "px";
+  const size = h("select", {},
+    ...fontSizes.map((value) => h("option", { value, selected: value === parseInt(d.font_size) }, `${value} px`)));
+  size.value = String(parseInt(d.font_size) || 18);
+  size.addEventListener("change", () => {
     applyFontSize(size.value);  // live preview
   });
 
@@ -36,7 +39,7 @@ export async function renderDisplay(view) {
 
   view.append(h("div", { class: "card" },
     h("h2", {}, "顯示設定"),
-    h("div", { class: "col" }, h("label", {}, "介面字級"), h("div", { class: "row" }, size, sizeLabel)),
+    h("div", { class: "col" }, h("label", {}, "介面字級"), size),
     h("div", { class: "col", style: "margin-top:8px" }, h("label", {}, "佈景主題"), themeSel),
     h("p", { class: "muted" }, "字級與主題會即時預覽並儲存到後端，可跨裝置 / 與桌面版共用。全螢幕請用瀏覽器 F11。"),
     h("div", { class: "row", style: "margin-top:12px" }, h("button", { class: "btn btn-success", onclick: save }, "儲存顯示設定"))

@@ -1,18 +1,18 @@
 import cv2
 
 from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
-from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QCheckBox,
     QColorDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -79,7 +79,7 @@ class RegionCanvas(QLabel):
             self._cached_widget_size = current_size
         scaled = self._cached_scaled
         canvas = QPixmap(self.size())
-        canvas.fill(QColor("#111827"))
+        canvas.fill(QColor("#ffffff"))
         painter = QPainter(canvas)
         x = (self.width() - scaled.width()) // 2
         y = (self.height() - scaled.height()) // 2
@@ -100,6 +100,7 @@ class RegionCanvas(QLabel):
     def draw_region_list(self, painter, regions, color, label):
         pen = QPen(color, 3)
         painter.setPen(pen)
+        painter.setFont(QFont(painter.font().family(), 8))
         for index, region in enumerate(regions, start=1):
             rect = self.region_to_widget_rect(region)
             painter.drawRect(rect)
@@ -200,13 +201,12 @@ class CameraRegionEditor(QWidget):
         left.addWidget(self.canvas, 1)
 
         side = QGroupBox("已標示區域")
+        side.setObjectName("regionSidePanel")
         side_layout = QVBoxLayout(side)
         self.enable_box = QCheckBox("啟用本相機範圍辨識")
         self.enable_box.setChecked(getattr(self.camera_config, "region_detection_enabled", False))
         self.enable_box.stateChanged.connect(self.toggle_region_detection)
         side_layout.addWidget(self.enable_box)
-
-        side_layout.addWidget(QLabel("畫框模式"))
 
         mode_buttons = QHBoxLayout()
         self.include_button = QPushButton("新增辨識區域")
@@ -226,7 +226,7 @@ class CameraRegionEditor(QWidget):
         side_layout.addLayout(mode_buttons)
 
         self.region_table = QTableWidget(0, 7)
-        self.region_table.setHorizontalHeaderLabels(["Type", "ROI ID", "X", "Y", "W", "H", "Models"])
+        self.region_table.setHorizontalHeaderLabels(["類型", "ROI 編號", "模型", "X", "Y", "W", "H"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
@@ -234,18 +234,22 @@ class CameraRegionEditor(QWidget):
 
         roi_id_row = QHBoxLayout()
         roi_id_row.addWidget(QLabel("ROI 編號（0=不共用）"))
-        self.roi_id_spin = QSpinBox()
-        self.roi_id_spin.setRange(0, 99)
+        self.roi_id_spin = QDoubleSpinBox()
+        self.roi_id_spin.setRange(0.0, 99.0)
+        self.roi_id_spin.setSingleStep(1.0)
+        self.roi_id_spin.setDecimals(0)
+        self.roi_id_spin.setMinimumWidth(90)
         self.roi_id_spin.setSpecialValueText("—")
+        self.roi_id_spin.setValue(0.0)
         self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
         roi_id_row.addWidget(self.roi_id_spin)
         roi_id_row.addStretch()
         side_layout.addLayout(roi_id_row)
 
-        self.model_group = QGroupBox("Region models")
+        self.model_group = QGroupBox("區域模型")
         self.model_layout = QVBoxLayout(self.model_group)
         self.model_hint = QLabel(
-            "Choose one or more models first, then draw a region. Empty means all models."
+            "請先選擇一個或多個模型，再繪製區域；未勾選代表套用所有模型。"
         )
         self.model_hint.setWordWrap(True)
         self.model_hint.setObjectName("mutedText")
@@ -262,8 +266,8 @@ class CameraRegionEditor(QWidget):
         actions.addWidget(self.clear_button)
         side_layout.addLayout(actions)
 
-        layout.addLayout(left, 3)
-        layout.addWidget(side, 1)
+        layout.addLayout(left, 5)
+        layout.addWidget(side, 5)
         self.refresh_region_table()
         self.update_region_controls_enabled()
 
@@ -303,9 +307,11 @@ class CameraRegionEditor(QWidget):
     def start(self):
         self.stop()
         self.source = VideoSource(
-            f"CAMERA {self.camera_config.slot}",
+            f"相機 {self.camera_config.slot}",
             self.camera_config.device_index,
             self.state.use_simulation,
+            getattr(self.camera_config, "focus_mode", "auto"),
+            getattr(self.camera_config, "manual_focus_value", 120),
         )
 
     def stop(self):
@@ -355,7 +361,7 @@ class CameraRegionEditor(QWidget):
 
     def new_region_defaults(self):
         defaults = {"model_names": self.checked_region_model_names()}
-        rid = self.roi_id_spin.value()
+        rid = int(self.roi_id_spin.value())
         defaults["roi_id"] = rid if rid > 0 else None
         return defaults
 
@@ -379,7 +385,11 @@ class CameraRegionEditor(QWidget):
         if region:
             for model_name, box in self.model_boxes.items():
                 box.setChecked(model_name in selected_models)
-            self.roi_id_spin.setValue(region.get("roi_id") or 0)
+            self.roi_id_spin.setValue(float(region.get("roi_id") or 0))
+        else:
+            for box in self.model_boxes.values():
+                box.setChecked(False)
+            self.roi_id_spin.setValue(0.0)
         self.loading_model_selection = False
 
     def save_selected_region_models(self, _state=None):
@@ -389,7 +399,7 @@ class CameraRegionEditor(QWidget):
         if region is None:
             return
         region["model_names"] = self.checked_region_model_names()
-        rid = self.roi_id_spin.value()
+        rid = int(self.roi_id_spin.value())
         region["roi_id"] = rid if rid > 0 else None
         self.refresh_region_table(keep_selection=True)
         self.canvas.repaint_frame()
@@ -413,16 +423,16 @@ class CameraRegionEditor(QWidget):
         self.region_table.setRowCount(0)
         for row_index, (kind, source_index, region) in enumerate(rows):
             self.region_table.insertRow(row_index)
-            type_item = QTableWidgetItem("ROI" if kind == "include" else "Exclude")
+            type_item = QTableWidgetItem("辨識區域" if kind == "include" else "排除區域")
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
             roi_id = region.get("roi_id")
             self.region_table.setItem(row_index, 1, QTableWidgetItem(f"#{roi_id}" if roi_id is not None else "—"))
-            self.region_table.setItem(row_index, 2, QTableWidgetItem(f"{region['x']:.3f}"))
-            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['y']:.3f}"))
-            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['w']:.3f}"))
-            self.region_table.setItem(row_index, 5, QTableWidgetItem(f"{region['h']:.3f}"))
-            self.region_table.setItem(row_index, 6, QTableWidgetItem(self.format_region_models(region)))
+            self.region_table.setItem(row_index, 2, QTableWidgetItem(self.format_region_models(region)))
+            self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['x']:.3f}"))
+            self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['y']:.3f}"))
+            self.region_table.setItem(row_index, 5, QTableWidgetItem(f"{region['w']:.3f}"))
+            self.region_table.setItem(row_index, 6, QTableWidgetItem(f"{region['h']:.3f}"))
             if selected == (kind, source_index):
                 self.region_table.selectRow(row_index)
         if not keep_selection:
@@ -557,6 +567,7 @@ class RegionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.editors = []
+        self.active_editor = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frames)
 
@@ -564,18 +575,8 @@ class RegionSettingsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        header = QHBoxLayout()
-        title = QLabel("指定範圍位置辨識")
-        title.setObjectName("pageTitle")
-        header.addWidget(title)
-        header.addStretch()
-        layout.addLayout(header)
-
-        hint = QLabel("拖曳畫面可新增辨識區域或排除區域；綠色為辨識區域，紅色為不需要辨識區域。")
-        hint.setObjectName("mutedText")
-        layout.addWidget(hint)
-
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs, 1)
 
     def refresh(self):
@@ -586,19 +587,34 @@ class RegionSettingsPage(QWidget):
         for camera in self.state.inspection_cameras:
             editor = CameraRegionEditor(camera, self.state)
             self.editors.append(editor)
-            self.tabs.addTab(editor, f"Camera {camera.slot}")
+            self.tabs.addTab(editor, f"相機 {camera.slot}")
         self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
         self.start()
 
     def start(self):
-        for editor in self.editors:
-            editor.start()
+        self.start_current_editor()
         self.timer.start(33)
 
     def stop(self):
         self.timer.stop()
         for editor in self.editors:
             editor.stop()
+        self.active_editor = None
+
+    def on_tab_changed(self, _index):
+        if self.timer.isActive():
+            self.start_current_editor()
+
+    def start_current_editor(self):
+        current = self.tabs.currentWidget()
+        next_editor = current if current in self.editors else None
+        if self.active_editor == next_editor:
+            return
+        if self.active_editor:
+            self.active_editor.stop()
+        self.active_editor = next_editor
+        if self.active_editor:
+            self.active_editor.start()
 
     def update_frames(self):
         current = self.tabs.currentWidget()
@@ -611,7 +627,8 @@ class RegionSettingsPage(QWidget):
 
     def save_region_settings(self):
         save_app_config(self.state)
-        QMessageBox.information(self, "儲存完成", "指定範圍位置辨識設定已儲存。")
+        QMessageBox.information(self, "儲存完成", "範圍監視設定已儲存。")
+        return True
 
     def logout(self):
         self.stop()

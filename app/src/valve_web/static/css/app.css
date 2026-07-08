@@ -250,7 +250,7 @@ tr:hover td { background: rgba(34,211,238,.05); }
    LIGHT THEME — applied via <html data-theme="light">
    =========================================================================== */
 html[data-theme="light"] {
-  --bg-0: #e9eef5;
+  --bg-0: #f1eee7;
   --bg-1: #ffffff;
   --panel-solid: #ffffff;
   --panel-2: #eef3f9;
@@ -268,9 +268,9 @@ html[data-theme="light"] {
 }
 html[data-theme="light"] body {
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgba(14,116,144,.07), transparent 60%),
-    radial-gradient(1000px 700px at -10% 110%, rgba(101,163,13,.08), transparent 55%),
-    linear-gradient(180deg, #f5f8fc, #e9eef5);
+    radial-gradient(1200px 600px at 85% -10%, rgba(23,107,93,.04), transparent 60%),
+    radial-gradient(1000px 700px at -10% 110%, rgba(101,91,66,.07), transparent 55%),
+    linear-gradient(180deg, #f6f3ec, #f1eee7);
 }
 html[data-theme="light"] body::before {
   background-image:

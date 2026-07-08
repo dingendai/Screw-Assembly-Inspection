@@ -97,7 +97,7 @@ def roi_id_detections(detection_regions, yolo_boxes_xyxy, frame_w, frame_h) -> d
 
 
 class VideoSource:
-    def __init__(self, label: str, index: int, simulate: bool):
+    def __init__(self, label: str, index: int, simulate: bool, focus_mode="auto", manual_focus_value=120):
         self.label = label
         self.index = index
         self.requested_simulation = simulate
@@ -105,6 +105,7 @@ class VideoSource:
         self.capture = None
         self.counter = 0
         self.last_error = ""
+        self.focus_status = ""
         self.input_fps = 0.0
         self._last_frame_time = None
         if not simulate:
@@ -115,8 +116,46 @@ class VideoSource:
                 self.capture = None
                 self.last_error = (
                     f"{label} / Device {index}: 無法開啟相機。"
-                    "請確認相機已連接、未被其他程式占用，或改用模擬影像。"
+                    "請確認相機已連接，且未被其他程式占用。"
                 )
+            else:
+                self.apply_focus_settings(focus_mode, manual_focus_value)
+
+    def apply_focus_settings(self, focus_mode, manual_focus_value):
+        if not self.capture or not self.capture.isOpened():
+            return
+        if focus_mode != "manual":
+            try:
+                set_auto = self.capture.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+                self.focus_status = f"auto focus set_auto={set_auto}"
+            except Exception as exc:
+                self.focus_status = f"auto focus error={exc}"
+            return
+        try:
+            value = max(0, min(1023, int(manual_focus_value)))
+        except (TypeError, ValueError):
+            value = 120
+        try:
+            set_auto = self.capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+            set_focus = self.capture.set(cv2.CAP_PROP_FOCUS, value)
+            readback = self.capture.get(cv2.CAP_PROP_FOCUS)
+            self.focus_status = (
+                f"manual focus requested={value} "
+                f"set_auto={set_auto} set_focus={set_focus} readback={readback}"
+            )
+        except Exception as exc:
+            self.focus_status = f"manual focus requested={value} error={exc}"
+
+    def current_focus_value(self):
+        if not self.capture or not self.capture.isOpened():
+            return None
+        try:
+            value = self.capture.get(cv2.CAP_PROP_FOCUS)
+        except Exception:
+            return None
+        if value < 0:
+            return None
+        return value
 
     def read(self):
         if self.capture and self.capture.isOpened():
@@ -160,7 +199,7 @@ class VideoSource:
         cv2.circle(frame, (480, 360), 70, (34, 40, 44), -1)
         cv2.line(frame, (310, 360), (650, 360), (164, 176, 180), 24)
         cv2.putText(frame, self.label, (40, 58), cv2.FONT_HERSHEY_SIMPLEX, 1.25, (235, 239, 241), 2)
-        cv2.putText(frame, "SIMULATED CAMERA", (40, 700), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (165, 176, 180), 2)
+        cv2.putText(frame, "SIMULATED", (40, 700), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (165, 176, 180), 2)
         return frame
 
 

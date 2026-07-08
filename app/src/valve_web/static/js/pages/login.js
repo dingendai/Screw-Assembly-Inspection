@@ -46,7 +46,7 @@ export async function renderLogin(view) {
   function setCamOptions(list, selected) {
     camSel.innerHTML = "";
     (list.length ? list : [camIndex]).forEach((i) =>
-      camSel.append(h("option", { value: i }, `Camera index ${i}`)));
+      camSel.append(h("option", { value: i }, `相機編號 ${i}`)));
     camSel.value = String(selected ?? (list[0] ?? camIndex));
   }
   setCamOptions([camIndex], camIndex);

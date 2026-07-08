@@ -3,10 +3,11 @@ import { renderLogin } from "./pages/login.js";
 import { renderMonitor } from "./pages/monitor.js";
 import { renderHistory } from "./pages/history.js";
 import { renderSettings } from "./pages/settings.js";
-import { renderDecision } from "./pages/decision.js";
 import { renderRegions } from "./pages/regions.js";
 import { renderDisplay } from "./pages/display.js";
 import { renderUsers } from "./pages/users.js";
+import { renderQcStats } from "./pages/qc_stats.js";
+import { renderQcProducts } from "./pages/qc_products.js";
 
 export const app = { me: null, current: null };
 
@@ -90,15 +91,16 @@ const PAGES = {
   monitor: { label: "監視", perm: "open_monitor", render: renderMonitor },
   settings: { label: "相機 / 模型設定", perm: "open_settings", render: renderSettings },
   regions: { label: "指定範圍監視", perm: "open_settings", render: renderRegions },
-  decision: { label: "判定設定", perm: "open_settings", render: renderDecision },
   display: { label: "顯示設定", perm: "open_settings", render: renderDisplay },
   history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
+  qc_stats: { label: "品管統計", perm: "qc_view", render: renderQcStats },
+  qc_products: { label: "品項主檔", perm: "qc_product_manage", render: renderQcProducts },
   users: { label: "用戶管理", perm: "__developer__", render: renderUsers },
 };
 
 export function applyFontSize(px) {
   const n = parseInt(px);
-  if (n >= 10 && n <= 28) document.body.style.fontSize = n + "px";
+  if (n >= 12 && n <= 40) document.body.style.fontSize = n + "px";
 }
 
 function canSee(page) {

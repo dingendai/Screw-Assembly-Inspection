@@ -7,11 +7,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
+from valve_gui import barcode_reader, qc_db
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import InspectionRecord
 from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH
 from valve_gui.permissions import PERMISSION_OPEN_MONITOR
-from valve_gui.storage import append_record_csv
+from valve_gui.storage import append_record_csv, save_qc_object_snapshot
 
 from valve_web.deps import require_permission
 from valve_web.overlay import encode_jpeg
@@ -29,13 +30,61 @@ def _enabled_cameras(ctx: WebContext):
     return [c for c in ctx.state.inspection_cameras if c.enabled]
 
 
-def _add_record(ctx: WebContext, record: InspectionRecord):
+def _barcode_slots(ctx: WebContext) -> list[int]:
+    """已啟用且開啟條碼辨識的相機 slot。"""
+    return [c.slot for c in _enabled_cameras(ctx) if getattr(c, "barcode_read_enabled", False)]
+
+
+def _decode_barcode(ctx: WebContext, frames: dict) -> str | None:
+    """從開啟條碼辨識的相機影像中，解出第一個可信的條碼文字。"""
+    for slot in _barcode_slots(ctx):
+        frame = frames.get(slot)
+        if frame is None:
+            continue
+        text = barcode_reader.decode_best(frame)
+        if text:
+            return text
+    return None
+
+
+def _add_record(ctx: WebContext, record: InspectionRecord, *, raw_frames=None, annotated_frames=None, inference=None):
     ctx.state.records.insert(0, record)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     append_record_csv(RECORDS_LOG_PATH, record)
+    # SQLite 為品管查詢/統計的單一真相；CSV 暫時保留作過渡。
+    inspection_id = None
+    if record.result in ("PASS", "NG") and record.part_id.strip():
+        try:
+            inspection_id = qc_db.record_inspection(
+                record.part_id.strip(),
+                record.result,
+                note=record.note,
+                operator=record.operator_name,
+                operator_role=record.operator_role,
+                confidence=record.confidence,
+                active_cameras=record.active_cameras,
+                inspected_at=record.timestamp,
+                session_id=ctx.state.current_work_session_id,
+                source=getattr(record, "barcode_source", ""),
+            )
+        except Exception:
+            # 入庫失敗不應中斷檢驗流程（CSV 已寫入）。
+            pass
+        try:
+            save_qc_object_snapshot(
+                record,
+                login_time=ctx.state.login_time,
+                raw_frames=raw_frames,
+                annotated_frames=annotated_frames,
+                camera_results=getattr(inference, "camera_results", {}) if inference else {},
+                roi_confirmations=getattr(inference, "roi_confirmations", {}) if inference else {},
+                inspection_id=inspection_id,
+            )
+        except Exception:
+            pass
 
 
-def _record_from(ctx: WebContext, inference, part_id: str) -> InspectionRecord:
+def _record_from(ctx: WebContext, inference, part_id: str, source: str = "") -> InspectionRecord:
     active = ",".join(
         f"C{c.slot}:D{c.device_index}:M{format_camera_model_names(c)}" for c in _enabled_cameras(ctx)
     )
@@ -48,6 +97,7 @@ def _record_from(ctx: WebContext, inference, part_id: str) -> InspectionRecord:
         active_cameras=active,
         confidence=f"{inference.confidence:.3f}",
         note=inference.note,
+        barcode_source=source,
     )
 
 
@@ -76,6 +126,18 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
     ctx.cameras.ensure_started(ctx.state)
     frames = ctx.cameras.frames_by_slot()
     inference = ctx.router.run(frames)
+    # 偵測驅動的條碼（router 在標籤框內解碼）優先；否則退回整張畫面解碼。
+    decoded_barcode = getattr(inference, "barcode", None) or _decode_barcode(ctx, frames)
+    if decoded_barcode:
+        effective_part_id = decoded_barcode
+        sources = getattr(inference, "barcode_sources", None) or []
+        source = (sources[0].get("class") or sources[0].get("model") or "barcode") if sources else "barcode"
+    elif part_id.strip():
+        effective_part_id = part_id
+        source = "manual"
+    else:
+        effective_part_id = ""
+        source = "auto"
     if record:
         do_record = True
         if throttle and inference.result != "NG":
@@ -86,8 +148,15 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
             else:
                 ctx._last_record_time = now
         if do_record:
-            _add_record(ctx, _record_from(ctx, inference, part_id))
+            _add_record(
+                ctx,
+                _record_from(ctx, inference, effective_part_id, source),
+                raw_frames=getattr(inference, "raw_frames", frames),
+                annotated_frames=getattr(inference, "annotated_frames", {}),
+                inference=inference,
+            )
     payload = _result_payload(inference, include_images=include_images)
+    payload["barcode"] = decoded_barcode
     with ctx.lock:
         ctx.latest_result = payload
     return payload

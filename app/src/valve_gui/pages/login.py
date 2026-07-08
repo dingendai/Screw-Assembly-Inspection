@@ -1,11 +1,12 @@
 from datetime import datetime
 
 import cv2
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from valve_gui import qc_db
 from valve_gui.camera import CameraScanWorker, VideoSource
 from valve_gui.models import AppState, OperatorSession
 from valve_gui.paths import PHOTOS_DIR
@@ -52,8 +54,6 @@ class LoginPage(QWidget):
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.camera_index = QComboBox()
         self.populate_camera_indexes(state.operator_camera_index)
-        self.simulation_box = QCheckBox("使用模擬影像")
-        self.simulation_box.setChecked(state.use_simulation)
         self.photo_status = QLabel("尚未拍照")
         self.photo_status.setObjectName("mutedText")
         self.camera_visibility_group = QGroupBox("相機顯示")
@@ -85,9 +85,16 @@ class LoginPage(QWidget):
         form.addRow("登入角色", self.role_input)
         form.addRow("登入密鑰", self.password_input)
         form.addRow("登入拍照相機", self.camera_index)
-        form.addRow("", self.simulation_box)
 
         panel = QGroupBox("登入與操作者照片")
+        panel.setObjectName("loginPanel")
+        panel.setMinimumWidth(420)
+        panel.setMaximumWidth(560)
+        panel_shadow = QGraphicsDropShadowEffect(panel)
+        panel_shadow.setBlurRadius(28)
+        panel_shadow.setOffset(0, 8)
+        panel_shadow.setColor(Qt.GlobalColor.gray)
+        panel.setGraphicsEffect(panel_shadow)
         panel_layout = QVBoxLayout(panel)
         panel_layout.addLayout(form)
         panel_layout.addWidget(scan_button)
@@ -96,7 +103,6 @@ class LoginPage(QWidget):
         panel_layout.addWidget(self.camera_visibility_group)
         panel_layout.addWidget(capture_button)
         panel_layout.addWidget(self.photo_status)
-        panel_layout.addStretch()
         panel_layout.addWidget(login_button)
 
         preview_group = QGroupBox("可用相機畫面")
@@ -104,10 +110,17 @@ class LoginPage(QWidget):
         self.preview_grid = QGridLayout(preview_group)
         self.preview_grid.setSpacing(12)
 
-        layout = QHBoxLayout(self)
+        content = QHBoxLayout()
+        content.addStretch(1)
+        content.addWidget(panel, 0)
+        content.addWidget(preview_group, 2)
+        content.addStretch(1)
+
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(panel, 0)
-        layout.addWidget(preview_group, 1)
+        layout.addStretch(1)
+        layout.addLayout(content)
+        layout.addStretch(1)
         self.update_login_requirements()
 
     def refresh_role_options(self):
@@ -147,21 +160,21 @@ class LoginPage(QWidget):
         self.scan_button.setText("搜尋可用相機")
         self.state.detected_cameras = found
         if not found:
-            QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，可勾選模擬影像測試。")
+            QMessageBox.information(self, "搜尋相機", "未找到可讀取的實體相機，請確認相機已連接。")
         self.populate_camera_indexes(self.state.operator_camera_index)
         self.start_preview()
 
     def start_preview(self):
         self.stop()
         self.state.operator_camera_index = int(self.camera_index.currentData())
-        self.state.use_simulation = self.simulation_box.isChecked()
+        self.state.use_simulation = False
 
         indexes = self.preview_indexes()
         self.clear_preview_grid()
         self.build_camera_visibility_controls(indexes)
         for camera_index in indexes:
-            view = CameraView(f"Camera Device {camera_index}")
-            source = VideoSource(f"CAMERA {camera_index}", camera_index, self.state.use_simulation)
+            view = CameraView(f"相機裝置 {camera_index}", show_info=False)
+            source = VideoSource(f"相機 {camera_index}", camera_index, False)
             if source.has_error():
                 view.set_message(source.last_error, is_error=True)
             self.views[camera_index] = view
@@ -185,7 +198,7 @@ class LoginPage(QWidget):
                 self.visible_camera_indexes = set(indexes)
 
         for camera_index in indexes:
-            checkbox = QCheckBox(f"Camera Device {camera_index}")
+            checkbox = QCheckBox(f"相機裝置 {camera_index}")
             checkbox.setChecked(camera_index in self.visible_camera_indexes)
             checkbox.stateChanged.connect(self.update_camera_visibility)
             self.camera_visibility_layout.addWidget(checkbox)
@@ -217,9 +230,6 @@ class LoginPage(QWidget):
             view.setVisible(camera_index in self.visible_camera_indexes)
 
     def preview_indexes(self):
-        if self.state.use_simulation:
-            configured = [camera.device_index for camera in self.state.inspection_cameras if camera.enabled]
-            return sorted(set(configured + [self.state.operator_camera_index]))
         if self.state.detected_cameras:
             return self.state.detected_cameras
         return [self.state.operator_camera_index]
@@ -264,7 +274,6 @@ class LoginPage(QWidget):
         self.set_form_row_visible(self.name_input, needs_name)
         self.set_form_row_visible(self.password_input, needs_password)
         self.set_form_row_visible(self.camera_index, needs_photo)
-        self.set_form_row_visible(self.simulation_box, needs_photo)
 
         self.scan_button.setVisible(needs_photo)
         self.start_button.setVisible(needs_photo)
@@ -328,6 +337,13 @@ class LoginPage(QWidget):
                 photo_path=photo_path,
             ),
         )
+        # 開始一段工作時段（= 登入），檢驗紀錄會關聯到這個 session id。
+        try:
+            self.state.current_work_session_id = qc_db.start_work_session(
+                name, role, self.state.login_time
+            )
+        except Exception:
+            self.state.current_work_session_id = None
         self.password_input.clear()
         self.on_login()
 

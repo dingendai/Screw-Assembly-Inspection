@@ -3,6 +3,7 @@ opencv-python>=4.8
 numpy>=1.24
 ultralytics>=8.0
 lap>=0.5.12
+zxing-cpp>=3.0.0  # 影像條碼辨識（BARCODE_VISION_REQUIREMENTS.md）
 
 # Web UI (web_main.py)
 fastapi>=0.110

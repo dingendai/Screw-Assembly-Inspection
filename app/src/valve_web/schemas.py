@@ -34,6 +34,11 @@ class CameraModel(BaseModel):
     region_detection_enabled: bool = False
     detection_regions: list[dict] = Field(default_factory=list)
     exclusion_regions: list[dict] = Field(default_factory=list)
+    lock_geometry_enabled: bool = False
+    lock_geometry_regions: list[dict] = Field(default_factory=list)
+    barcode_read_enabled: bool = False
+    focus_mode: str = "auto"
+    manual_focus_value: int = 120
 
 
 class CamerasUpdate(BaseModel):
@@ -54,12 +59,15 @@ class ModelsUpdate(BaseModel):
 
 
 class DecisionRule(BaseModel):
+    confidence_operator: str = ">="
     confidence_threshold: float = 0.5
+    required_object_count_operator: str = "="
     required_object_count: int = 1
 
 
 class DecisionUpdate(BaseModel):
     pass_confidence_threshold: float = 0.5
+    confidence_threshold_mode: str = "custom"
     model_rules: dict[str, DecisionRule] = Field(default_factory=dict)
 
 
@@ -89,6 +97,10 @@ class PermissionsUpdate(BaseModel):
     role_permissions: dict[str, list[str]] = Field(default_factory=dict)
     role_labels: dict[str, str] | None = None
     role_passwords: dict[str, str] | None = None
+
+
+class QcOutputUpdate(BaseModel):
+    qc_output_dir: str = ""
 
 
 class InspectRequest(BaseModel):

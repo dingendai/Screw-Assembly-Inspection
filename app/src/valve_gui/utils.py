@@ -1,5 +1,7 @@
 import hashlib
 
+DECISION_OPERATORS = ("<", ">", "=", "<=", ">=")
+
 
 def hex_to_bgr(value):
     text = str(value).strip().lstrip("#")
@@ -16,6 +18,23 @@ def hex_to_bgr(value):
 
 def decision_rule_key(slot, model_name):
     return f"{slot}::{model_name}"
+
+
+def normalise_decision_operator(value, fallback=">="):
+    operator = str(value).strip()
+    return operator if operator in DECISION_OPERATORS else fallback
+
+
+def compare_decision_value(actual, operator, expected):
+    if operator == "<":
+        return actual < expected
+    if operator == ">":
+        return actual > expected
+    if operator == "=":
+        return actual == expected
+    if operator == "<=":
+        return actual <= expected
+    return actual >= expected
 
 
 def hash_password(password: str) -> str:

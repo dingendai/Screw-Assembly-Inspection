@@ -10,6 +10,7 @@ import secrets
 import threading
 from datetime import datetime
 
+from valve_gui import qc_db
 from valve_gui.models import OperatorSession
 from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import ROLE_OPERATOR
@@ -47,6 +48,10 @@ def login(state, name: str, role: str, photo_path: str = "") -> str:
     token = secrets.token_urlsafe(24)
     with _lock:
         _tokens.add(token)
+    try:
+        state.current_work_session_id = qc_db.start_work_session(name, role, state.login_time)
+    except Exception:
+        state.current_work_session_id = None
     return token
 
 
@@ -73,6 +78,11 @@ def logout(state, token: str | None):
     now = datetime.now()
     if state.sessions:
         state.sessions[0].logout_time = f"{now:%Y-%m-%d %H:%M:%S}"
+    try:
+        qc_db.end_work_session(state.current_work_session_id, state.sessions[0].logout_time if state.sessions else None)
+    except Exception:
+        pass
+    state.current_work_session_id = None
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     write_sessions_csv(SESSION_LOG_PATH, state.sessions, state.role_labels)
     _save_user_records(state, now)

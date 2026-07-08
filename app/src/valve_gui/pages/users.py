@@ -59,7 +59,7 @@ class UserManagementPage(QWidget):
         header = QHBoxLayout()
         title = QLabel("使用者管理")
         title.setObjectName("pageTitle")
-        subtitle = QLabel("設定使用者密碼、角色位階排序，以及各角色可控制的操作介面權限。")
+        subtitle = QLabel("設定使用者密碼與角色權限。")
         subtitle.setObjectName("mutedText")
 
         title_block = QVBoxLayout()
@@ -555,7 +555,7 @@ class UserManagementPage(QWidget):
         if self.on_saved:
             self.on_saved()
 
-        QMessageBox.information(self, "儲存完成", "用戶、角色位階與畫面權限設定已更新。")
+        QMessageBox.information(self, "儲存完成", "用戶、角色位階與畫面權限已更新。")
         self.refresh()
 
     def _resolve_password(self, role, plain_text):

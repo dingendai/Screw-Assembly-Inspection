@@ -8,6 +8,25 @@ export async function renderUsers(view) {
   const roleKeys = Object.keys(data.role_labels);
   const permLabels = data.permission_labels || {};
   const configurable = data.configurable_permissions || [];
+  const qcOutput = h("input", { type: "text", value: data.qc_output_dir || "", style: "width: min(640px, 100%)" });
+
+  async function saveQcOutput() {
+    try {
+      data = await api.put("/api/users/qc-output", { qc_output_dir: qcOutput.value.trim() });
+      qcOutput.value = data.qc_output_dir || qcOutput.value;
+      toast("品管資料位置已儲存", "ok");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+
+  view.append(h("div", { class: "card" },
+    h("div", { class: "row" }, h("h2", { style: "flex:1" }, "品管資料輸出位置"),
+      h("button", { class: "btn btn-success", onclick: saveQcOutput }, "儲存位置")),
+    h("p", { class: "muted" }, "檢測 CSV、SQLite 品管資料庫、操作者照片與個人紀錄都會寫入此資料夾。"),
+    h("label", {}, "輸出資料夾"),
+    qcOutput
+  ));
 
   // ---------- user accounts ----------
   const userBody = h("tbody", {});

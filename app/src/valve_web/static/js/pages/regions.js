@@ -14,15 +14,13 @@ export async function renderRegions(view) {
   }));
   const ov = cfg.region_overlay || {};
   const modelNames = (cfg.models || []).map((m) => m.name);
-  const decisionPanel = createDecisionSettingsCard(cfg, {
-    title: "判定設定",
-    buttonText: "儲存判定設定",
-  });
+  let decisionPanel = null;
 
-  const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `Camera ${c.slot}`)));
+  const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `相機 ${c.slot}`)));
   const enableBox = h("input", { type: "checkbox" });
   const modeSel = h("select", {}, h("option", { value: "detection" }, "偵測區 ROI"), h("option", { value: "exclusion" }, "排除區 EX"));
   const regionList = h("div", {});
+  const decisionMount = h("div", {});
 
   const img = h("img", { style: "display:block; max-width:640px;" });
   const canvas = h("canvas", {});
@@ -48,6 +46,7 @@ export async function renderRegions(view) {
     const cam = current();
     enableBox.checked = !!cam.region_detection_enabled;
     renderList();
+    renderDecisionPanel();
   }
   setCleanup(() => { img.src = ""; });
 
@@ -110,6 +109,18 @@ export async function renderRegions(view) {
     });
   }
 
+  function renderDecisionPanel() {
+    const cam = current();
+    decisionMount.innerHTML = "";
+    decisionPanel = createDecisionSettingsCard(cfg, {
+      cameraSlot: cam.slot,
+      title: `相機 ${cam.slot} 判定設定`,
+      buttonText: "儲存判定設定",
+      showToast: false,
+    });
+    decisionMount.append(decisionPanel.card);
+  }
+
   // ---- drawing interaction ----
   let dragging = null;
   canvas.addEventListener("mousedown", (e) => {
@@ -155,6 +166,11 @@ export async function renderRegions(view) {
         assigned_model_names: c.assigned_model_names || [],
         region_detection_enabled: c.region_detection_enabled,
         detection_regions: c.detection_regions, exclusion_regions: c.exclusion_regions,
+        lock_geometry_enabled: !!c.lock_geometry_enabled,
+        lock_geometry_regions: c.lock_geometry_regions || [],
+        barcode_read_enabled: c.barcode_read_enabled,
+        focus_mode: c.focus_mode || "auto",
+        manual_focus_value: c.manual_focus_value ?? 120,
       })),
       region_overlay: {
         show_on_monitor: showBox.checked,
@@ -163,7 +179,7 @@ export async function renderRegions(view) {
       },
     };
     try {
-      await decisionPanel.save();
+      if (decisionPanel) await decisionPanel.save();
       await api.put("/api/config/regions", payload);
       toast("指定範圍與判定設定已儲存", "ok");
     }
@@ -179,7 +195,10 @@ export async function renderRegions(view) {
         h("div", { class: "col" }, h("label", {}, "繪製模式"), modeSel)
       ),
       h("p", { class: "muted" }, "在影像上拖曳滑鼠框出區域；座標會正規化為 0~1。"),
-      h("div", { class: "row", style: "align-items:flex-start" }, wrap, h("div", { style: "flex:1; min-width:260px" }, regionList))
+      h("div", { class: "row", style: "align-items:flex-start" },
+        wrap,
+        h("div", { style: "flex:1; min-width:260px" }, regionList, decisionMount),
+      )
     ),
     h("div", { class: "card" },
       h("h2", {}, "監視疊圖設定"),
@@ -189,8 +208,7 @@ export async function renderRegions(view) {
         h("div", { class: "col" }, h("label", {}, "排除區顏色"), excColor)
       ),
       h("div", { class: "row", style: "margin-top:12px" }, h("button", { class: "btn btn-success", onclick: save }, "儲存區域設定"))
-    ),
-    decisionPanel.card
+    )
   );
 
   loadSnapshot();
