@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -276,12 +277,12 @@ class LockGeometryCameraEditor(QWidget):
         layout.setSpacing(8)
 
         self.canvas = LockGeometryCanvas(camera_config, self.add_region_from_canvas)
-        layout.addWidget(self.canvas, 1)
+        layout.addWidget(self.canvas, 3)
 
         side = QGroupBox("鎖緊幾何檢測")
         side.setObjectName("regionSidePanel")
-        side.setFixedWidth(430)
-        side.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        side.setMinimumWidth(320)
+        side.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(10, 10, 10, 10)
         side_layout.setSpacing(6)
@@ -301,23 +302,6 @@ class LockGeometryCameraEditor(QWidget):
         zoom_actions.addWidget(self.zoom_out_button)
         zoom_actions.addWidget(self.zoom_reset_button)
         side_layout.addLayout(zoom_actions)
-
-        actions = QHBoxLayout()
-        self.add_button = QPushButton("新增 ROI")
-        self.delete_button = QPushButton("刪除選取")
-        self.add_button.clicked.connect(self.add_default_region)
-        self.delete_button.clicked.connect(self.delete_selected_region)
-        actions.addWidget(self.add_button)
-        actions.addWidget(self.delete_button)
-        side_layout.addLayout(actions)
-
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["名稱", "狀態", "模式", "X", "Y", "W", "H"])
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setMaximumHeight(92)
-        self.table.itemSelectionChanged.connect(self.load_selected_region)
-        side_layout.addWidget(self.table)
 
         form_group = QGroupBox("ROI 參數")
         form = QFormLayout(form_group)
@@ -369,9 +353,38 @@ class LockGeometryCameraEditor(QWidget):
         self.analysis_label = QLabel("尚未分析")
         self.analysis_label.setWordWrap(True)
         side_layout.addWidget(self.analysis_label)
-        layout.addWidget(side)
-        layout.setStretch(0, 1)
-        layout.setStretch(1, 0)
+        side_layout.addStretch(1)
+
+        table_panel = QGroupBox("ROI 清單")
+        table_panel.setObjectName("regionSidePanel")
+        table_panel.setMinimumWidth(360)
+        table_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        table_layout = QVBoxLayout(table_panel)
+        table_layout.setContentsMargins(10, 10, 10, 10)
+        table_layout.setSpacing(6)
+
+        actions = QHBoxLayout()
+        self.add_button = QPushButton("新增 ROI")
+        self.delete_button = QPushButton("刪除選取")
+        self.add_button.clicked.connect(self.add_default_region)
+        self.delete_button.clicked.connect(self.delete_selected_region)
+        actions.addWidget(self.add_button)
+        actions.addWidget(self.delete_button)
+        table_layout.addLayout(actions)
+
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["名稱", "狀態", "模式", "X", "Y", "W", "H"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.itemSelectionChanged.connect(self.load_selected_region)
+        table_layout.addWidget(self.table, 1)
+
+        layout.addWidget(side, 3)
+        layout.addWidget(table_panel, 4)
+        layout.setStretch(0, 3)
+        layout.setStretch(1, 3)
+        layout.setStretch(2, 4)
         self.refresh_table()
         self.update_controls_enabled()
 
