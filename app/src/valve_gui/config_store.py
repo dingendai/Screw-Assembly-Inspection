@@ -348,6 +348,7 @@ def normalise_lock_geometry_regions(value):
             "y": y,
             "w": width,
             "h": height,
+            "rotation_degrees": normalise_float_range(item.get("rotation_degrees", 0.0), 0.0, -180.0, 180.0),
             "base_line_y": normalise_optional_ratio(item.get("base_line_y")),
             "red_line_y": normalise_optional_ratio(item.get("red_line_y")),
             "split_line_y": normalise_optional_ratio(item.get("split_line_y")),

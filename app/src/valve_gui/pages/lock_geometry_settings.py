@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import normalise_lock_geometry_regions, save_app_config
-from valve_gui.lock_geometry import analyze_lock_geometry_regions, draw_lock_geometry_overlay
+from valve_gui.lock_geometry import analyze_lock_geometry_regions
 
 
 BASE_LINE_MANUAL_DEFAULT = 0.8
@@ -42,6 +42,7 @@ def default_lock_geometry_region(index: int, region=None):
         "y": 0.35,
         "w": 0.25,
         "h": 0.20,
+        "rotation_degrees": 0.0,
         "base_line_y": None,
         "red_line_y": None,
         "split_line_y": None,
@@ -184,11 +185,19 @@ class LockGeometryCanvas(QLabel):
         for region in getattr(self.camera_config, "lock_geometry_regions", []):
             rect = self.region_to_widget_rect(region)
             color = self.region_frame_color(region)
-            painter.setPen(QPen(color, 1))
-            painter.drawRect(rect)
-            self.draw_line(painter, rect, region.get("split_line_y"), QColor("#999999"))
-            self.draw_line(painter, rect, region.get("red_line_y"), QColor("#ef4444"))
-            self.draw_line(painter, rect, region.get("base_line_y"), QColor("#eab308"))
+            self.draw_rotated_region(painter, rect, float(region.get("rotation_degrees", 0.0)), color, region)
+
+    def draw_rotated_region(self, painter, rect, angle, color, region):
+        painter.save()
+        painter.translate(rect.center())
+        painter.rotate(angle)
+        local = QRect(-rect.width() // 2, -rect.height() // 2, rect.width(), rect.height())
+        painter.setPen(QPen(color, 1))
+        painter.drawRect(local)
+        self.draw_line(painter, local, region.get("split_line_y"), QColor("#999999"))
+        self.draw_line(painter, local, region.get("red_line_y"), QColor("#ef4444"))
+        self.draw_line(painter, local, region.get("base_line_y"), QColor("#eab308"))
+        painter.restore()
 
     def region_frame_color(self, region):
         if not region.get("enabled", True):
@@ -345,10 +354,17 @@ class LockGeometryCameraEditor(QWidget):
         self.top_spin = self.region_value_spin()
         self.right_spin = self.region_value_spin()
         self.bottom_spin = self.region_value_spin()
+        self.rotation_spin = QDoubleSpinBox()
+        self.rotation_spin.setRange(-180.0, 180.0)
+        self.rotation_spin.setSingleStep(1.0)
+        self.rotation_spin.setDecimals(1)
+        self.rotation_spin.setMinimumWidth(90)
+        self.rotation_spin.valueChanged.connect(self.save_form_to_region)
         form.addRow("名稱", self.name_edit)
         form.addRow("ROI 狀態", self.region_enabled)
         form.addRow("左 / 上邊界", self.two_spin_row(self.left_spin, self.top_spin))
         form.addRow("右 / 下邊界", self.two_spin_row(self.right_spin, self.bottom_spin))
+        form.addRow("翻轉角度", self.rotation_spin)
         form.addRow("判斷模式", self.mode_combo)
         form.addRow("間隙門檻 px", self.gap_spin)
         form.addRow("暗區比例門檻", self.dark_ratio_spin)
@@ -382,8 +398,8 @@ class LockGeometryCameraEditor(QWidget):
         actions.addWidget(self.delete_button)
         table_layout.addLayout(actions)
 
-        self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["名稱", "狀態", "模式", "X", "Y", "W", "H"])
+        self.table = QTableWidget(0, 8)
+        self.table.setHorizontalHeaderLabels(["名稱", "狀態", "模式", "X", "Y", "W", "H", "角度"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -469,9 +485,8 @@ class LockGeometryCameraEditor(QWidget):
             rotation_degrees=self.camera_config.rotation_degrees,
         )
         analyses = analyze_lock_geometry_regions(frame, getattr(self.camera_config, "lock_geometry_regions", []))
-        preview = draw_lock_geometry_overlay(frame.copy(), analyses, show_result=True)
         self.canvas.set_region_results(analyses)
-        self.canvas.set_frame(preview)
+        self.canvas.set_frame(frame.copy())
         self.update_analysis_label(analyses)
 
     def update_analysis_label(self, analyses):
@@ -533,6 +548,7 @@ class LockGeometryCameraEditor(QWidget):
             self.table.setItem(row, 4, QTableWidgetItem(f"{region.get('y', 0.0):.3f}"))
             self.table.setItem(row, 5, QTableWidgetItem(f"{region.get('w', 0.0):.3f}"))
             self.table.setItem(row, 6, QTableWidgetItem(f"{region.get('h', 0.0):.3f}"))
+            self.table.setItem(row, 7, QTableWidgetItem(f"{region.get('rotation_degrees', 0.0):.1f}"))
         if 0 <= current < self.table.rowCount():
             self.table.selectRow(current)
         else:
@@ -552,6 +568,7 @@ class LockGeometryCameraEditor(QWidget):
             self.top_spin,
             self.right_spin,
             self.bottom_spin,
+            self.rotation_spin,
             self.mode_combo,
             self.gap_spin,
             self.dark_ratio_spin,
@@ -576,6 +593,7 @@ class LockGeometryCameraEditor(QWidget):
             self.top_spin.setValue(y)
             self.right_spin.setValue(min(1.0, x + w))
             self.bottom_spin.setValue(min(1.0, y + h))
+            self.rotation_spin.setValue(float(region.get("rotation_degrees", 0.0)))
             self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(region.get("mode", "both"))))
             self.gap_spin.setValue(float(region.get("gap_threshold_px", 6)))
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
@@ -643,6 +661,7 @@ class LockGeometryCameraEditor(QWidget):
         region["y"] = top
         region["w"] = right - left
         region["h"] = bottom - top
+        region["rotation_degrees"] = self.rotation_spin.value()
         region["mode"] = self.mode_combo.currentData() or "both"
         region["gap_threshold_px"] = int(self.gap_spin.value())
         region["dark_threshold_ratio"] = self.dark_ratio_spin.value()
