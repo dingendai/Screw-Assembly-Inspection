@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -317,28 +316,25 @@ class LockGeometryCameraEditor(QWidget):
         self.mode_combo.addItem("暗區", "dark")
         self.mode_combo.addItem("兩者", "both")
         self.mode_combo.currentIndexChanged.connect(self.save_form_to_region)
-        self.gap_spin = QSpinBox()
-        self.gap_spin.setRange(0, 500)
+        self.gap_spin = self.integer_value_spin(0, 500)
         self.gap_spin.valueChanged.connect(self.save_form_to_region)
         self.dark_ratio_spin = QDoubleSpinBox()
         self.dark_ratio_spin.setRange(0.0, 1.0)
         self.dark_ratio_spin.setSingleStep(0.01)
         self.dark_ratio_spin.setDecimals(3)
         self.dark_ratio_spin.valueChanged.connect(self.save_form_to_region)
-        self.dark_gray_spin = QSpinBox()
-        self.dark_gray_spin.setRange(0, 255)
+        self.dark_gray_spin = self.integer_value_spin(0, 255)
         self.dark_gray_spin.valueChanged.connect(self.save_form_to_region)
-        self.edge_count_spin = QSpinBox()
-        self.edge_count_spin.setRange(1, 5)
+        self.edge_count_spin = self.integer_value_spin(1, 5)
         self.edge_count_spin.valueChanged.connect(self.save_form_to_region)
-        self.x_spin = self.region_value_spin()
-        self.y_spin = self.region_value_spin()
-        self.w_spin = self.region_value_spin()
-        self.h_spin = self.region_value_spin()
+        self.left_spin = self.region_value_spin()
+        self.top_spin = self.region_value_spin()
+        self.right_spin = self.region_value_spin()
+        self.bottom_spin = self.region_value_spin()
         form.addRow("名稱", self.name_edit)
         form.addRow("ROI 狀態", self.region_enabled)
-        form.addRow("位置 X / Y", self.two_spin_row(self.x_spin, self.y_spin))
-        form.addRow("寬高 W / H", self.two_spin_row(self.w_spin, self.h_spin))
+        form.addRow("左 / 上邊界", self.two_spin_row(self.left_spin, self.top_spin))
+        form.addRow("右 / 下邊界", self.two_spin_row(self.right_spin, self.bottom_spin))
         form.addRow("判斷模式", self.mode_combo)
         form.addRow("間隙門檻 px", self.gap_spin)
         form.addRow("暗區比例門檻", self.dark_ratio_spin)
@@ -395,6 +391,14 @@ class LockGeometryCameraEditor(QWidget):
         spin.setDecimals(3)
         spin.setMinimumWidth(90)
         spin.valueChanged.connect(self.save_form_to_region)
+        return spin
+
+    def integer_value_spin(self, minimum, maximum):
+        spin = QDoubleSpinBox()
+        spin.setRange(float(minimum), float(maximum))
+        spin.setSingleStep(1.0)
+        spin.setDecimals(0)
+        spin.setMinimumWidth(90)
         return spin
 
     def two_spin_row(self, first, second):
@@ -529,10 +533,10 @@ class LockGeometryCameraEditor(QWidget):
         for widget in [
             self.name_edit,
             self.region_enabled,
-            self.x_spin,
-            self.y_spin,
-            self.w_spin,
-            self.h_spin,
+            self.left_spin,
+            self.top_spin,
+            self.right_spin,
+            self.bottom_spin,
             self.mode_combo,
             self.gap_spin,
             self.dark_ratio_spin,
@@ -549,15 +553,19 @@ class LockGeometryCameraEditor(QWidget):
         if region:
             self.name_edit.setText(region.get("name", "ROI"))
             self.region_enabled.setChecked(region.get("enabled", True))
-            self.x_spin.setValue(float(region.get("x", 0.0)))
-            self.y_spin.setValue(float(region.get("y", 0.0)))
-            self.w_spin.setValue(float(region.get("w", 0.0)))
-            self.h_spin.setValue(float(region.get("h", 0.0)))
+            x = float(region.get("x", 0.0))
+            y = float(region.get("y", 0.0))
+            w = float(region.get("w", 0.0))
+            h = float(region.get("h", 0.0))
+            self.left_spin.setValue(x)
+            self.top_spin.setValue(y)
+            self.right_spin.setValue(min(1.0, x + w))
+            self.bottom_spin.setValue(min(1.0, y + h))
             self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(region.get("mode", "both"))))
-            self.gap_spin.setValue(int(region.get("gap_threshold_px", 6)))
+            self.gap_spin.setValue(float(region.get("gap_threshold_px", 6)))
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
-            self.dark_gray_spin.setValue(int(region.get("dark_gray_threshold", 70)))
-            self.edge_count_spin.setValue(int(region.get("metal_edge_count", 1)))
+            self.dark_gray_spin.setValue(float(region.get("dark_gray_threshold", 70)))
+            self.edge_count_spin.setValue(float(region.get("metal_edge_count", 1)))
             self.set_line_controls(self.base_auto, self.base_value, region.get("base_line_y"), BASE_LINE_MANUAL_DEFAULT)
             self.set_line_controls(self.red_disabled, self.red_value, region.get("red_line_y"), RED_LINE_MANUAL_DEFAULT)
             self.set_line_controls(
@@ -582,15 +590,42 @@ class LockGeometryCameraEditor(QWidget):
             return
         region["name"] = self.name_edit.text().strip() or region.get("name", "ROI")
         region["enabled"] = self.region_enabled.isChecked()
-        region["x"] = self.x_spin.value()
-        region["y"] = self.y_spin.value()
-        region["w"] = self.w_spin.value()
-        region["h"] = self.h_spin.value()
+        left = self.left_spin.value()
+        top = self.top_spin.value()
+        right = self.right_spin.value()
+        bottom = self.bottom_spin.value()
+        sender = self.sender()
+        if right <= left:
+            if sender is self.left_spin:
+                left = max(0.0, right - 0.001)
+                self.left_spin.blockSignals(True)
+                self.left_spin.setValue(left)
+                self.left_spin.blockSignals(False)
+            else:
+                right = min(1.0, left + 0.001)
+                self.right_spin.blockSignals(True)
+                self.right_spin.setValue(right)
+                self.right_spin.blockSignals(False)
+        if bottom <= top:
+            if sender is self.top_spin:
+                top = max(0.0, bottom - 0.001)
+                self.top_spin.blockSignals(True)
+                self.top_spin.setValue(top)
+                self.top_spin.blockSignals(False)
+            else:
+                bottom = min(1.0, top + 0.001)
+                self.bottom_spin.blockSignals(True)
+                self.bottom_spin.setValue(bottom)
+                self.bottom_spin.blockSignals(False)
+        region["x"] = left
+        region["y"] = top
+        region["w"] = right - left
+        region["h"] = bottom - top
         region["mode"] = self.mode_combo.currentData() or "both"
-        region["gap_threshold_px"] = self.gap_spin.value()
+        region["gap_threshold_px"] = int(self.gap_spin.value())
         region["dark_threshold_ratio"] = self.dark_ratio_spin.value()
-        region["dark_gray_threshold"] = self.dark_gray_spin.value()
-        region["metal_edge_count"] = self.edge_count_spin.value()
+        region["dark_gray_threshold"] = int(self.dark_gray_spin.value())
+        region["metal_edge_count"] = int(self.edge_count_spin.value())
         region["base_line_y"] = None if self.base_auto.isChecked() else self.base_value.value()
         region["red_line_y"] = None if self.red_disabled.isChecked() else self.red_value.value()
         region["split_line_y"] = None if self.split_auto.isChecked() else self.split_value.value()
