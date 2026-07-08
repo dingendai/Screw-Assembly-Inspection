@@ -290,9 +290,12 @@ def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show
     for analysis in analyses:
         roi = analysis.region
         result = analysis.result
-        frame_color = (36, 36, 240)
+        if show_result and result.prediction == "locked":
+            frame_color = (34, 197, 94)
+        else:
+            frame_color = (36, 36, 240)
         x1, y1, x2, y2 = roi.x, roi.y, roi.x + roi.w, roi.y + roi.h
-        cv2.rectangle(frame, (x1, y1), (x2, y2), frame_color, 2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), frame_color, 1)
 
         split_y = roi_y_to_frame_y(roi, result.split_line_y if result.split_line_y is not None else roi.split_line_y)
         if split_y is not None:
