@@ -15,6 +15,7 @@ from valve_gui.pages.lock_geometry_settings import LockGeometrySettingsPage
 from valve_gui.pages.monitor import MonitorPage
 from valve_gui.pages.qc_products import ProductMasterPage
 from valve_gui.pages.qc_stats import StatisticsPage
+from valve_gui.pages.qc_system import QcSystemPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import (
     CameraModelSettingsPage,
@@ -48,7 +49,7 @@ from valve_gui.storage import (
 
 
 SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
-INFO_ACTION_KEYS = {"history", "qc_stats", "qc_products", "users"}
+INFO_ACTION_KEYS = {"history", "qc_system", "qc_stats", "qc_products", "users"}
 
 
 class MainWindow(QMainWindow):
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
         self.camera_model_page = CameraModelSettingsPage(self.state, self.after_model_settings_saved, self.logout)
         self.decision_page = DecisionSettingsPage(self.state, self.logout)
         self.history_page = HistoryPage(self.state)
+        self.qc_system_page = QcSystemPage(self.state, self.after_qc_system_saved)
         self.qc_stats_page = StatisticsPage(self.state)
         self.qc_products_page = ProductMasterPage(self.state)
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
@@ -99,6 +101,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.decision_page)
         self.stack.addWidget(self.monitor_page)
         self.stack.addWidget(self.history_page)
+        self.stack.addWidget(self.qc_system_page)
         self.stack.addWidget(self.qc_stats_page)
         self.stack.addWidget(self.qc_products_page)
         self.stack.addWidget(self.display_page)
@@ -170,6 +173,7 @@ class MainWindow(QMainWindow):
             ("lock_geometry", "S6 鎖緊幾何檢測", self.show_lock_geometry_settings, True),
             ("monitor", "監視", self.show_monitor, True),
             ("history", "歷史紀錄", self.show_history, True),
+            ("qc_system", "品管系統", self.show_qc_system, True),
             ("qc_stats", "品管統計", self.show_qc_stats, True),
             ("qc_products", "品項主檔", self.show_qc_products, True),
             ("users", "用戶管理", self.show_users, True),
@@ -265,6 +269,7 @@ class MainWindow(QMainWindow):
             and settings_ready
             and has_permission(self.state.operator_role, PERMISSION_OPEN_HISTORY, self.state.role_permissions)
         )
+        self.actions["qc_system"].setVisible(logged_in and self.state.operator_role == ROLE_DEVELOPER)
         self.actions["qc_stats"].setVisible(
             logged_in
             and settings_ready
@@ -299,6 +304,7 @@ class MainWindow(QMainWindow):
             self.lock_geometry_page: "lock_geometry",
             self.monitor_page: "monitor",
             self.history_page: "history",
+            self.qc_system_page: "qc_system",
             self.qc_stats_page: "qc_stats",
             self.qc_products_page: "qc_products",
             self.display_page: "display",
@@ -404,6 +410,8 @@ class MainWindow(QMainWindow):
             return self.apply_lock_geometry_settings_without_navigation
         if current == self.display_page:
             return self.display_page.save_display_settings
+        if current == self.qc_system_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
+            return self.qc_system_page.save
         if current == self.user_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
             return self.user_page.save
         return None
@@ -630,6 +638,16 @@ class MainWindow(QMainWindow):
         self.qc_stats_page.refresh()
         self.stack.setCurrentWidget(self.qc_stats_page)
 
+    def show_qc_system(self):
+        if not self.require_login():
+            return
+        if self.state.operator_role != ROLE_DEVELOPER:
+            QMessageBox.warning(self, "權限不足", "只有開發者可以進入品管系統。")
+            return
+        self.release_all_hardware()
+        self.qc_system_page.refresh()
+        self.stack.setCurrentWidget(self.qc_system_page)
+
     def show_qc_products(self):
         if not self.require_login():
             return
@@ -658,6 +676,15 @@ class MainWindow(QMainWindow):
         self.update_apply_settings_button()
 
     def after_user_management_saved(self):
+        self.after_qc_output_dir_saved()
+        self.login_page.refresh_role_options()
+        self.update_navigation()
+
+    def after_qc_system_saved(self):
+        self.after_qc_output_dir_saved()
+        self.update_navigation()
+
+    def after_qc_output_dir_saved(self):
         if self._active_qc_output_dir != self.state.qc_output_dir:
             self._active_qc_output_dir = self.state.qc_output_dir
             qc_db.init_db()
@@ -681,8 +708,6 @@ class MainWindow(QMainWindow):
                 except Exception:
                     self.state.current_work_session_id = None
             self.history_page.refresh()
-        self.login_page.refresh_role_options()
-        self.update_navigation()
 
     def add_record(
         self,
