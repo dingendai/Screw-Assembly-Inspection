@@ -82,9 +82,15 @@ class MonitorPage(QWidget):
         self.result_timer.timeout.connect(self.apply_pending_detection_result)
         self.single_countdown_timer = QTimer(self)
         self.single_countdown_timer.timeout.connect(self._advance_single_countdown)
+        self.part_id_normalize_timer = QTimer(self)
+        self.part_id_normalize_timer.setSingleShot(True)
+        self.part_id_normalize_timer.setInterval(180)
+        self.part_id_normalize_timer.timeout.connect(self.normalize_part_id_display)
 
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
+        self.part_id.textChanged.connect(self.queue_part_id_normalization)
+        self.part_id.returnPressed.connect(self.normalize_part_id_display)
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
@@ -154,6 +160,7 @@ class MonitorPage(QWidget):
         layout.addWidget(side, 7)
 
     def refresh(self):
+        self.normalize_part_id_display()
         self.region_overlay_box.blockSignals(True)
         self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
         self.region_overlay_box.blockSignals(False)
@@ -217,6 +224,7 @@ class MonitorPage(QWidget):
         self.detection_timer.stop()
         self.result_timer.stop()
         self.single_countdown_timer.stop()
+        self.part_id_normalize_timer.stop()
         self._single_countdown_remaining = 0
         self.pending_detection_future = None
         if self.current_transaction and self.current_transaction.state == "counting_down":
@@ -291,6 +299,20 @@ class MonitorPage(QWidget):
         scale = MAX_GUI_FRAME_DIMENSION / longest_edge
         size = (max(1, int(width * scale)), max(1, int(height * scale)))
         return cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
+
+    def queue_part_id_normalization(self):
+        self.part_id_normalize_timer.start()
+
+    def normalize_part_id_display(self):
+        raw_text = self.part_id.text().strip()
+        if not raw_text:
+            return
+        processed_text = process_barcode_text(raw_text, self.state.barcode_processing) or raw_text
+        if processed_text == raw_text:
+            return
+        self.part_id.blockSignals(True)
+        self.part_id.setText(processed_text)
+        self.part_id.blockSignals(False)
 
     def toggle_region_overlay(self):
         self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
