@@ -168,7 +168,7 @@ def load_app_config_from_path(state, config_path):
     inspection_workflow = data.get("inspection_workflow", {})
     if isinstance(inspection_workflow, dict):
         mode = str(inspection_workflow.get("mode", state.inspection_workflow.mode)).strip().lower()
-        if mode not in {"delay", "confirm"}:
+        if mode not in {"delay", "confirm", "instant"}:
             mode = "delay"
         state.inspection_workflow = InspectionWorkflowConfig(
             mode=mode,

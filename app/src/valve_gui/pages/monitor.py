@@ -229,7 +229,7 @@ class MonitorPage(QWidget):
         self.frame_timer.start(33)
         if self.continuous_detection:
             workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
-            if workflow_mode not in {"delay", "confirm"}:
+            if workflow_mode == "instant":
                 self.detection_timer.start(500)
 
     def stop(self, reset_continuous=True):
@@ -349,6 +349,8 @@ class MonitorPage(QWidget):
             return
         self._workflow_last_barcode = processed_text
         workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
+        if workflow_mode == "instant":
+            return
         if workflow_mode == "confirm":
             self.prompt_confirm_detection()
             return
@@ -646,7 +648,7 @@ class MonitorPage(QWidget):
             self.latest_yolo_annotated_frames = {}
             self.latest_geometry_annotated_frames = {}
             workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
-            if workflow_mode not in {"delay", "confirm"}:
+            if workflow_mode == "instant":
                 self.detection_timer.start(500)
         else:
             self.detection_timer.stop()

@@ -1020,6 +1020,7 @@ class SystemSettingsPage(QWidget):
         self.workflow_mode = QComboBox()
         self.workflow_mode.addItem("延遲檢測", "delay")
         self.workflow_mode.addItem("確認後辨識", "confirm")
+        self.workflow_mode.addItem("即時檢測", "instant")
         self.workflow_mode.currentIndexChanged.connect(self.update_workflow_controls)
         self.workflow_mode.currentIndexChanged.connect(self.queue_auto_save)
 
@@ -1028,7 +1029,7 @@ class SystemSettingsPage(QWidget):
         self.delay_seconds.setSuffix(" 秒")
         self.delay_seconds.valueChanged.connect(self.queue_auto_save)
 
-        hint = QLabel("延遲檢測：掃碼後開始倒數，倒數結束立即檢測。確認後辨識：掃碼後由操作員按下確認檢測。")
+        hint = QLabel("延遲檢測：掃碼後開始倒數，倒數結束立即檢測。確認後辨識：掃碼後由操作員按下確認檢測。即時檢測：按下開始檢測後立即連續檢測。")
         hint.setObjectName("mutedText")
         hint.setWordWrap(True)
 
