@@ -122,6 +122,7 @@ def load_app_config_from_path(state, config_path):
                 decision.get("confidence_threshold_mode", state.decision.confidence_threshold_mode)
             ),
             model_rules=normalise_decision_rules(decision.get("model_rules", {})),
+            group_rules=normalise_group_rules(decision.get("group_rules", {})),
         )
 
     region_overlay = data.get("region_overlay", {})
@@ -383,6 +384,23 @@ def normalise_barcode_rules(value):
                 enabled=bool(item.get("enabled", True)),
             )
         )
+    return rules
+
+
+def normalise_group_rules(value):
+    if not isinstance(value, dict):
+        return {}
+    rules = {}
+    for key, rule in value.items():
+        rule_key = str(key).strip()
+        if not rule_key:
+            continue
+        if not isinstance(rule, dict):
+            rule = {}
+        rules[rule_key] = {
+            "required": bool(rule.get("required", True)),
+            "mode": "any",
+        }
     return rules
 
 

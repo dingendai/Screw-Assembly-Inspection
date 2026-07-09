@@ -1325,6 +1325,7 @@ class DecisionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
+        self.group_rows = []
         self.rule_tab_slots = []
         self.loading_rules = False
         self.camera_preview_view = None
@@ -1380,9 +1381,12 @@ class DecisionSettingsPage(QWidget):
 
         self.model_tabs = QTabWidget()
         self.model_tabs.currentChanged.connect(self.sync_camera_preview_to_rule_tab)
+        self.group_table = self.create_group_rule_table()
 
         layout.addLayout(global_row)
         layout.addWidget(self.model_tabs, 1)
+        layout.addWidget(QLabel("群組物件補判"))
+        layout.addWidget(self.group_table)
         return group
 
     def build_camera_preview_group(self):
@@ -1407,6 +1411,7 @@ class DecisionSettingsPage(QWidget):
 
     def load_rule_table(self):
         self.rule_rows = []
+        self.group_rows = []
         self.rule_tab_slots = []
         self.model_tabs.clear()
         for camera in enabled_inspection_cameras(self.state):
@@ -1434,6 +1439,8 @@ class DecisionSettingsPage(QWidget):
             page_layout.addStretch()
             self.model_tabs.addTab(page, "無啟用相機")
 
+        self.load_group_rule_table()
+
     def create_rule_table(self, show_model=False):
         table = QTableWidget(0, 6 if show_model else 5)
         if show_model:
@@ -1456,6 +1463,48 @@ class DecisionSettingsPage(QWidget):
             table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         table.setAlternatingRowColors(True)
         return table
+
+    def create_group_rule_table(self):
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["群組編號", "規則", "是否必要", "來源相機"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.setAlternatingRowColors(True)
+        return table
+
+    def collect_group_definitions(self):
+        groups = {}
+        for camera in enabled_inspection_cameras(self.state):
+            for region in getattr(camera, "detection_regions", []):
+                rid = region.get("roi_id")
+                if not isinstance(rid, int) or rid <= 0:
+                    continue
+                groups.setdefault(rid, set()).add(camera.slot)
+        return groups
+
+    def load_group_rule_table(self):
+        self.group_rows = []
+        self.group_table.setRowCount(0)
+        groups = self.collect_group_definitions()
+        existing_rules = getattr(self.state.decision, "group_rules", {})
+        for rid in sorted(groups):
+            row = self.group_table.rowCount()
+            self.group_table.insertRow(row)
+            self.group_table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+            self.group_table.setItem(row, 0, QTableWidgetItem(str(rid)))
+            self.group_table.setItem(row, 1, QTableWidgetItem("任一相機看到"))
+            required = QCheckBox("必要")
+            required.setChecked(bool(existing_rules.get(str(rid), {}).get("required", True)))
+            required.stateChanged.connect(self.queue_auto_save)
+            self.group_table.setCellWidget(row, 2, required)
+            self.group_table.setItem(
+                row, 3, QTableWidgetItem(", ".join(f"C{slot}" for slot in sorted(groups[rid])))
+            )
+            self.group_rows.append({"group_id": rid, "required": required})
 
     def create_operator_combo(self, value, fallback):
         combo = QComboBox()
@@ -1571,6 +1620,22 @@ class DecisionSettingsPage(QWidget):
                 "required_object_count": int(row["count"].currentData()),
             }
         self.state.decision.model_rules = rules
+        group_rules = {}
+        visible_group_ids = {row["group_id"] for row in self.group_rows}
+        for key, value in getattr(self.state.decision, "group_rules", {}).items():
+            try:
+                group_id = int(str(key))
+            except ValueError:
+                group_rules[key] = value
+                continue
+            if group_id not in visible_group_ids:
+                group_rules[key] = value
+        for row in self.group_rows:
+            group_rules[str(row["group_id"])] = {
+                "required": row["required"].isChecked(),
+                "mode": "any",
+            }
+        self.state.decision.group_rules = group_rules
         save_app_config(self.state)
 
     def sync_camera_preview_to_rule_tab(self, index):

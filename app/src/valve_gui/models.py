@@ -48,6 +48,7 @@ class DecisionConfig:
     pass_confidence_threshold: float = 0.5
     confidence_threshold_mode: str = "custom"
     model_rules: dict[str, dict] = field(default_factory=dict)
+    group_rules: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass

@@ -704,7 +704,7 @@ class MonitorPage(QWidget):
     def apply_detection_result(self, inference, record=False):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
-        self.set_roi_confirmations(inference.roi_confirmations)
+        self.set_roi_confirmations(getattr(inference, "group_results", {}) or inference.roi_confirmations)
         self.show_annotated_frames(inference)
         if record or self.continuous_detection:
             self.record_detection(inference)

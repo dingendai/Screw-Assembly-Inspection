@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
+from valve_gui.camera import apply_region_mask, regions_for_model, summarise_region_detections
 from valve_gui.lock_geometry import (
     analyze_lock_geometry_regions,
     draw_lock_geometry_overlay,
@@ -28,6 +28,7 @@ class InferenceResult:
     geometry_annotated_frames: dict[int, object] = field(default_factory=dict)
     camera_results: dict[int, dict] = field(default_factory=dict)
     roi_confirmations: dict[int, dict] = field(default_factory=dict)
+    group_results: dict[int, dict] = field(default_factory=dict)
     # Compatibility fields kept for older callers; automatic barcode decoding is disabled.
     barcode: str | None = None
     barcode_sources: list[dict] = field(default_factory=list)
@@ -61,6 +62,7 @@ class InferenceRouter:
         missing = []
         failed_slots: set[int] = set()
         all_roi_votes: dict[int, dict] = {}
+        group_results: dict[int, dict] = {}
         models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
@@ -103,10 +105,13 @@ class InferenceRouter:
                     model,
                     display_frame=yolo_annotated,
                 )
+                counted_object_count = object_count
                 if getattr(camera, "region_detection_enabled", False) and model_detection_regions:
                     h, w = display_frame.shape[:2]
-                    per_roi = roi_id_detections(model_detection_regions, yolo_boxes_xyxy, w, h)
-                    for rid, detected in per_roi.items():
+                    counted_object_count, per_group = summarise_region_detections(
+                        model_detection_regions, yolo_boxes_xyxy, w, h
+                    )
+                    for rid, detected in per_group.items():
                         camera_roi_detected[rid] = camera_roi_detected.get(rid, False) or detected
                 rule = self.decision_rule_for(camera.slot, model.name)
                 confidence_operator = normalise_decision_operator(rule.get("confidence_operator", ">="), ">=")
@@ -114,7 +119,7 @@ class InferenceRouter:
                 count_operator = normalise_decision_operator(rule.get("required_object_count_operator", "="), "=")
                 required_count = int(rule.get("required_object_count", 1))
                 confidence_pass = compare_decision_value(confidence, confidence_operator, threshold)
-                count_pass = compare_decision_value(object_count, count_operator, required_count)
+                count_pass = compare_decision_value(counted_object_count, count_operator, required_count)
                 model_pass = confidence_pass and count_pass
                 confidences.append(confidence)
                 notes.append(note)
@@ -182,6 +187,33 @@ class InferenceRouter:
             for rid, info in all_roi_votes.items()
         }
 
+        configured_group_ids = {
+            rid
+            for camera in self.state.inspection_cameras
+            for region in getattr(camera, "detection_regions", [])
+            for rid in [region.get("roi_id")]
+            if isinstance(rid, int) and rid > 0
+        }
+        configured_group_ids.update(
+            int(key)
+            for key in getattr(self.state.decision, "group_rules", {}).keys()
+            if str(key).isdigit()
+        )
+        for rid in sorted(configured_group_ids):
+            info = all_roi_votes.get(rid, {"votes": 0, "total": 0, "camera_slots": []})
+            rule = self.group_rule_for(rid)
+            detected = info["votes"] > 0
+            passed = detected if rule.get("required", True) else True
+            group_results[rid] = {
+                "confirmed": passed,
+                "detected": detected,
+                "votes": info["votes"],
+                "total": info["total"],
+                "camera_slots": info["camera_slots"],
+                "required": bool(rule.get("required", True)),
+                "mode": "any",
+            }
+
         if missing:
             return InferenceResult(
                 "NG",
@@ -192,11 +224,16 @@ class InferenceRouter:
                 geometry_annotated_frames,
                 camera_results,
                 roi_confirmations,
+                group_results,
                 raw_frames=raw_frames,
             )
 
         confidence = min(confidences) if confidences else 0.0
-        result = "NG" if failed_slots or not confidences else "PASS"
+        group_failed = any(
+            result_info.get("required", True) and not result_info.get("detected", False)
+            for result_info in group_results.values()
+        )
+        result = "NG" if failed_slots or group_failed or not confidences else "PASS"
         return InferenceResult(
             result,
             confidence,
@@ -206,6 +243,7 @@ class InferenceRouter:
             geometry_annotated_frames,
             camera_results,
             roi_confirmations,
+            group_results,
             raw_frames=raw_frames,
         )
 
@@ -309,6 +347,14 @@ class InferenceRouter:
             "confidence_threshold": rule.get("confidence_threshold", default_threshold),
             "required_object_count_operator": rule.get("required_object_count_operator", "="),
             "required_object_count": rule.get("required_object_count", 1),
+        }
+
+    def group_rule_for(self, group_id):
+        rules = getattr(self.state.decision, "group_rules", {})
+        rule = rules.get(str(group_id), {})
+        return {
+            "required": bool(rule.get("required", True)),
+            "mode": "any",
         }
 
     def clear_model_cache(self):
