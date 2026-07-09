@@ -212,6 +212,10 @@ class MonitorPage(QWidget):
             self.detection_timer.start(500)
 
     def stop(self, reset_continuous=True):
+        was_counting_down = self.single_countdown_timer.isActive() or (
+            self.current_transaction is not None
+            and self.current_transaction.state == "counting_down"
+        )
         self.frame_timer.stop()
         self.detection_timer.stop()
         self.result_timer.stop()
@@ -222,6 +226,9 @@ class MonitorPage(QWidget):
             self.current_transaction.state = "error"
             self.current_transaction.error_message = "camera stopped"
             self.current_transaction = None
+        if was_counting_down:
+            self.set_status("WAITING")
+            self._restore_inspect_button()
         self.detection_executor.shutdown(wait=False)
         self.latest_annotated_frames = {}
         self._last_record_time = 0.0
