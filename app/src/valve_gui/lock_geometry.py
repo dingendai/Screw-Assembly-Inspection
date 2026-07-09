@@ -287,7 +287,7 @@ def geometry_summary(region: dict, result: LockGeometryResult) -> str:
 
 
 def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show_result=True):
-    for analysis in analyses:
+    for index, analysis in enumerate(analyses, start=1):
         roi = analysis.region
         result = analysis.result
         if show_result and result.prediction == "locked":
@@ -296,6 +296,15 @@ def draw_lock_geometry_overlay(frame, analyses: list[LockGeometryAnalysis], show
             frame_color = (36, 36, 240)
         x1, y1, x2, y2 = roi.x, roi.y, roi.x + roi.w, roi.y + roi.h
         cv2.rectangle(frame, (x1, y1), (x2, y2), frame_color, 1)
+        cv2.putText(
+            frame,
+            f"ROI {index}",
+            (x1 + 4, max(14, y1 - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.4,
+            frame_color,
+            1,
+        )
 
         split_y = roi_y_to_frame_y(roi, result.split_line_y if result.split_line_y is not None else roi.split_line_y)
         if split_y is not None:

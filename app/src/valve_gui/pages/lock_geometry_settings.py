@@ -185,18 +185,26 @@ class LockGeometryCanvas(QLabel):
 
     def draw_regions(self, painter):
         painter.setFont(QFont(painter.font().family(), 8))
-        for region in getattr(self.camera_config, "lock_geometry_regions", []):
+        for index, region in enumerate(getattr(self.camera_config, "lock_geometry_regions", []), start=1):
             rect = self.region_to_widget_rect(region)
             color = self.region_frame_color(region)
-            self.draw_rotated_region(painter, rect, float(region.get("rotation_degrees", 0.0)), color, region)
+            self.draw_rotated_region(
+                painter,
+                rect,
+                float(region.get("rotation_degrees", 0.0)),
+                color,
+                region,
+                index,
+            )
 
-    def draw_rotated_region(self, painter, rect, angle, color, region):
+    def draw_rotated_region(self, painter, rect, angle, color, region, index):
         painter.save()
         painter.translate(rect.center())
         painter.rotate(angle)
         local = QRect(-rect.width() // 2, -rect.height() // 2, rect.width(), rect.height())
         painter.setPen(QPen(color, 2))
         painter.drawRect(local)
+        painter.drawText(local.adjusted(6, 6, -6, -6), Qt.AlignmentFlag.AlignTop, f"ROI {index}")
         analysis = self.region_analysis_by_id.get(id(region))
         split_ratio = region.get("split_line_y")
         base_ratio = region.get("base_line_y")
