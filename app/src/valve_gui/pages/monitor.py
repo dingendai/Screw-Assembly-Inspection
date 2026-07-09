@@ -332,6 +332,14 @@ class MonitorPage(QWidget):
         self.processed_part_id.setText(processed_text)
         self.maybe_start_workflow(processed_text)
 
+    def clear_barcode_fields(self):
+        self.part_id_normalize_timer.stop()
+        self.part_id.blockSignals(True)
+        self.part_id.clear()
+        self.part_id.blockSignals(False)
+        self.processed_part_id.clear()
+        self._workflow_last_barcode = ""
+
     def maybe_start_workflow(self, processed_text):
         if not self.continuous_detection or not processed_text:
             return
@@ -565,7 +573,7 @@ class MonitorPage(QWidget):
             self.set_countdown_text("")
             QMessageBox.warning(self, "Inspection frame unavailable", transaction.error_message)
             self.current_transaction = None
-            self._workflow_last_barcode = ""
+            self.clear_barcode_fields()
             self._restore_inspect_button()
             return
         transaction.raw_frames = frames
@@ -604,7 +612,7 @@ class MonitorPage(QWidget):
         if self.current_transaction:
             self.current_transaction.state = "completed"
             self.current_transaction = None
-        self._workflow_last_barcode = ""
+        self.clear_barcode_fields()
         self.set_countdown_text("")
         self._restore_inspect_button()
 
@@ -615,7 +623,7 @@ class MonitorPage(QWidget):
             self.current_transaction = None
         self.set_result("NG", 0.0)
         self.set_countdown_text("")
-        self._workflow_last_barcode = ""
+        self.clear_barcode_fields()
         self.set_reason_cards({0: {"result": "NG", "confidence": 0.0, "reasons": [f"檢測錯誤：{error_msg}"]}})
         self._restore_inspect_button()
 
