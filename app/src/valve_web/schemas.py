@@ -54,7 +54,12 @@ class ModelItem(BaseModel):
 
 
 class ModelsUpdate(BaseModel):
+    model_scan_dir: str = ""
     models: list[ModelItem]
+
+
+class ModelsRescanRequest(BaseModel):
+    model_scan_dir: str = ""
 
 
 class DecisionRule(BaseModel):

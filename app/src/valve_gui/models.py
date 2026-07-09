@@ -149,6 +149,7 @@ class AppState:
     settings_applied: bool = False
     current_work_session_id: int | None = None
     model_configs: list[ModelConfig] = field(default_factory=list)
+    model_scan_dir: str = ""
     detected_cameras: list[int] = field(default_factory=list)
     inspection_cameras: list[CameraConfig] = field(
         default_factory=lambda: [

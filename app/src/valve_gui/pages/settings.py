@@ -530,6 +530,9 @@ class ModelSettingsPage(QWidget):
         self.model_table.setColumnWidth(1, 180)
         self.model_table.setColumnWidth(2, 120)
         self.model_table.setColumnWidth(3, 520)
+        self.model_scan_dir_input = QLineEdit()
+        self.browse_model_scan_dir_button = QPushButton("選擇掃描資料夾")
+        self.browse_model_scan_dir_button.clicked.connect(self.browse_model_scan_dir)
 
         self.add_model_button = QPushButton("新增模型")
         self.add_model_button.clicked.connect(self.add_model_row)
@@ -547,12 +550,20 @@ class ModelSettingsPage(QWidget):
         actions.addWidget(self.rescan_models_button)
         actions.addStretch()
 
+        scan_row = QHBoxLayout()
+        scan_row.addWidget(QLabel("模型掃描路徑"))
+        scan_row.addWidget(self.model_scan_dir_input, 1)
+        scan_row.addWidget(self.browse_model_scan_dir_button)
+
         layout.addWidget(self.model_table)
+        layout.addLayout(scan_row)
         layout.addLayout(actions)
         return group
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.model_scan_dir_input.setPlaceholderText(str(APP_DIR.parent.parent / "models"))
+        self.model_scan_dir_input.setText(self.state.model_scan_dir)
         self.load_model_table()
         self.apply_role_permissions()
 
@@ -568,6 +579,8 @@ class ModelSettingsPage(QWidget):
         self.remove_model_button.setVisible(can_manage_models)
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
+        self.model_scan_dir_input.setEnabled(can_manage_models)
+        self.browse_model_scan_dir_button.setVisible(can_manage_models)
 
     def load_model_table(self):
         self.model_table.setRowCount(0)
@@ -622,12 +635,25 @@ class ModelSettingsPage(QWidget):
         if path:
             self.model_table.setItem(row, 3, QTableWidgetItem(path))
 
+    def browse_model_scan_dir(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能選擇模型掃描資料夾。")
+            return
+        current = self.model_scan_dir_input.text().strip() or str(APP_DIR.parent.parent / "models")
+        selected = QFileDialog.getExistingDirectory(self, "選擇模型掃描資料夾", current)
+        if selected:
+            self.model_scan_dir_input.setText(selected)
+
     def rescan_models(self):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能重新掃描模型。")
             return
+        self.state.model_scan_dir = self.model_scan_dir_input.text().strip()
         ensure_model_configs(self.state)
+        save_app_config(self.state)
         self.load_model_table()
+        if self.on_saved:
+            self.on_saved()
 
     def collect_model_configs(self):
         configs = []
@@ -652,6 +678,7 @@ class ModelSettingsPage(QWidget):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改模型清單。")
             return False
+        self.state.model_scan_dir = self.model_scan_dir_input.text().strip()
         self.state.model_configs = self.collect_model_configs()
         ensure_model_configs(self.state)
         save_app_config(self.state)

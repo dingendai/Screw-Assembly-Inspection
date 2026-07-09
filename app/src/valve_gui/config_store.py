@@ -1,6 +1,7 @@
 import json
 import shutil
 from dataclasses import asdict
+from pathlib import Path
 
 from valve_gui import paths
 from valve_gui.models import (
@@ -39,6 +40,7 @@ def load_app_config_from_path(state, config_path):
 
     state.qc_output_dir = normalise_qc_output_dir(data.get("qc_output_dir", state.qc_output_dir))
     paths.set_qc_output_dir(state.qc_output_dir)
+    state.model_scan_dir = normalise_model_scan_dir(data.get("model_scan_dir", state.model_scan_dir))
     if not data:
         return
 
@@ -234,11 +236,13 @@ def ensure_default_camera_count(cameras):
 def save_app_config(state):
     APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     state.qc_output_dir = normalise_qc_output_dir(state.qc_output_dir)
+    state.model_scan_dir = normalise_model_scan_dir(state.model_scan_dir)
     paths.set_qc_output_dir(state.qc_output_dir)
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": False,
         "qc_output_dir": state.qc_output_dir,
+        "model_scan_dir": state.model_scan_dir,
         "display": asdict(state.display),
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),
@@ -281,6 +285,13 @@ def normalise_model_names(value):
 
 def normalise_qc_output_dir(value):
     return str(paths.resolve_qc_output_dir(value))
+
+
+def normalise_model_scan_dir(value):
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    return str(Path(text).expanduser().resolve())
 
 
 def normalise_focus_mode(value):

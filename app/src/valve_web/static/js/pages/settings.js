@@ -71,6 +71,12 @@ export async function renderSettings(view) {
 
   // ---------- models section ----------
   const modelsContainer = h("div", {});
+  const modelScanDir = h("input", {
+    type: "text",
+    value: cfg.model_scan_dir || "",
+    placeholder: "留空時使用預設 models 資料夾",
+    style: "min-width:320px; width:100%",
+  });
   function renderModels() {
     modelsContainer.innerHTML = "";
     const rows = cfg.models.map((m) => {
@@ -90,12 +96,21 @@ export async function renderSettings(view) {
   renderModels();
 
   async function rescan() {
-    try { cfg = await api.post("/api/config/models/rescan"); renderModels(); toast("已重新搜尋模型", "ok"); }
+    try {
+      cfg = await api.post("/api/config/models/rescan", { model_scan_dir: modelScanDir.value.trim() });
+      modelScanDir.value = cfg.model_scan_dir || "";
+      renderModels();
+      toast("已重新搜尋模型", "ok");
+    }
     catch (e) { toast(e.message, "error"); }
   }
   async function saveModels() {
     try {
-      cfg = await api.put("/api/config/models", { models: modelsContainer._rows.map((r) => r.read()) });
+      cfg = await api.put("/api/config/models", {
+        model_scan_dir: modelScanDir.value.trim(),
+        models: modelsContainer._rows.map((r) => r.read()),
+      });
+      modelScanDir.value = cfg.model_scan_dir || "";
       renderModels();
       toast("模型設定已儲存", "ok");
     } catch (e) { toast(e.message, "error"); }
@@ -105,8 +120,13 @@ export async function renderSettings(view) {
     h("div", { class: "row" }, h("h2", { style: "flex:1" }, "模型設定"),
       h("button", { class: "btn", onclick: rescan }, "重新搜尋模型"),
       h("button", { class: "btn btn-success", onclick: saveModels }, "儲存模型")),
+    h("div", { class: "row", style: "margin:12px 0; align-items:flex-end" },
+      h("div", { class: "col", style: "flex:1" },
+        h("label", {}, "模型掃描路徑"),
+        modelScanDir,
+      )),
     modelsContainer,
-    h("p", { class: "muted" }, "模型權重會從 models/ 資料夾搜尋。相機可指定多個模型，於上方相機表格勾選。")
+    h("p", { class: "muted" }, "模型權重會從指定資料夾遞迴搜尋。相機可指定多個模型，於上方相機表格勾選。")
   ));
 }
 

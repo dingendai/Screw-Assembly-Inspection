@@ -27,8 +27,15 @@ def discover_model_configs(model_dir: Path = MODEL_DIR) -> list[ModelConfig]:
     return configs
 
 
+def scan_model_dir(state) -> Path:
+    configured = str(getattr(state, "model_scan_dir", "") or "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return MODEL_DIR
+
+
 def ensure_model_configs(state):
-    discovered = discover_model_configs()
+    discovered = discover_model_configs(scan_model_dir(state))
     if not state.model_configs:
         state.model_configs = discovered
     else:
