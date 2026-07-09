@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QTableWidget,
@@ -1001,7 +1002,11 @@ class BarcodeSettingsPage(QWidget):
         self.rules_layout = QVBoxLayout(self.rules_host)
         self.rules_layout.setContentsMargins(0, 0, 0, 0)
         self.rules_layout.setSpacing(10)
-        layout.addWidget(self.rules_host)
+        self.rules_scroll = QScrollArea()
+        self.rules_scroll.setWidgetResizable(True)
+        self.rules_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.rules_scroll.setWidget(self.rules_host)
+        layout.addWidget(self.rules_scroll, 1)
         self.refresh()
         return group
 
