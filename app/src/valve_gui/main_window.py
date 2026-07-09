@@ -32,6 +32,7 @@ from valve_gui.pages.qc_system import QcSystemPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import (
     BarcodeSettingsPage,
+    SystemSettingsPage,
     CameraModelSettingsPage,
     DecisionSettingsPage,
     DisplaySettingsPage,
@@ -62,7 +63,7 @@ from valve_gui.storage import (
 )
 
 
-SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry", "barcode_settings"}
+SETUP_ACTION_KEYS = {"system_settings", "models", "settings", "camera_models", "regions", "decision", "lock_geometry", "barcode_settings"}
 INFO_ACTION_KEYS = {"history", "qc_system", "qc_stats", "qc_products", "users"}
 RIGHT_SIDEBAR_ONLY_KEYS = SETUP_ACTION_KEYS | {"qc_system", "qc_stats", "qc_products"}
 TOPBAR_ONLY_KEYS = {"login", "users", "display", "help", "logout"}
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
             on_release_cameras=self.release_all_hardware,
         )
         self.monitor_page = MonitorPage(self.state, self.add_record, self.logout)
+        self.system_settings_page = SystemSettingsPage(self.state, self.after_system_settings_imported, self.logout)
         self.settings_page = SettingsPage(
             self.state,
             self.after_settings,
@@ -113,6 +115,7 @@ class MainWindow(QMainWindow):
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.help_page = HelpPage()
         self.stack.addWidget(self.login_page)
+        self.stack.addWidget(self.system_settings_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.model_page)
         self.stack.addWidget(self.camera_model_page)
@@ -319,6 +322,13 @@ class MainWindow(QMainWindow):
         logged_in = self.state.is_logged_in
         settings_ready = self.state.settings_applied
         self.actions["login"].setVisible(not logged_in)
+        self.actions["system_settings"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["settings"].setVisible(
             logged_in and has_permission(
                 self.state.operator_role,
@@ -410,6 +420,7 @@ class MainWindow(QMainWindow):
             return
         page_actions = {
             self.login_page: "login",
+            self.system_settings_page: "system_settings",
             self.settings_page: "settings",
             self.model_page: "models",
             self.camera_model_page: "camera_models",
@@ -623,6 +634,15 @@ class MainWindow(QMainWindow):
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
         self.login_page.start_preview()
 
+    def show_system_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "????", "???????? S?????")
+            self.show_monitor()
+            return
+        self.switch_to_page(self.system_settings_page, self.system_settings_page.refresh)
+
     def show_settings(self):
         if not self.require_login():
             return
@@ -720,6 +740,20 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentWidget(self.monitor_page)
         else:
             QMessageBox.information(self, "權限不足", "目前角色沒有可進入的 GUI 介面。")
+
+    def after_system_settings_imported(self):
+        ensure_model_configs(self.state)
+        self.apply_display_config()
+        self.monitor_page.router.clear_model_cache()
+        self.settings_page.refresh()
+        self.model_page.refresh()
+        self.camera_model_page.refresh()
+        self.region_page.refresh()
+        self.decision_page.refresh()
+        self.lock_geometry_page.refresh()
+        self.barcode_settings_page.refresh()
+        self.monitor_page.refresh()
+        self.update_navigation()
 
     def after_settings(self):
         self.release_all_hardware()

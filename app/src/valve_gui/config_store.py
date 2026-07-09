@@ -1,4 +1,5 @@
 import json
+import shutil
 from dataclasses import asdict
 
 from valve_gui import paths
@@ -26,9 +27,13 @@ from valve_gui.utils import hash_password, normalise_decision_operator
 
 
 def load_app_config(state):
+    load_app_config_from_path(state, APP_CONFIG_PATH)
+
+
+def load_app_config_from_path(state, config_path):
     data = {}
-    if APP_CONFIG_PATH.exists():
-        with open(APP_CONFIG_PATH, "r", encoding="utf-8") as file:
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as file:
             data = json.load(file)
 
     state.qc_output_dir = normalise_qc_output_dir(data.get("qc_output_dir", state.qc_output_dir))
@@ -239,6 +244,19 @@ def save_app_config(state):
     }
     with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def export_app_config_to_path(target_path):
+    APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not APP_CONFIG_PATH.exists():
+        with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
+            json.dump({}, file, ensure_ascii=False, indent=2)
+    shutil.copyfile(APP_CONFIG_PATH, target_path)
+
+
+def import_app_config_from_path(state, source_path):
+    shutil.copyfile(source_path, APP_CONFIG_PATH)
+    load_app_config_from_path(state, APP_CONFIG_PATH)
 
 
 def normalise_model_names(value):

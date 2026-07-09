@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
-from valve_gui.config_store import save_app_config
+from valve_gui.config_store import export_app_config_to_path, import_app_config_from_path, save_app_config
 from valve_gui.model_registry import (
     camera_model_names,
     enabled_inspection_cameras,
@@ -943,19 +943,93 @@ class DisplaySettingsPage(QWidget):
             self.on_logout()
 
 
+class SystemSettingsPage(QWidget):
+    def __init__(self, state: AppState, on_imported=None, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_imported = on_imported
+        self.on_logout = on_logout
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        layout.addWidget(self.build_system_group())
+        layout.addStretch()
+
+    def build_system_group(self):
+        group = QGroupBox("S設定系統")
+        group.setObjectName("displaySettingsGroup")
+        body = QVBoxLayout(group)
+        body.setSpacing(12)
+
+        hint = QLabel("匯出或導入 S1~S7 的完整設定內容。導入後會立即覆蓋目前設定並重新載入。")
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+
+        button_row = QHBoxLayout()
+        self.export_button = QPushButton("匯出 S1~S7 設定")
+        self.import_button = QPushButton("導入 S1~S7 設定")
+        self.export_button.clicked.connect(self.export_settings)
+        self.import_button.clicked.connect(self.import_settings)
+        button_row.addWidget(self.export_button)
+        button_row.addWidget(self.import_button)
+        button_row.addStretch()
+
+        body.addWidget(hint)
+        body.addLayout(button_row)
+        return group
+
+    def refresh(self):
+        return
+
+    def export_settings(self):
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "匯出設定",
+            "s1_s7_settings.json",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not target_path:
+            return
+        export_app_config_to_path(target_path)
+        QMessageBox.information(self, "匯出完成", "S1~S7 設定已匯出。")
+
+    def import_settings(self):
+        source_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "導入設定",
+            "",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not source_path:
+            return
+        import_app_config_from_path(self.state, source_path)
+        if self.on_imported:
+            self.on_imported()
+        QMessageBox.information(self, "導入完成", "S1~S7 設定已導入並重新載入。")
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
 class BarcodeSettingsPage(QWidget):
     def __init__(self, state: AppState, on_logout=None):
         super().__init__()
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(300)
+        self.autosave_timer.timeout.connect(self.persist_barcode_settings)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
-        layout.addWidget(self.build_barcode_group())
-        layout.addStretch()
+        layout.addWidget(self.build_barcode_group(), 1)
 
     def build_barcode_group(self):
         group = QGroupBox("S7 條碼後處理設定")
@@ -980,7 +1054,9 @@ class BarcodeSettingsPage(QWidget):
         self.preview_label.setWordWrap(True)
 
         self.barcode_enabled.toggled.connect(self.update_preview)
+        self.barcode_enabled.toggled.connect(self.queue_auto_save)
         self.join_text_input.textChanged.connect(self.update_preview)
+        self.join_text_input.textChanged.connect(self.queue_auto_save)
         self.sample_input.textChanged.connect(self.update_preview)
 
         hint = QLabel("每組規則會先找開頭，再從開頭位置往後截取指定字數，最後依序加上前綴與後綴後重新組合。")
@@ -1070,12 +1146,19 @@ class BarcodeSettingsPage(QWidget):
                 trim_trailing.setValue(0)
 
             enabled.toggled.connect(self.update_preview)
+            enabled.toggled.connect(self.queue_auto_save)
             start_token.textChanged.connect(self.update_preview)
+            start_token.textChanged.connect(self.queue_auto_save)
             length.valueChanged.connect(self.update_preview)
+            length.valueChanged.connect(self.queue_auto_save)
             trim_leading.valueChanged.connect(self.update_preview)
+            trim_leading.valueChanged.connect(self.queue_auto_save)
             trim_trailing.valueChanged.connect(self.update_preview)
+            trim_trailing.valueChanged.connect(self.queue_auto_save)
             prefix.textChanged.connect(self.update_preview)
+            prefix.textChanged.connect(self.queue_auto_save)
             suffix.textChanged.connect(self.update_preview)
+            suffix.textChanged.connect(self.queue_auto_save)
 
             row_layout.addWidget(enabled, 0, 0, 1, 4)
             row_layout.addWidget(QLabel("找開頭"), 1, 0)
@@ -1139,12 +1222,18 @@ class BarcodeSettingsPage(QWidget):
         result = process_barcode_text(sample, preview_config)
         self.preview_label.setText(result or "尚未輸入範例條碼")
 
-    def save_barcode_settings(self):
+    def queue_auto_save(self):
+        self.autosave_timer.start()
+
+    def persist_barcode_settings(self):
         self.state.barcode_processing.enabled = self.barcode_enabled.isChecked()
         self.state.barcode_processing.barcode_count = int(self.rule_count.currentData())
         self.state.barcode_processing.join_text = self.join_text_input.text()
         self.state.barcode_processing.rules = self.collect_rule_values()
         save_app_config(self.state)
+
+    def save_barcode_settings(self):
+        self.persist_barcode_settings()
         QMessageBox.information(self, "設定已儲存", "條碼後處理設定已更新。")
         return True
 
