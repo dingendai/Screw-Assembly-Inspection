@@ -4,6 +4,7 @@ from dataclasses import asdict
 from valve_gui import paths
 from valve_gui.models import (
     BarcodeProcessingConfig,
+    BarcodeRuleConfig,
     DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
     DEFAULT_INSPECTION_CAMERA_COUNT,
     CameraConfig,
@@ -144,6 +145,8 @@ def load_app_config(state):
     if isinstance(barcode_processing, dict):
         state.barcode_processing = BarcodeProcessingConfig(
             enabled=bool(barcode_processing.get("enabled", state.barcode_processing.enabled)),
+            barcode_count=max(1, int(barcode_processing.get("barcode_count", state.barcode_processing.barcode_count))),
+            rules=normalise_barcode_rules(barcode_processing.get("rules", [])),
             trim_leading_chars=max(
                 0,
                 int(barcode_processing.get("trim_leading_chars", state.barcode_processing.trim_leading_chars)),
@@ -318,6 +321,25 @@ def normalise_color_map(value):
         if normalised:
             colors[model_name] = normalised
     return colors
+
+
+def normalise_barcode_rules(value):
+    if not isinstance(value, list):
+        return []
+    rules = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        rules.append(
+            BarcodeRuleConfig(
+                start_token=str(item.get("start_token", "")).strip(),
+                length=max(0, int(item.get("length", 0))),
+                prefix=str(item.get("prefix", "")),
+                suffix=str(item.get("suffix", "")),
+                enabled=bool(item.get("enabled", True)),
+            )
+        )
+    return rules
 
 
 def normalise_regions(value):

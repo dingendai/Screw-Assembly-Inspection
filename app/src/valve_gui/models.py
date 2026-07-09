@@ -62,8 +62,19 @@ class RegionOverlayConfig:
 
 
 @dataclass
+class BarcodeRuleConfig:
+    start_token: str = ""
+    length: int = 0
+    prefix: str = ""
+    suffix: str = ""
+    enabled: bool = True
+
+
+@dataclass
 class BarcodeProcessingConfig:
     enabled: bool = False
+    barcode_count: int = 1
+    rules: list[BarcodeRuleConfig] = field(default_factory=list)
     trim_leading_chars: int = 0
     prefix: str = ""
     suffix: str = ""

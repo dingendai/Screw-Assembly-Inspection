@@ -58,6 +58,31 @@ def process_barcode_text(value, config) -> str:
         return ""
     if not getattr(config, "enabled", False):
         return text
+    rules = list(getattr(config, "rules", []) or [])
+    barcode_count = max(1, int(getattr(config, "barcode_count", len(rules) or 1)))
+    if rules:
+        rebuilt_parts = []
+        cursor = 0
+        for rule in rules[:barcode_count]:
+            if not getattr(rule, "enabled", True):
+                continue
+            start_token = str(getattr(rule, "start_token", "")).strip()
+            length = max(0, int(getattr(rule, "length", 0)))
+            if not start_token or length <= 0:
+                continue
+            start_index = text.find(start_token, cursor)
+            if start_index < 0:
+                continue
+            end_index = start_index + length
+            if end_index > len(text):
+                continue
+            segment = text[start_index:end_index]
+            rebuilt_parts.append(
+                f"{getattr(rule, 'prefix', '')}{segment}{getattr(rule, 'suffix', '')}"
+            )
+            cursor = end_index
+        if rebuilt_parts:
+            return "".join(rebuilt_parts)
     trim_count = max(0, int(getattr(config, "trim_leading_chars", 0)))
     if trim_count:
         text = text[trim_count:]

@@ -34,7 +34,7 @@ from valve_gui.model_registry import (
     ensure_model_configs,
     set_camera_model_names,
 )
-from valve_gui.models import AppState, ModelConfig
+from valve_gui.models import AppState, BarcodeRuleConfig, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
@@ -947,6 +947,7 @@ class BarcodeSettingsPage(QWidget):
         super().__init__()
         self.state = state
         self.on_logout = on_logout
+        self.rule_rows = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -958,55 +959,135 @@ class BarcodeSettingsPage(QWidget):
     def build_barcode_group(self):
         group = QGroupBox("S7 條碼後處理設定")
         group.setObjectName("displaySettingsGroup")
-        form = QGridLayout(group)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(12)
 
+        top_form = QGridLayout()
         self.barcode_enabled = QCheckBox("啟用條碼後處理")
-        self.trim_leading_chars = QSpinBox()
-        self.trim_leading_chars.setRange(0, 128)
-        self.trim_leading_chars.setSuffix(" 碼")
-
-        self.prefix_input = QLineEdit()
-        self.prefix_input.setPlaceholderText("前綴，例如: GM-")
-        self.suffix_input = QLineEdit()
-        self.suffix_input.setPlaceholderText("後綴，例如: -A01")
+        self.rule_count = QSpinBox()
+        self.rule_count.setRange(1, 10)
+        self.rule_count.setSuffix(" 組")
+        self.rule_count.valueChanged.connect(self.rebuild_rule_forms)
+        self.rule_count.valueChanged.connect(self.update_preview)
 
         self.sample_input = QLineEdit()
-        self.sample_input.setPlaceholderText("輸入範例條碼")
+        self.sample_input.setPlaceholderText("輸入掃碼後的長字串")
         self.preview_label = QLabel("")
         self.preview_label.setObjectName("mutedText")
         self.preview_label.setWordWrap(True)
 
         self.barcode_enabled.toggled.connect(self.update_preview)
-        self.trim_leading_chars.valueChanged.connect(self.update_preview)
-        self.prefix_input.textChanged.connect(self.update_preview)
-        self.suffix_input.textChanged.connect(self.update_preview)
         self.sample_input.textChanged.connect(self.update_preview)
 
-        hint = QLabel("可設定掃碼後先刪除前幾碼，再在前面或後面加上固定字串。")
+        hint = QLabel("每組規則會先找開頭，再從開頭位置往後截取指定字數，最後依序加上前綴與後綴後重新組合。")
         hint.setObjectName("mutedText")
 
-        form.addWidget(self.barcode_enabled, 0, 0, 1, 4)
-        form.addWidget(QLabel("刪除前幾碼"), 1, 0)
-        form.addWidget(self.trim_leading_chars, 1, 1)
-        form.addWidget(QLabel("前綴"), 2, 0)
-        form.addWidget(self.prefix_input, 2, 1, 1, 3)
-        form.addWidget(QLabel("後綴"), 3, 0)
-        form.addWidget(self.suffix_input, 3, 1, 1, 3)
-        form.addWidget(QLabel("範例條碼"), 4, 0)
-        form.addWidget(self.sample_input, 4, 1, 1, 3)
-        form.addWidget(QLabel("處理結果"), 5, 0)
-        form.addWidget(self.preview_label, 5, 1, 1, 3)
-        form.addWidget(hint, 6, 0, 1, 4)
+        top_form.addWidget(self.barcode_enabled, 0, 0, 1, 2)
+        top_form.addWidget(QLabel("辨識幾組條碼"), 1, 0)
+        top_form.addWidget(self.rule_count, 1, 1)
+        top_form.addWidget(QLabel("範例長字串"), 2, 0)
+        top_form.addWidget(self.sample_input, 2, 1)
+        top_form.addWidget(QLabel("處理結果"), 3, 0)
+        top_form.addWidget(self.preview_label, 3, 1)
+        top_form.addWidget(hint, 4, 0, 1, 2)
+        layout.addLayout(top_form)
+
+        self.rules_host = QWidget()
+        self.rules_layout = QVBoxLayout(self.rules_host)
+        self.rules_layout.setContentsMargins(0, 0, 0, 0)
+        self.rules_layout.setSpacing(10)
+        layout.addWidget(self.rules_host)
         self.refresh()
         return group
 
     def refresh(self):
         config = self.state.barcode_processing
         self.barcode_enabled.setChecked(getattr(config, "enabled", False))
-        self.trim_leading_chars.setValue(max(0, int(getattr(config, "trim_leading_chars", 0))))
-        self.prefix_input.setText(str(getattr(config, "prefix", "")))
-        self.suffix_input.setText(str(getattr(config, "suffix", "")))
+        self.rule_count.blockSignals(True)
+        self.rule_count.setValue(max(1, int(getattr(config, "barcode_count", 1))))
+        self.rule_count.blockSignals(False)
+        self.rebuild_rule_forms()
         self.update_preview()
+
+    def rebuild_rule_forms(self):
+        existing_rules = self.collect_rule_values()
+        config_rules = list(getattr(self.state.barcode_processing, "rules", []) or [])
+        source_rules = existing_rules or config_rules
+        while self.rules_layout.count():
+            item = self.rules_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.rule_rows = []
+        for index in range(self.rule_count.value()):
+            rule = source_rules[index] if index < len(source_rules) else None
+            row_group = QGroupBox(f"條碼規則 {index + 1}")
+            row_group.setObjectName("cameraSettingsCard")
+            row_layout = QGridLayout(row_group)
+
+            enabled = QCheckBox("啟用此規則")
+            start_token = QLineEdit()
+            start_token.setPlaceholderText("例如: SN 或 21")
+            length = QSpinBox()
+            length.setRange(1, 128)
+            length.setSuffix(" 碼")
+            prefix = QLineEdit()
+            prefix.setPlaceholderText("前綴")
+            suffix = QLineEdit()
+            suffix.setPlaceholderText("後綴")
+
+            if rule is not None:
+                enabled.setChecked(bool(getattr(rule, "enabled", True)))
+                start_token.setText(str(getattr(rule, "start_token", "")))
+                length.setValue(max(1, int(getattr(rule, "length", 1))))
+                prefix.setText(str(getattr(rule, "prefix", "")))
+                suffix.setText(str(getattr(rule, "suffix", "")))
+            else:
+                enabled.setChecked(True)
+                length.setValue(1)
+
+            enabled.toggled.connect(self.update_preview)
+            start_token.textChanged.connect(self.update_preview)
+            length.valueChanged.connect(self.update_preview)
+            prefix.textChanged.connect(self.update_preview)
+            suffix.textChanged.connect(self.update_preview)
+
+            row_layout.addWidget(enabled, 0, 0, 1, 4)
+            row_layout.addWidget(QLabel("找開頭"), 1, 0)
+            row_layout.addWidget(start_token, 1, 1)
+            row_layout.addWidget(QLabel("條碼長度"), 1, 2)
+            row_layout.addWidget(length, 1, 3)
+            row_layout.addWidget(QLabel("前綴"), 2, 0)
+            row_layout.addWidget(prefix, 2, 1)
+            row_layout.addWidget(QLabel("後綴"), 2, 2)
+            row_layout.addWidget(suffix, 2, 3)
+
+            self.rules_layout.addWidget(row_group)
+            self.rule_rows.append(
+                {
+                    "enabled": enabled,
+                    "start_token": start_token,
+                    "length": length,
+                    "prefix": prefix,
+                    "suffix": suffix,
+                }
+            )
+        self.rules_layout.addStretch()
+        self.update_preview()
+
+    def collect_rule_values(self):
+        rules = []
+        for row in self.rule_rows:
+            rules.append(
+                BarcodeRuleConfig(
+                    enabled=row["enabled"].isChecked(),
+                    start_token=row["start_token"].text(),
+                    length=row["length"].value(),
+                    prefix=row["prefix"].text(),
+                    suffix=row["suffix"].text(),
+                )
+            )
+        return rules
 
     def update_preview(self):
         from valve_gui.utils import process_barcode_text
@@ -1017,9 +1098,8 @@ class BarcodeSettingsPage(QWidget):
             (),
             {
                 "enabled": self.barcode_enabled.isChecked(),
-                "trim_leading_chars": self.trim_leading_chars.value(),
-                "prefix": self.prefix_input.text(),
-                "suffix": self.suffix_input.text(),
+                "barcode_count": self.rule_count.value(),
+                "rules": self.collect_rule_values(),
             },
         )()
         result = process_barcode_text(sample, preview_config)
@@ -1027,9 +1107,8 @@ class BarcodeSettingsPage(QWidget):
 
     def save_barcode_settings(self):
         self.state.barcode_processing.enabled = self.barcode_enabled.isChecked()
-        self.state.barcode_processing.trim_leading_chars = self.trim_leading_chars.value()
-        self.state.barcode_processing.prefix = self.prefix_input.text()
-        self.state.barcode_processing.suffix = self.suffix_input.text()
+        self.state.barcode_processing.barcode_count = self.rule_count.value()
+        self.state.barcode_processing.rules = self.collect_rule_values()
         save_app_config(self.state)
         QMessageBox.information(self, "設定已儲存", "條碼後處理設定已更新。")
         return True
