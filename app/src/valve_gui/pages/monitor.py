@@ -92,7 +92,6 @@ class MonitorPage(QWidget):
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
         self.part_id.textChanged.connect(self.queue_part_id_normalization)
-        self.part_id.returnPressed.connect(self.normalize_part_id_display)
         self.processed_part_id = QLineEdit()
         self.processed_part_id.setPlaceholderText("S7 處理後條碼")
         self.processed_part_id.setReadOnly(True)
@@ -353,10 +352,20 @@ class MonitorPage(QWidget):
         self._workflow_confirm_dialog_open = True
         try:
             dialog = QMessageBox(self)
-            dialog.setWindowTitle("確認檢測")
-            dialog.setText("條碼已就緒，請放好被檢測物件後按下確認檢測。")
-            confirm_button = dialog.addButton("確認檢測", QMessageBox.ButtonRole.AcceptRole)
-            dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            dialog.setWindowTitle("\u78ba\u8a8d\u6aa2\u6e2c")
+            dialog.setText(
+                "\u689d\u78bc\u5df2\u5c31\u7dd2\uff0c\u8acb\u653e\u597d\u88ab\u6aa2\u6e2c\u7269\u4ef6\u5f8c\u6309\u4e0b"
+                "\u78ba\u8a8d\u6aa2\u6e2c\u3002"
+            )
+            confirm_button = dialog.addButton(
+                "\u78ba\u8a8d\u6aa2\u6e2c", QMessageBox.ButtonRole.AcceptRole
+            )
+            cancel_button = dialog.addButton("\u53d6\u6d88", QMessageBox.ButtonRole.RejectRole)
+            confirm_button.setAutoDefault(False)
+            confirm_button.setDefault(False)
+            cancel_button.setAutoDefault(False)
+            cancel_button.setDefault(False)
+            dialog.setDefaultButton(cancel_button)
             dialog.exec()
             if dialog.clickedButton() == confirm_button and self.continuous_detection:
                 self.begin_workflow_capture()
