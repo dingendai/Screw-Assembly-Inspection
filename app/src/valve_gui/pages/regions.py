@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import camera_model_names, ensure_model_configs
+from valve_gui.model_registry import camera_model_names, enabled_inspection_cameras, ensure_model_configs
 
 
 class RegionCanvas(QLabel):
@@ -584,10 +584,18 @@ class RegionSettingsPage(QWidget):
         ensure_model_configs(self.state)
         self.tabs.clear()
         self.editors = []
-        for camera in self.state.inspection_cameras:
+        for camera in enabled_inspection_cameras(self.state):
             editor = CameraRegionEditor(camera, self.state)
             self.editors.append(editor)
             self.tabs.addTab(editor, f"相機 {camera.slot}")
+        if not self.editors:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            page_layout.addWidget(empty_label)
+            page_layout.addStretch()
+            self.tabs.addTab(page, "無啟用相機")
         self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
         self.start()
 

@@ -27,7 +27,13 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
+from valve_gui.model_registry import (
+    camera_model_names,
+    enabled_inspection_cameras,
+    enabled_model_names,
+    ensure_model_configs,
+    set_camera_model_names,
+)
 from valve_gui.models import AppState, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
@@ -664,6 +670,7 @@ class CameraModelSettingsPage(QWidget):
         self.on_saved = on_saved
         self.on_logout = on_logout
         self.camera_model_tables = []
+        self.camera_model_tab_cameras = []
         self.camera_photo_views = {}
         self.camera_photo_source = None
         self.camera_photo_timer = QTimer(self)
@@ -674,10 +681,39 @@ class CameraModelSettingsPage(QWidget):
         layout.setSpacing(12)
 
         self.camera_model_tabs = QTabWidget()
-        for camera in self.state.inspection_cameras:
-            self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"相機 {camera.slot}")
         self.camera_model_tabs.currentChanged.connect(self.update_model_tab_preview)
         layout.addWidget(self.camera_model_tabs, 1)
+        self.rebuild_camera_model_tabs()
+
+    def rebuild_camera_model_tabs(self):
+        current_slot = None
+        current_index = self.camera_model_tabs.currentIndex()
+        if 0 <= current_index < len(self.camera_model_tab_cameras):
+            current_slot = self.camera_model_tab_cameras[current_index].slot
+
+        self.stop_camera_photo_preview()
+        self.camera_model_tabs.blockSignals(True)
+        self.camera_model_tabs.clear()
+        self.camera_model_tables = []
+        self.camera_model_tab_cameras = enabled_inspection_cameras(self.state)
+        self.camera_photo_views = {}
+
+        if not self.camera_model_tab_cameras:
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            layout.addWidget(empty_label)
+            layout.addStretch()
+            self.camera_model_tabs.addTab(page, "無啟用相機")
+        else:
+            selected_index = 0
+            for index, camera in enumerate(self.camera_model_tab_cameras):
+                if camera.slot == current_slot:
+                    selected_index = index
+                self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"相機 {camera.slot}")
+            self.camera_model_tabs.setCurrentIndex(selected_index)
+        self.camera_model_tabs.blockSignals(False)
 
     def build_camera_model_page(self, camera):
         page = QWidget()
@@ -713,6 +749,7 @@ class CameraModelSettingsPage(QWidget):
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.rebuild_camera_model_tabs()
         self.load_camera_model_tabs()
         self.apply_role_permissions()
         self.update_model_tab_preview(self.camera_model_tabs.currentIndex())
@@ -752,9 +789,9 @@ class CameraModelSettingsPage(QWidget):
 
     def update_model_tab_preview(self, index):
         self.stop_camera_photo_preview()
-        if index < 0 or index >= len(self.state.inspection_cameras):
+        if index < 0 or index >= len(self.camera_model_tab_cameras):
             return
-        camera = self.state.inspection_cameras[index]
+        camera = self.camera_model_tab_cameras[index]
         view = self.camera_photo_views.get(camera.slot)
         if not view:
             return
@@ -998,10 +1035,10 @@ class DecisionSettingsPage(QWidget):
         self.rule_rows = []
         self.rule_tab_slots = []
         self.model_tabs.clear()
-        for camera in self.state.inspection_cameras:
+        for camera in enabled_inspection_cameras(self.state):
             page = QWidget()
             page_layout = QVBoxLayout(page)
-            model_names = camera_model_names(camera) if camera.enabled else []
+            model_names = camera_model_names(camera)
             if model_names:
                 table = self.create_rule_table(show_model=True)
                 page_layout.addWidget(table)
@@ -1014,6 +1051,14 @@ class DecisionSettingsPage(QWidget):
                 page_layout.addStretch()
             self.model_tabs.addTab(page, f"相機 {camera.slot}")
             self.rule_tab_slots.append(camera.slot)
+        if not self.rule_tab_slots:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            page_layout.addWidget(empty_label)
+            page_layout.addStretch()
+            self.model_tabs.addTab(page, "無啟用相機")
 
     def create_rule_table(self, show_model=False):
         table = QTableWidget(0, 6 if show_model else 5)
@@ -1128,7 +1173,16 @@ class DecisionSettingsPage(QWidget):
         self.state.decision.confidence_threshold_mode = (
             "global" if self.global_threshold_mode.isChecked() else "custom"
         )
+        visible_slots = set(self.rule_tab_slots)
         rules = {}
+        for key, value in self.state.decision.model_rules.items():
+            try:
+                slot = int(str(key).split("::", 1)[0])
+            except ValueError:
+                rules[key] = value
+                continue
+            if slot not in visible_slots:
+                rules[key] = value
         for row in self.rule_rows:
             confidence_operator = ">=" if self.global_threshold_mode.isChecked() else row["confidence_operator"].currentData()
             confidence_threshold = (
@@ -1150,11 +1204,14 @@ class DecisionSettingsPage(QWidget):
 
     def update_camera_preview_tab(self, index):
         self.stop_camera_preview()
+        view = self.camera_preview_view
         if index < 0 or index >= len(self.rule_tab_slots):
+            if view:
+                view.base_title = "相機"
+                view.set_message("目前沒有啟用的檢測相機。", is_error=True)
             return
         slot = self.rule_tab_slots[index]
         camera = next((config for config in self.state.inspection_cameras if config.slot == slot), None)
-        view = self.camera_preview_view
         if camera is None:
             if view:
                 view.set_message("沒有相機設定。", is_error=True)

@@ -49,6 +49,10 @@ def enabled_model_names(state) -> list[str]:
     return [model.name for model in state.model_configs if model.enabled]
 
 
+def enabled_inspection_cameras(state) -> list:
+    return [camera for camera in state.inspection_cameras if camera.enabled]
+
+
 def model_by_name(state, name: str) -> ModelConfig | None:
     for model in state.model_configs:
         if model.name == name:
