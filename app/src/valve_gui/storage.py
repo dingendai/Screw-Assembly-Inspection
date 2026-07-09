@@ -144,13 +144,14 @@ def save_qc_object_snapshot(
     remove_previous_qc_object_snapshots(barcode_dir_name, (record.timestamp or "")[:10], object_dir)
     object_dir.mkdir(parents=True, exist_ok=True)
 
-    for old_file in object_dir.glob("camera_*_*.jpg"):
-        old_file.unlink(missing_ok=True)
+    for pattern in ("camera_*_*.jpg", "c*_*.jpg"):
+        for old_file in object_dir.glob(pattern):
+            old_file.unlink(missing_ok=True)
 
     raw_files = {}
     annotated_files = {}
     for slot, frame in sorted((raw_frames or {}).items()):
-        file_name = f"camera_{slot}_raw.jpg"
+        file_name = f"c{slot}_{barcode_dir_name}_raw.jpg"
         path = object_dir / file_name
         if cv2.imwrite(str(path), frame):
             raw_files[str(slot)] = file_name
