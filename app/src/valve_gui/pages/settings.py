@@ -949,12 +949,17 @@ class SystemSettingsPage(QWidget):
         self.state = state
         self.on_imported = on_imported
         self.on_logout = on_logout
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(300)
+        self.autosave_timer.timeout.connect(self.persist_system_settings)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(12)
 
         layout.addWidget(self.build_system_group())
+        layout.addWidget(self.build_workflow_group())
         layout.addStretch()
 
     def build_system_group(self):
@@ -980,8 +985,39 @@ class SystemSettingsPage(QWidget):
         body.addLayout(button_row)
         return group
 
+    def build_workflow_group(self):
+        group = QGroupBox("操作員檢測流程")
+        group.setObjectName("displaySettingsGroup")
+        form = QGridLayout(group)
+
+        self.workflow_mode = QComboBox()
+        self.workflow_mode.addItem("延遲檢測", "delay")
+        self.workflow_mode.addItem("確認後辨識", "confirm")
+        self.workflow_mode.currentIndexChanged.connect(self.update_workflow_controls)
+        self.workflow_mode.currentIndexChanged.connect(self.queue_auto_save)
+
+        self.delay_seconds = QSpinBox()
+        self.delay_seconds.setRange(1, 60)
+        self.delay_seconds.setSuffix(" 秒")
+        self.delay_seconds.valueChanged.connect(self.queue_auto_save)
+
+        hint = QLabel("延遲檢測：掃碼後開始倒數，倒數結束立即檢測。確認後辨識：掃碼後由操作員按下確認檢測。")
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+
+        form.addWidget(QLabel("工作方式"), 0, 0)
+        form.addWidget(self.workflow_mode, 0, 1)
+        form.addWidget(QLabel("延遲秒數"), 1, 0)
+        form.addWidget(self.delay_seconds, 1, 1)
+        form.addWidget(hint, 2, 0, 1, 2)
+        return group
+
     def refresh(self):
-        return
+        mode = getattr(self.state.inspection_workflow, "mode", "delay")
+        match = self.workflow_mode.findData(mode)
+        self.workflow_mode.setCurrentIndex(match if match >= 0 else 0)
+        self.delay_seconds.setValue(max(1, int(getattr(self.state.inspection_workflow, "delay_seconds", 3))))
+        self.update_workflow_controls()
 
     def export_settings(self):
         target_path, _ = QFileDialog.getSaveFileName(
@@ -1008,6 +1044,17 @@ class SystemSettingsPage(QWidget):
         if self.on_imported:
             self.on_imported()
         QMessageBox.information(self, "導入完成", "S1~S7 設定已導入並重新載入。")
+
+    def queue_auto_save(self):
+        self.autosave_timer.start()
+
+    def update_workflow_controls(self):
+        self.delay_seconds.setEnabled(self.workflow_mode.currentData() == "delay")
+
+    def persist_system_settings(self):
+        self.state.inspection_workflow.mode = str(self.workflow_mode.currentData())
+        self.state.inspection_workflow.delay_seconds = self.delay_seconds.value()
+        save_app_config(self.state)
 
     def logout(self):
         if self.on_logout:

@@ -750,6 +750,7 @@ class MainWindow(QMainWindow):
         ensure_model_configs(self.state)
         self.apply_display_config()
         self.monitor_page.router.clear_model_cache()
+        self.system_settings_page.refresh()
         self.settings_page.refresh()
         self.model_page.refresh()
         self.camera_model_page.refresh()

@@ -84,6 +84,12 @@ class BarcodeProcessingConfig:
 
 
 @dataclass
+class InspectionWorkflowConfig:
+    mode: str = "delay"
+    delay_seconds: int = 3
+
+
+@dataclass
 class InspectionRecord:
     timestamp: str
     operator_name: str
@@ -161,6 +167,7 @@ class AppState:
     decision: DecisionConfig = field(default_factory=DecisionConfig)
     region_overlay: RegionOverlayConfig = field(default_factory=RegionOverlayConfig)
     barcode_processing: BarcodeProcessingConfig = field(default_factory=BarcodeProcessingConfig)
+    inspection_workflow: InspectionWorkflowConfig = field(default_factory=InspectionWorkflowConfig)
     role_labels: dict[str, str] = field(default_factory=default_role_labels)
     role_passwords: dict[str, str] = field(default_factory=default_role_passwords)
     role_permissions: dict[str, set[str]] = field(default_factory=default_role_permissions)

@@ -71,6 +71,8 @@ class MonitorPage(QWidget):
         self.current_transaction: InspectionTransaction | None = None
         self._single_countdown_remaining = 0
         self._last_record_time: float = 0.0
+        self._workflow_last_barcode = ""
+        self._workflow_confirm_dialog_open = False
         self._source_by_slot: dict = {}
         self._config_by_slot: dict = {}
         self._view_by_slot: dict = {}
@@ -92,11 +94,14 @@ class MonitorPage(QWidget):
         self.part_id.textChanged.connect(self.queue_part_id_normalization)
         self.part_id.returnPressed.connect(self.normalize_part_id_display)
         self.processed_part_id = QLineEdit()
-        self.processed_part_id.setPlaceholderText("S7 ?????")
+        self.processed_part_id.setPlaceholderText("S7 處理後條碼")
         self.processed_part_id.setReadOnly(True)
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
+        self.countdown_label = QLabel("")
+        self.countdown_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.countdown_label.setObjectName("resultWaiting")
         self.reason_cards = {}
         self.reason_list = QWidget()
         self.reason_layout = QVBoxLayout(self.reason_list)
@@ -138,7 +143,11 @@ class MonitorPage(QWidget):
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
-        side_layout.addWidget(self.result_label)
+        result_row = QHBoxLayout()
+        result_row.setSpacing(8)
+        result_row.addWidget(self.result_label, 8)
+        result_row.addWidget(self.countdown_label, 2)
+        side_layout.addLayout(result_row)
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
         action_row.addWidget(self.continuous_button)
@@ -220,7 +229,9 @@ class MonitorPage(QWidget):
         self._view_by_slot = {config.slot: view for config, view in self.views}
         self.frame_timer.start(33)
         if self.continuous_detection:
-            self.detection_timer.start(500)
+            workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
+            if workflow_mode not in {"delay", "confirm"}:
+                self.detection_timer.start(500)
 
     def stop(self, reset_continuous=True):
         was_counting_down = self.single_countdown_timer.isActive() or (
@@ -233,6 +244,7 @@ class MonitorPage(QWidget):
         self.single_countdown_timer.stop()
         self.part_id_normalize_timer.stop()
         self._single_countdown_remaining = 0
+        self._workflow_confirm_dialog_open = False
         self.pending_detection_future = None
         if self.current_transaction and self.current_transaction.state == "counting_down":
             self.current_transaction.state = "error"
@@ -240,6 +252,7 @@ class MonitorPage(QWidget):
             self.current_transaction = None
         if was_counting_down:
             self.set_status("WAITING")
+            self.set_countdown_text("")
             self._restore_inspect_button()
         self.detection_executor.shutdown(wait=False)
         self.latest_annotated_frames = {}
@@ -314,9 +327,59 @@ class MonitorPage(QWidget):
         raw_text = self.part_id.text().strip()
         if not raw_text:
             self.processed_part_id.clear()
+            self._workflow_last_barcode = ""
             return
         processed_text = process_barcode_text(raw_text, self.state.barcode_processing) or raw_text
         self.processed_part_id.setText(processed_text)
+        self.maybe_start_workflow(processed_text)
+
+    def maybe_start_workflow(self, processed_text):
+        if not self.continuous_detection or not processed_text:
+            return
+        if self.current_transaction and self.current_transaction.state in {"counting_down", "capturing", "inferencing"}:
+            return
+        if processed_text == self._workflow_last_barcode:
+            return
+        self._workflow_last_barcode = processed_text
+        workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
+        if workflow_mode == "confirm":
+            self.prompt_confirm_detection()
+            return
+        self.begin_workflow_countdown(max(1, int(getattr(self.state.inspection_workflow, "delay_seconds", 3))))
+
+    def prompt_confirm_detection(self):
+        if self._workflow_confirm_dialog_open:
+            return
+        self._workflow_confirm_dialog_open = True
+        try:
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("確認檢測")
+            dialog.setText("條碼已就緒，請放好被檢測物件後按下確認檢測。")
+            confirm_button = dialog.addButton("確認檢測", QMessageBox.ButtonRole.AcceptRole)
+            dialog.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            dialog.exec()
+            if dialog.clickedButton() == confirm_button and self.continuous_detection:
+                self.begin_workflow_capture()
+            else:
+                self._workflow_last_barcode = ""
+        finally:
+            self._workflow_confirm_dialog_open = False
+
+    def begin_workflow_countdown(self, seconds):
+        self.current_transaction = self._create_single_transaction()
+        self.current_transaction.state = "counting_down"
+        self._single_countdown_remaining = max(1, int(seconds))
+        self.set_status("WAITING")
+        self._show_single_countdown()
+        self.single_countdown_timer.start(1000)
+
+    def begin_workflow_capture(self):
+        self.current_transaction = self._create_single_transaction()
+        self.set_countdown_text("")
+        self._capture_single_transaction_frames()
+
+    def set_countdown_text(self, text):
+        self.countdown_label.setText(text)
 
     def toggle_region_overlay(self):
         self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
@@ -402,6 +465,8 @@ class MonitorPage(QWidget):
         self.result_label.setObjectName("resultWaiting")
         self.result_label.style().unpolish(self.result_label)
         self.result_label.style().polish(self.result_label)
+        if text in {"PASS", "NG", "ERROR", "WAITING"}:
+            self.set_countdown_text("")
 
     def inspect_once(self):
         if self.single_countdown_timer.isActive():
@@ -452,7 +517,7 @@ class MonitorPage(QWidget):
         )
 
     def _show_single_countdown(self):
-        self.set_status(f"倒數 {self._single_countdown_remaining}")
+        self.set_countdown_text(str(self._single_countdown_remaining))
 
     def _advance_single_countdown(self):
         self._single_countdown_remaining -= 1
@@ -470,6 +535,8 @@ class MonitorPage(QWidget):
         self.current_transaction = None
         self._single_countdown_remaining = 0
         self.set_status("WAITING")
+        self.set_countdown_text("")
+        self._workflow_last_barcode = ""
         self._restore_inspect_button()
 
     def _capture_single_transaction_frames(self):
@@ -486,12 +553,15 @@ class MonitorPage(QWidget):
             transaction.state = "error"
             transaction.error_message = f"Missing camera frames: {missing_text}"
             self.set_status("ERROR")
+            self.set_countdown_text("")
             QMessageBox.warning(self, "Inspection frame unavailable", transaction.error_message)
             self.current_transaction = None
+            self._workflow_last_barcode = ""
             self._restore_inspect_button()
             return
         transaction.raw_frames = frames
         transaction.state = "inferencing"
+        self.set_countdown_text("")
         self.set_status("檢測中")
         self.inspect_button.setText("檢測中")
         self.inspect_button.setEnabled(False)
@@ -525,6 +595,8 @@ class MonitorPage(QWidget):
         if self.current_transaction:
             self.current_transaction.state = "completed"
             self.current_transaction = None
+        self._workflow_last_barcode = ""
+        self.set_countdown_text("")
         self._restore_inspect_button()
 
     def _on_single_detection_error(self, error_msg):
@@ -533,6 +605,8 @@ class MonitorPage(QWidget):
             self.current_transaction.error_message = error_msg
             self.current_transaction = None
         self.set_result("NG", 0.0)
+        self.set_countdown_text("")
+        self._workflow_last_barcode = ""
         self.set_reason_cards({0: {"result": "NG", "confidence": 0.0, "reasons": [f"檢測錯誤：{error_msg}"]}})
         self._restore_inspect_button()
 
@@ -554,7 +628,9 @@ class MonitorPage(QWidget):
             self.latest_annotated_frames = {}
             self.latest_yolo_annotated_frames = {}
             self.latest_geometry_annotated_frames = {}
-            self.detection_timer.start(500)
+            workflow_mode = getattr(self.state.inspection_workflow, "mode", "delay")
+            if workflow_mode not in {"delay", "confirm"}:
+                self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
             self.result_timer.stop()
@@ -562,6 +638,8 @@ class MonitorPage(QWidget):
             self.latest_annotated_frames = {}
             self.latest_yolo_annotated_frames = {}
             self.latest_geometry_annotated_frames = {}
+            self._workflow_last_barcode = ""
+            self.set_countdown_text("")
 
     def update_detection_controls(self):
         self.continuous_button.setEnabled(True)

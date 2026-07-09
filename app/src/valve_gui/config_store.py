@@ -11,6 +11,7 @@ from valve_gui.models import (
     CameraConfig,
     DecisionConfig,
     DisplayConfig,
+    InspectionWorkflowConfig,
     ModelConfig,
     RegionOverlayConfig,
     UserAccount,
@@ -161,6 +162,16 @@ def load_app_config_from_path(state, config_path):
             suffix=str(barcode_processing.get("suffix", state.barcode_processing.suffix)),
         )
 
+    inspection_workflow = data.get("inspection_workflow", {})
+    if isinstance(inspection_workflow, dict):
+        mode = str(inspection_workflow.get("mode", state.inspection_workflow.mode)).strip().lower()
+        if mode not in {"delay", "confirm"}:
+            mode = "delay"
+        state.inspection_workflow = InspectionWorkflowConfig(
+            mode=mode,
+            delay_seconds=max(1, int(inspection_workflow.get("delay_seconds", state.inspection_workflow.delay_seconds))),
+        )
+
     cameras = data.get("inspection_cameras", [])
     if cameras:
         state.inspection_cameras = [
@@ -232,6 +243,7 @@ def save_app_config(state):
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),
         "barcode_processing": asdict(state.barcode_processing),
+        "inspection_workflow": asdict(state.inspection_workflow),
         "role_labels": state.role_labels,
         "role_passwords": _hashed_passwords(state.role_passwords),
         "role_permissions": {
