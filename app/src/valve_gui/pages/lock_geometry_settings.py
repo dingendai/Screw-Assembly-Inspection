@@ -373,7 +373,7 @@ class LockGeometryCameraEditor(QWidget):
         self.rotation_spin.setMinimumWidth(90)
         self.rotation_spin.valueChanged.connect(self.save_form_to_region)
         form.addRow("名稱", self.name_edit)
-        form.addRow("ROI 狀態", self.region_enabled)
+        form.addRow("啟動監視計算", self.region_enabled)
         form.addRow("左 / 上邊界", self.two_spin_row(self.left_spin, self.top_spin))
         form.addRow("右 / 下邊界", self.two_spin_row(self.right_spin, self.bottom_spin))
         form.addRow("翻轉角度", self.rotation_spin)
