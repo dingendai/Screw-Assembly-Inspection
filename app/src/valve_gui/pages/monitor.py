@@ -150,8 +150,8 @@ class MonitorPage(QWidget):
         side_layout.addStretch()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.addWidget(self.monitor_tabs, 6)
-        layout.addWidget(side, 4)
+        layout.addWidget(self.monitor_tabs, 3)
+        layout.addWidget(side, 7)
 
     def refresh(self):
         self.region_overlay_box.blockSignals(True)
