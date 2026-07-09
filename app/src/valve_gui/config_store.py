@@ -3,6 +3,7 @@ from dataclasses import asdict
 
 from valve_gui import paths
 from valve_gui.models import (
+    DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
     DEFAULT_INSPECTION_CAMERA_COUNT,
     CameraConfig,
     DecisionConfig,
@@ -181,7 +182,13 @@ def ensure_default_camera_count(cameras):
     existing_slots = {camera.slot for camera in cameras}
     for slot in range(1, DEFAULT_INSPECTION_CAMERA_COUNT + 1):
         if slot not in existing_slots:
-            cameras.append(CameraConfig(slot=slot, device_index=slot - 1, enabled=True))
+            cameras.append(
+                CameraConfig(
+                    slot=slot,
+                    device_index=slot - 1,
+                    enabled=slot <= DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
+                )
+            )
     cameras.sort(key=lambda camera: camera.slot)
 
 
