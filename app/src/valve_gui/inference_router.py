@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from valve_gui import barcode_reader
 from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
 from valve_gui.lock_geometry import (
     analyze_lock_geometry_regions,
@@ -27,7 +26,7 @@ class InferenceResult:
     annotated_frames: dict[int, object] = field(default_factory=dict)
     camera_results: dict[int, dict] = field(default_factory=dict)
     roi_confirmations: dict[int, dict] = field(default_factory=dict)
-    # 由偵測到的「標籤」類別框內解碼出的條碼；barcode 取第一個有效值。
+    # Compatibility fields kept for older callers; automatic barcode decoding is disabled.
     barcode: str | None = None
     barcode_sources: list[dict] = field(default_factory=list)
     raw_frames: dict[int, object] = field(default_factory=dict)
@@ -58,7 +57,6 @@ class InferenceRouter:
         missing = []
         failed_slots: set[int] = set()
         all_roi_votes: dict[int, dict] = {}
-        barcode_sources: list[dict] = []
         models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
@@ -79,7 +77,6 @@ class InferenceRouter:
             camera_confidences = []
             camera_reasons = []
             camera_roi_detected: dict[int, bool] = {}
-            camera_label_boxes: list[tuple] = []  # (xyxy, class_name, model_name) 供條碼解碼
             for model_name in model_names:
                 model = models_by_name.get(model_name)
                 if not model or not model.enabled:
@@ -96,14 +93,12 @@ class InferenceRouter:
                         model_detection_regions,
                         regions_for_model(camera.exclusion_regions, model.name),
                     )
-                annotated, confidence, object_count, note, yolo_boxes_xyxy, yolo_box_classes = self.run_single_model(
+                annotated, confidence, object_count, note, yolo_boxes_xyxy, _ = self.run_single_model(
                     inference_frame,
                     camera.slot,
                     model,
                     display_frame=annotated,
                 )
-                for box_xyxy, box_class in zip(yolo_boxes_xyxy, yolo_box_classes):
-                    camera_label_boxes.append((box_xyxy, box_class, model.name))
                 if getattr(camera, "region_detection_enabled", False) and model_detection_regions:
                     h, w = display_frame.shape[:2]
                     per_roi = roi_id_detections(model_detection_regions, yolo_boxes_xyxy, w, h)
@@ -135,11 +130,6 @@ class InferenceRouter:
                 all_roi_votes[rid]["camera_slots"].append(camera.slot)
                 if detected:
                     all_roi_votes[rid]["votes"] += 1
-
-            if getattr(camera, "barcode_read_enabled", False):
-                barcode_sources.extend(
-                    self.decode_label_barcodes(camera.slot, display_frame, camera_label_boxes)
-                )
 
             geometry_regions = [
                 region
@@ -199,51 +189,8 @@ class InferenceRouter:
             annotated_frames,
             camera_results,
             roi_confirmations,
-            barcode=barcode_sources[0]["text"] if barcode_sources else None,
-            barcode_sources=barcode_sources,
             raw_frames=raw_frames,
         )
-
-    def decode_label_barcodes(self, slot, frame, label_boxes):
-        """偵測驅動的條碼解碼。
-
-        設定了「需要條碼辨識的標籤類別」時，只裁切命中那些類別的偵測框來解碼
-        （加少許 padding，避免切到條碼邊緣）；未設定類別時，退回整張畫面解碼，
-        維持舊版 per-camera 行為。回傳 [{text, class, model, slot}, ...]。
-        """
-        label_classes = {
-            name.strip()
-            for name in getattr(self.state, "barcode_label_classes", [])
-            if str(name).strip()
-        }
-        hits: list[dict] = []
-        if label_classes:
-            for box_xyxy, box_class, model_name in label_boxes:
-                if box_class not in label_classes:
-                    continue
-                crop = self._crop_box(frame, box_xyxy, pad=0.12)
-                text = barcode_reader.decode_best(crop)
-                if text:
-                    hits.append({"text": text, "class": box_class, "model": model_name, "slot": slot})
-        else:
-            text = barcode_reader.decode_best(frame)
-            if text:
-                hits.append({"text": text, "class": "", "model": "", "slot": slot})
-        return hits
-
-    @staticmethod
-    def _crop_box(frame, xyxy, pad=0.1):
-        height, width = frame.shape[:2]
-        x1, y1, x2, y2 = xyxy
-        box_w = max(0.0, x2 - x1)
-        box_h = max(0.0, y2 - y1)
-        x1 = max(0, int(x1 - box_w * pad))
-        y1 = max(0, int(y1 - box_h * pad))
-        x2 = min(width, int(x2 + box_w * pad))
-        y2 = min(height, int(y2 + box_h * pad))
-        if x2 <= x1 or y2 <= y1:
-            return frame
-        return frame[y1:y2, x1:x2]
 
     def run_single_model(self, frame, slot, model_config, display_frame=None):
         display_frame = frame if display_frame is None else display_frame

@@ -36,7 +36,6 @@ class CameraModel(BaseModel):
     exclusion_regions: list[dict] = Field(default_factory=list)
     lock_geometry_enabled: bool = False
     lock_geometry_regions: list[dict] = Field(default_factory=list)
-    barcode_read_enabled: bool = False
     focus_mode: str = "auto"
     manual_focus_value: int = 120
 

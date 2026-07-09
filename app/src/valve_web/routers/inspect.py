@@ -7,7 +7,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
-from valve_gui import barcode_reader, qc_db
+from valve_gui import qc_db
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import InspectionRecord
 from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH
@@ -28,23 +28,6 @@ _continuous_lock = threading.Lock()
 
 def _enabled_cameras(ctx: WebContext):
     return [c for c in ctx.state.inspection_cameras if c.enabled]
-
-
-def _barcode_slots(ctx: WebContext) -> list[int]:
-    """已啟用且開啟條碼辨識的相機 slot。"""
-    return [c.slot for c in _enabled_cameras(ctx) if getattr(c, "barcode_read_enabled", False)]
-
-
-def _decode_barcode(ctx: WebContext, frames: dict) -> str | None:
-    """從開啟條碼辨識的相機影像中，解出第一個可信的條碼文字。"""
-    for slot in _barcode_slots(ctx):
-        frame = frames.get(slot)
-        if frame is None:
-            continue
-        text = barcode_reader.decode_best(frame)
-        if text:
-            return text
-    return None
 
 
 def _add_record(ctx: WebContext, record: InspectionRecord, *, raw_frames=None, annotated_frames=None, inference=None):
@@ -126,13 +109,7 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
     ctx.cameras.ensure_started(ctx.state)
     frames = ctx.cameras.frames_by_slot()
     inference = ctx.router.run(frames)
-    # 偵測驅動的條碼（router 在標籤框內解碼）優先；否則退回整張畫面解碼。
-    decoded_barcode = getattr(inference, "barcode", None) or _decode_barcode(ctx, frames)
-    if decoded_barcode:
-        effective_part_id = decoded_barcode
-        sources = getattr(inference, "barcode_sources", None) or []
-        source = (sources[0].get("class") or sources[0].get("model") or "barcode") if sources else "barcode"
-    elif part_id.strip():
+    if part_id.strip():
         effective_part_id = part_id
         source = "manual"
     else:
@@ -156,7 +133,6 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
                 inference=inference,
             )
     payload = _result_payload(inference, include_images=include_images)
-    payload["barcode"] = decoded_barcode
     with ctx.lock:
         ctx.latest_result = payload
     return payload

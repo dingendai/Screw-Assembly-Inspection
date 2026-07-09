@@ -168,7 +168,6 @@ export async function renderRegions(view) {
         detection_regions: c.detection_regions, exclusion_regions: c.exclusion_regions,
         lock_geometry_enabled: !!c.lock_geometry_enabled,
         lock_geometry_regions: c.lock_geometry_regions || [],
-        barcode_read_enabled: c.barcode_read_enabled,
         focus_mode: c.focus_mode || "auto",
         manual_focus_value: c.manual_focus_value ?? 120,
       })),

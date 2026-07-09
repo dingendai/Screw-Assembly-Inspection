@@ -71,7 +71,6 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
                 exclusion_regions=normalise_regions([dict(r) for r in item.exclusion_regions]),
                 lock_geometry_enabled=bool(item.lock_geometry_enabled),
                 lock_geometry_regions=normalise_lock_geometry_regions([dict(r) for r in item.lock_geometry_regions]),
-                barcode_read_enabled=bool(item.barcode_read_enabled),
                 focus_mode=normalise_focus_mode(item.focus_mode),
                 manual_focus_value=normalise_focus_value(item.manual_focus_value),
             )
