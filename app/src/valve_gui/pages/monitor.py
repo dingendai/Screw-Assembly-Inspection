@@ -91,6 +91,9 @@ class MonitorPage(QWidget):
         self.part_id.setPlaceholderText("工件序號 / 批號")
         self.part_id.textChanged.connect(self.queue_part_id_normalization)
         self.part_id.returnPressed.connect(self.normalize_part_id_display)
+        self.processed_part_id = QLineEdit()
+        self.processed_part_id.setPlaceholderText("S7 ?????")
+        self.processed_part_id.setReadOnly(True)
         self.result_label = QLabel("WAITING")
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_label.setObjectName("resultWaiting")
@@ -149,7 +152,11 @@ class MonitorPage(QWidget):
         overlay_row.addWidget(self.geometry_overlay_box)
         side_layout.addLayout(overlay_row)
         side_layout.addWidget(QLabel("目前受測物件"))
-        side_layout.addWidget(self.part_id)
+        barcode_row = QHBoxLayout()
+        barcode_row.setSpacing(8)
+        barcode_row.addWidget(self.part_id, 1)
+        barcode_row.addWidget(self.processed_part_id, 1)
+        side_layout.addLayout(barcode_row)
         side_layout.addWidget(QLabel("相機檢測狀態"))
         side_layout.addWidget(self.reason_list)
         side_layout.addWidget(self.roi_section)
@@ -306,13 +313,10 @@ class MonitorPage(QWidget):
     def normalize_part_id_display(self):
         raw_text = self.part_id.text().strip()
         if not raw_text:
+            self.processed_part_id.clear()
             return
         processed_text = process_barcode_text(raw_text, self.state.barcode_processing) or raw_text
-        if processed_text == raw_text:
-            return
-        self.part_id.blockSignals(True)
-        self.part_id.setText(processed_text)
-        self.part_id.blockSignals(False)
+        self.processed_part_id.setText(processed_text)
 
     def toggle_region_overlay(self):
         self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
