@@ -190,23 +190,24 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("Navigation")
         toolbar.setMovable(False)
         self.navigation_specs = [
-            ("login", "登入", self.show_login, True),
-            ("models", "S1 模型清單", self.show_models, True),
-            ("settings", "S2 相機設定", self.show_settings, True),
-            ("camera_models", "S3 相機模型設定", self.show_camera_models, True),
-            ("regions", "S4 範圍監視", self.show_region_settings, True),
-            ("decision", "S5 判定設定", self.show_decision_settings, True),
-            ("lock_geometry", "S6 鎖緊幾何檢測", self.show_lock_geometry_settings, True),
-            ("barcode_settings", "S7 條碼後處理", self.show_barcode_settings, True),
-            ("monitor", "監視", self.show_monitor, True),
-            ("history", "歷史紀錄", self.show_history, True),
-            ("qc_system", "品管系統", self.show_qc_system, True),
-            ("qc_stats", "品管統計", self.show_qc_stats, True),
-            ("qc_products", "品項主檔", self.show_qc_products, True),
-            ("users", "用戶管理", self.show_users, True),
-            ("display", "顯示設定", self.show_display_settings, True),
-            ("help", "說明", self.show_help, True),
-            ("logout", "登出", self.logout, False),
+            ("login", "\u767b\u5165", self.show_login, True),
+            ("system_settings", "S\u8a2d\u5b9a\u7cfb\u7d71", self.show_system_settings, True),
+            ("models", "S1 \u6a21\u578b\u6e05\u55ae", self.show_models, True),
+            ("settings", "S2 \u76f8\u6a5f\u8a2d\u5b9a", self.show_settings, True),
+            ("camera_models", "S3 \u76f8\u6a5f\u6a21\u578b\u8a2d\u5b9a", self.show_camera_models, True),
+            ("regions", "S4 \u7bc4\u570d\u76e3\u8996", self.show_region_settings, True),
+            ("decision", "S5 \u5224\u5b9a\u8a2d\u5b9a", self.show_decision_settings, True),
+            ("lock_geometry", "S6 \u9396\u7dca\u5e7e\u4f55\u6aa2\u6e2c", self.show_lock_geometry_settings, True),
+            ("barcode_settings", "S7 \u689d\u78bc\u5f8c\u8655\u7406", self.show_barcode_settings, True),
+            ("monitor", "\u76e3\u8996", self.show_monitor, True),
+            ("history", "\u6b77\u53f2\u7d00\u9304", self.show_history, True),
+            ("qc_system", "\u54c1\u7ba1\u7cfb\u7d71", self.show_qc_system, True),
+            ("qc_stats", "\u54c1\u7ba1\u7d71\u8a08", self.show_qc_stats, True),
+            ("qc_products", "\u54c1\u9805\u4e3b\u6a94", self.show_qc_products, True),
+            ("users", "\u7528\u6236\u7ba1\u7406", self.show_users, True),
+            ("display", "\u986f\u793a\u8a2d\u5b9a", self.show_display_settings, True),
+            ("help", "\u8aaa\u660e", self.show_help, True),
+            ("logout", "\u767b\u51fa", self.logout, False),
         ]
         for key, text, callback, checkable in self.navigation_specs:
             action = QAction(text, self)
@@ -638,7 +639,11 @@ class MainWindow(QMainWindow):
         if not self.require_login():
             return
         if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
-            QMessageBox.warning(self, "????", "???????? S?????")
+            QMessageBox.warning(
+                self,
+                "\u6b0a\u9650\u4e0d\u8db3",
+                "\u76ee\u524d\u89d2\u8272\u4e0d\u80fd\u9032\u5165 S\u8a2d\u5b9a\u7cfb\u7d71\u3002",
+            )
             self.show_monitor()
             return
         self.switch_to_page(self.system_settings_page, self.system_settings_page.refresh)
