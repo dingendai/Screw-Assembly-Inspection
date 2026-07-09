@@ -25,13 +25,14 @@ from valve_gui.config_store import save_app_config
 from valve_gui.inference_router import InferenceRouter
 from valve_gui.lock_geometry import draw_lock_geometry_config_overlay
 from valve_gui.model_registry import format_camera_model_names
-from valve_gui.models import AppState, InspectionRecord
+from valve_gui.models import AppState, InspectionRecord, InspectionTransaction
 from valve_gui.utils import hex_to_bgr
 from valve_gui.widgets import CameraView
 
 
 MAX_GUI_FRAME_DIMENSION = 960
 BARCODE_PREVIEW_INTERVAL_SEC = 0.7
+SINGLE_INSPECTION_COUNTDOWN_SEC = 2
 
 
 class _DetectionWorker(QThread):
@@ -67,6 +68,8 @@ class MonitorPage(QWidget):
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.pending_detection_future = None
         self._single_worker = None
+        self.current_transaction: InspectionTransaction | None = None
+        self._single_countdown_remaining = 0
         self._last_record_time: float = 0.0
         self._last_barcode: str | None = None
         self._last_barcode_source: str = ""
@@ -80,6 +83,8 @@ class MonitorPage(QWidget):
         self.detection_timer.timeout.connect(self.detect_current_frames)
         self.result_timer = QTimer(self)
         self.result_timer.timeout.connect(self.apply_pending_detection_result)
+        self.single_countdown_timer = QTimer(self)
+        self.single_countdown_timer.timeout.connect(self._advance_single_countdown)
 
         self.part_id = QLineEdit()
         self.part_id.setPlaceholderText("工件序號 / 批號")
@@ -119,6 +124,7 @@ class MonitorPage(QWidget):
         self.start_button = start_button
         self.stop_button = stop_button
         self.inspect_button = QPushButton("單次檢測")
+        self._inspect_button_default_text = self.inspect_button.text()
         self.inspect_button.clicked.connect(self.inspect_once)
 
         side = QGroupBox("檢測狀態")
@@ -209,7 +215,13 @@ class MonitorPage(QWidget):
         self.frame_timer.stop()
         self.detection_timer.stop()
         self.result_timer.stop()
+        self.single_countdown_timer.stop()
+        self._single_countdown_remaining = 0
         self.pending_detection_future = None
+        if self.current_transaction and self.current_transaction.state == "counting_down":
+            self.current_transaction.state = "error"
+            self.current_transaction.error_message = "camera stopped"
+            self.current_transaction = None
         self.detection_executor.shutdown(wait=False)
         self.latest_annotated_frames = {}
         self._last_record_time = 0.0
@@ -353,8 +365,19 @@ class MonitorPage(QWidget):
         elif not self._last_barcode:
             self.update_barcode_label(None)
 
+    def set_status(self, text):
+        self.result_label.setText(text)
+        self.result_label.setObjectName("resultWaiting")
+        self.result_label.style().unpolish(self.result_label)
+        self.result_label.style().polish(self.result_label)
+
     def inspect_once(self):
+        if self.single_countdown_timer.isActive():
+            self._cancel_single_countdown()
+            return
         if self._single_worker and self._single_worker.isRunning():
+            return
+        if self.current_transaction and self.current_transaction.state in {"capturing", "inferencing"}:
             return
         if not self.state.is_logged_in:
             QMessageBox.warning(self, "尚未登入", "請先登入操作者。")
@@ -364,22 +387,125 @@ class MonitorPage(QWidget):
             return
         if not self.views:
             self.start()
-        frames = {slot: frame.copy() for slot, frame in self.last_frames.items()}
-        self.inspect_button.setEnabled(False)
+        if not self.views:
+            QMessageBox.warning(self, "Inspection unavailable", "No active inspection cameras.")
+            return
+        self._begin_single_countdown()
+
+    def _begin_single_countdown(self):
+        self.current_transaction = self._create_single_transaction()
+        self.current_transaction.state = "counting_down"
+        self._single_countdown_remaining = SINGLE_INSPECTION_COUNTDOWN_SEC
+        self.inspect_button.setEnabled(True)
+        self.inspect_button.setText("取消倒數")
         self.continuous_button.setEnabled(False)
         self.inspect_button.setObjectName("activeDetectionButton")
         self.inspect_button.style().unpolish(self.inspect_button)
         self.inspect_button.style().polish(self.inspect_button)
-        self._single_worker = _DetectionWorker(self.router, frames, self)
+        self._show_single_countdown()
+        self.single_countdown_timer.start(1000)
+
+    def _create_single_transaction(self):
+        manual_part_id = self.part_id.text().strip()
+        primary_barcode = self._last_barcode or manual_part_id
+        if self._last_barcode:
+            barcode_source = self._last_barcode_source or "barcode"
+        elif manual_part_id:
+            barcode_source = "manual"
+        else:
+            barcode_source = ""
+        return InspectionTransaction(
+            transaction_id=f"TX-{datetime.now():%Y%m%d%H%M%S%f}",
+            state="idle",
+            operator_name=self.state.operator_name,
+            operator_role=self.state.operator_role,
+            session_id=self.state.current_work_session_id,
+            primary_barcode=primary_barcode,
+            barcode_source=barcode_source,
+            active_cameras=self._active_camera_summary(),
+        )
+
+    def _show_single_countdown(self):
+        self.set_status(f"倒數 {self._single_countdown_remaining}")
+
+    def _advance_single_countdown(self):
+        self._single_countdown_remaining -= 1
+        if self._single_countdown_remaining > 0:
+            self._show_single_countdown()
+            return
+        self.single_countdown_timer.stop()
+        self._capture_single_transaction_frames()
+
+    def _cancel_single_countdown(self):
+        self.single_countdown_timer.stop()
+        if self.current_transaction:
+            self.current_transaction.state = "error"
+            self.current_transaction.error_message = "cancelled"
+        self.current_transaction = None
+        self._single_countdown_remaining = 0
+        self.set_status("WAITING")
+        self._restore_inspect_button()
+
+    def _capture_single_transaction_frames(self):
+        transaction = self.current_transaction
+        if not transaction:
+            self._restore_inspect_button()
+            return
+        transaction.state = "capturing"
+        transaction.captured_at = f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+        self.set_status("拍照中")
+        frames, missing_slots = self._copy_active_frames()
+        if missing_slots:
+            missing_text = ", ".join(f"C{slot}" for slot in missing_slots)
+            transaction.state = "error"
+            transaction.error_message = f"Missing camera frames: {missing_text}"
+            self.set_status("ERROR")
+            QMessageBox.warning(self, "Inspection frame unavailable", transaction.error_message)
+            self.current_transaction = None
+            self._restore_inspect_button()
+            return
+        transaction.raw_frames = frames
+        transaction.state = "inferencing"
+        self.set_status("檢測中")
+        self.inspect_button.setText("檢測中")
+        self.inspect_button.setEnabled(False)
+        self._single_worker = _DetectionWorker(self.router, transaction.raw_frames, self)
         self._single_worker.finished.connect(self._on_single_detection_done)
         self._single_worker.errored.connect(self._on_single_detection_error)
         self._single_worker.start()
 
+    def _copy_active_frames(self):
+        frames = {}
+        missing_slots = []
+        for config, _ in self.views:
+            frame = self.last_frames.get(config.slot)
+            if frame is None:
+                missing_slots.append(config.slot)
+                continue
+            frames[config.slot] = frame.copy()
+        return frames, missing_slots
+
+    def _active_camera_summary(self):
+        return ",".join(
+            f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
+            for config, _ in self.views
+        )
+
     def _on_single_detection_done(self, inference):
+        if self.current_transaction:
+            self.current_transaction.state = "reviewing"
+            self.current_transaction.inference_result = inference
         self.apply_detection_result(inference, record=True)
+        if self.current_transaction:
+            self.current_transaction.state = "completed"
+            self.current_transaction = None
         self._restore_inspect_button()
 
     def _on_single_detection_error(self, error_msg):
+        if self.current_transaction:
+            self.current_transaction.state = "error"
+            self.current_transaction.error_message = error_msg
+            self.current_transaction = None
         self.set_result("NG", 0.0)
         self.set_reason_cards({0: {"result": "NG", "confidence": 0.0, "reasons": [f"檢測錯誤：{error_msg}"]}})
         self._restore_inspect_button()
@@ -388,6 +514,7 @@ class MonitorPage(QWidget):
         self.inspect_button.setObjectName("primaryButton")
         self.inspect_button.style().unpolish(self.inspect_button)
         self.inspect_button.style().polish(self.inspect_button)
+        self.inspect_button.setText(self._inspect_button_default_text)
         self.inspect_button.setEnabled(True)
         if not self.continuous_detection:
             self.continuous_button.setEnabled(True)
@@ -487,10 +614,7 @@ class MonitorPage(QWidget):
             if inference.result != "NG" and now - self._last_record_time < 5.0:
                 return
             self._last_record_time = now
-        active = ",".join(
-            f"C{config.slot}:D{config.device_index}:M{format_camera_model_names(config)}"
-            for config, _ in self.views
-        )
+        active = self._active_camera_summary()
         # 序號來源優先序：偵測到的標籤條碼 ▸ 手動輸入 ▸ 自動編號。
         barcode = getattr(inference, "barcode", None)
         if barcode:
