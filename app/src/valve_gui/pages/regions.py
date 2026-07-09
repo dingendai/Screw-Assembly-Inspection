@@ -113,7 +113,8 @@ class RegionCanvas(QLabel):
     def format_region_label(self, label, index, region):
         roi_id = region.get("roi_id")
         model_names = region.get("model_names", [])
-        base = f"#{roi_id}" if roi_id is not None else f"{label} {index}"
+        display_roi_id = roi_id if roi_id is not None else 0
+        base = f"{label} {display_roi_id}"
         if model_names:
             return f"{base}: {', '.join(model_names)}"
         return base
@@ -239,7 +240,6 @@ class CameraRegionEditor(QWidget):
         self.roi_id_spin.setSingleStep(1.0)
         self.roi_id_spin.setDecimals(0)
         self.roi_id_spin.setMinimumWidth(90)
-        self.roi_id_spin.setSpecialValueText("—")
         self.roi_id_spin.setValue(0.0)
         self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
         roi_id_row.addWidget(self.roi_id_spin)
@@ -427,7 +427,7 @@ class CameraRegionEditor(QWidget):
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
             roi_id = region.get("roi_id")
-            self.region_table.setItem(row_index, 1, QTableWidgetItem(f"#{roi_id}" if roi_id is not None else "—"))
+            self.region_table.setItem(row_index, 1, QTableWidgetItem(str(roi_id if roi_id is not None else 0)))
             self.region_table.setItem(row_index, 2, QTableWidgetItem(self.format_region_models(region)))
             self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['x']:.3f}"))
             self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['y']:.3f}"))
