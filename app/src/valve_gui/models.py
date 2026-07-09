@@ -74,6 +74,24 @@ class InspectionRecord:
 
 
 @dataclass
+class InspectionTransaction:
+    transaction_id: str
+    state: str = "idle"
+    operator_name: str = ""
+    operator_role: str = ""
+    session_id: int | None = None
+    primary_barcode: str = ""
+    secondary_barcode: str = ""
+    barcode_source: str = ""
+    active_cameras: str = ""
+    captured_at: str = ""
+    raw_frames: dict[int, object] = field(default_factory=dict)
+    inference_result: object | None = None
+    save_policy: str = "defer"
+    error_message: str = ""
+
+
+@dataclass
 class OperatorSession:
     operator_name: str
     operator_role: str
