@@ -2,9 +2,8 @@
   "operator_camera_index": 4,
   "use_simulation": false,
   "qc_output_dir": "C:\\Users\\LAI-LAB\\Desktop\\GM\\Screw-Assembly-Inspection\\app\\src\\inspection_data",
-  "barcode_label_classes": [],
   "display": {
-    "mode": "auto",
+    "mode": "custom",
     "width": 1440,
     "height": 900,
     "font_size": 14,
@@ -17,10 +16,13 @@
   },
   "region_overlay": {
     "show_on_monitor": true,
-    "detection_color": "#22c55e",
-    "exclusion_color": "#ef4444",
+    "detection_color": "#7b8c8b",
+    "exclusion_color": "#732121",
     "yolo_color": "#22c55e",
-    "yolo_model_colors": {}
+    "yolo_model_colors": {
+      "標籤": "#e7e700",
+      "螺絲": "#ffaa00"
+    }
   },
   "role_labels": {
     "developer": "開發者",
@@ -62,61 +64,134 @@
   "inspection_cameras": [
     {
       "slot": 1,
-      "device_index": 0,
+      "device_index": 2,
       "enabled": true,
       "flip_horizontal": false,
       "flip_vertical": false,
-      "rotation_degrees": 0,
-      "assigned_model_name": "best",
+      "rotation_degrees": 270,
+      "assigned_model_name": "濾網",
       "assigned_model_names": [
-        "best"
+        "濾網"
       ],
-      "region_detection_enabled": false,
-      "detection_regions": [],
+      "region_detection_enabled": true,
+      "detection_regions": [
+        {
+          "x": 0.5531587057010786,
+          "y": 0.6431870669745958,
+          "w": 0.1386748844375963,
+          "h": 0.10392609699769054,
+          "model_names": [
+            "濾網"
+          ]
+        }
+      ],
       "exclusion_regions": [],
       "lock_geometry_enabled": false,
       "lock_geometry_regions": [],
-      "barcode_read_enabled": false,
       "focus_mode": "auto",
       "manual_focus_value": 120
     },
     {
       "slot": 2,
+      "device_index": 0,
+      "enabled": true,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 270,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
+      ],
+      "region_detection_enabled": true,
+      "detection_regions": [
+        {
+          "x": 0.44838212634822805,
+          "y": 0.6177829099307159,
+          "w": 0.11710323574730354,
+          "h": 0.10277136258660508,
+          "model_names": [
+            "濾網"
+          ]
+        }
+      ],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
+      "focus_mode": "manual",
+      "manual_focus_value": 263
+    },
+    {
+      "slot": 3,
       "device_index": 1,
       "enabled": true,
       "flip_horizontal": false,
       "flip_vertical": false,
       "rotation_degrees": 270,
-      "assigned_model_name": "best",
+      "assigned_model_name": "標籤",
       "assigned_model_names": [
-        "best"
+        "標籤",
+        "螺絲"
       ],
       "region_detection_enabled": false,
-      "detection_regions": [],
-      "exclusion_regions": [],
-      "lock_geometry_enabled": false,
-      "lock_geometry_regions": [],
-      "barcode_read_enabled": false,
-      "focus_mode": "auto",
-      "manual_focus_value": 120
-    },
-    {
-      "slot": 3,
-      "device_index": 2,
-      "enabled": true,
-      "flip_horizontal": false,
-      "flip_vertical": false,
-      "rotation_degrees": 0,
-      "assigned_model_name": "best",
-      "assigned_model_names": [
-        "best"
+      "detection_regions": [
+        {
+          "x": 0.5069337442218799,
+          "y": 0.5196304849884527,
+          "w": 0.29583975346687214,
+          "h": 0.09237875288683603,
+          "model_names": [
+            "標籤"
+          ]
+        },
+        {
+          "x": 0.31278890600924497,
+          "y": 0.625866050808314,
+          "w": 0.5069337442218799,
+          "h": 0.06928406466512702,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.28197226502311246,
+          "y": 0.4491916859122402,
+          "w": 0.14175654853620956,
+          "h": 0.05542725173210162,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.6240369799691834,
+          "y": 0.45496535796766746,
+          "w": 0.12788906009244994,
+          "h": 0.057736720554272515,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.6240369799691834,
+          "y": 0.37066974595842955,
+          "w": 0.07395993836671803,
+          "h": 0.050808314087759814,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.3697996918335901,
+          "y": 0.3648960739030023,
+          "w": 0.0662557781201849,
+          "h": 0.05196304849884527,
+          "model_names": [
+            "螺絲"
+          ]
+        }
       ],
-      "region_detection_enabled": false,
-      "detection_regions": [],
       "exclusion_regions": [],
-      "lock_geometry_enabled": false,
+      "lock_geometry_enabled": true,
       "lock_geometry_regions": [],
-      "barcode_read_enabled": false,
       "focus_mode": "auto",
       "manual_focus_value": 120
     },
@@ -126,17 +201,92 @@
       "enabled": true,
       "flip_horizontal": false,
       "flip_vertical": false,
-      "rotation_degrees": 0,
-      "assigned_model_name": "best",
+      "rotation_degrees": 270,
+      "assigned_model_name": "標籤",
       "assigned_model_names": [
-        "best"
+        "標籤",
+        "螺絲"
       ],
       "region_detection_enabled": false,
-      "detection_regions": [],
+      "detection_regions": [
+        {
+          "x": 0.28197226502311246,
+          "y": 0.48614318706697457,
+          "w": 0.2727272727272727,
+          "h": 0.1420323325635104,
+          "model_names": [
+            "標籤",
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.23420647149460708,
+          "y": 0.6685912240184757,
+          "w": 0.50231124807396,
+          "h": 0.07505773672055427,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.6933744221879815,
+          "y": 0.4930715935334873,
+          "w": 0.09399075500770417,
+          "h": 0.06928406466512702,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.36517719568567025,
+          "y": 0.40993071593533487,
+          "w": 0.337442218798151,
+          "h": 0.049653579676674366,
+          "model_names": [
+            "螺絲"
+          ]
+        }
+      ],
       "exclusion_regions": [],
-      "lock_geometry_enabled": false,
-      "lock_geometry_regions": [],
-      "barcode_read_enabled": false,
+      "lock_geometry_enabled": true,
+      "lock_geometry_regions": [
+        {
+          "id": "lock_roi_1",
+          "name": "ROI 1",
+          "enabled": true,
+          "x": 0.328,
+          "y": 0.516,
+          "w": 0.02999999999999997,
+          "h": 0.03700000000000003,
+          "rotation_degrees": 0.0,
+          "base_line_y": 0.506,
+          "red_line_y": null,
+          "split_line_y": 0.5,
+          "gap_threshold_px": 2,
+          "dark_threshold_ratio": 0.25,
+          "dark_gray_threshold": 70,
+          "mode": "gap",
+          "metal_edge_count": 2
+        },
+        {
+          "id": "lock_roi_2",
+          "name": "ROI 2",
+          "enabled": true,
+          "x": 0.731,
+          "y": 0.505,
+          "w": 0.019000000000000017,
+          "h": 0.05400000000000005,
+          "rotation_degrees": 0.0,
+          "base_line_y": null,
+          "red_line_y": null,
+          "split_line_y": null,
+          "gap_threshold_px": 6,
+          "dark_threshold_ratio": 0.25,
+          "dark_gray_threshold": 70,
+          "mode": "both",
+          "metal_edge_count": 1
+        }
+      ],
       "focus_mode": "auto",
       "manual_focus_value": 120
     },
@@ -147,35 +297,175 @@
       "flip_horizontal": false,
       "flip_vertical": false,
       "rotation_degrees": 0,
-      "assigned_model_name": "best",
+      "assigned_model_name": "螺絲",
       "assigned_model_names": [
-        "best"
+        "螺絲"
+      ],
+      "region_detection_enabled": true,
+      "detection_regions": [
+        {
+          "x": 0.34230355220667386,
+          "y": 0.33477011494252873,
+          "w": 0.08934337997847147,
+          "h": 0.07471264367816093,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.42734122712594186,
+          "y": 0.27586206896551724,
+          "w": 0.062432723358449946,
+          "h": 0.06609195402298851,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.45748116254036597,
+          "y": 0.16810344827586207,
+          "w": 0.062432723358449946,
+          "h": 0.08189655172413793,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.5694294940796556,
+          "y": 0.27298850574712646,
+          "w": 0.05166846071044134,
+          "h": 0.06321839080459771,
+          "model_names": [
+            "螺絲"
+          ]
+        },
+        {
+          "x": 0.5705059203444564,
+          "y": 0.3635057471264368,
+          "w": 0.08719052744886975,
+          "h": 0.11350574712643678,
+          "model_names": [
+            "螺絲"
+          ]
+        }
+      ],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
+      "focus_mode": "auto",
+      "manual_focus_value": 120
+    },
+    {
+      "slot": 6,
+      "device_index": 5,
+      "enabled": false,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 0,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
       ],
       "region_detection_enabled": false,
       "detection_regions": [],
       "exclusion_regions": [],
       "lock_geometry_enabled": false,
       "lock_geometry_regions": [],
-      "barcode_read_enabled": false,
+      "focus_mode": "auto",
+      "manual_focus_value": 120
+    },
+    {
+      "slot": 7,
+      "device_index": 6,
+      "enabled": false,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 0,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
+      ],
+      "region_detection_enabled": false,
+      "detection_regions": [],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
+      "focus_mode": "auto",
+      "manual_focus_value": 120
+    },
+    {
+      "slot": 8,
+      "device_index": 7,
+      "enabled": false,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 0,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
+      ],
+      "region_detection_enabled": false,
+      "detection_regions": [],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
+      "focus_mode": "auto",
+      "manual_focus_value": 120
+    },
+    {
+      "slot": 9,
+      "device_index": 8,
+      "enabled": false,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 0,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
+      ],
+      "region_detection_enabled": false,
+      "detection_regions": [],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
+      "focus_mode": "auto",
+      "manual_focus_value": 120
+    },
+    {
+      "slot": 10,
+      "device_index": 9,
+      "enabled": false,
+      "flip_horizontal": false,
+      "flip_vertical": false,
+      "rotation_degrees": 0,
+      "assigned_model_name": "濾網",
+      "assigned_model_names": [
+        "濾網"
+      ],
+      "region_detection_enabled": false,
+      "detection_regions": [],
+      "exclusion_regions": [],
+      "lock_geometry_enabled": false,
+      "lock_geometry_regions": [],
       "focus_mode": "auto",
       "manual_focus_value": 120
     }
   ],
   "model_configs": [
     {
-      "name": "best",
+      "name": "濾網",
       "modality": "vision",
       "file_path": "C:\\Users\\LAI-LAB\\Desktop\\GM\\Screw-Assembly-Inspection\\models\\Filter_baseline20260507\\best.pt",
       "enabled": true
     },
     {
-      "name": "best",
+      "name": "標籤",
       "modality": "vision",
       "file_path": "C:\\Users\\LAI-LAB\\Desktop\\GM\\Screw-Assembly-Inspection\\models\\Label_baseline20260507\\best.pt",
       "enabled": true
     },
     {
-      "name": "best",
+      "name": "螺絲",
       "modality": "vision",
       "file_path": "C:\\Users\\LAI-LAB\\Desktop\\GM\\Screw-Assembly-Inspection\\models\\Screw_baseline20260526\\best.pt",
       "enabled": true
