@@ -64,7 +64,7 @@ from valve_gui.storage import (
 SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
 INFO_ACTION_KEYS = {"history", "qc_system", "qc_stats", "qc_products", "users"}
 RIGHT_SIDEBAR_ONLY_KEYS = SETUP_ACTION_KEYS | {"qc_system", "qc_stats", "qc_products"}
-TOPBAR_ONLY_KEYS = {"users", "display", "help", "logout"}
+TOPBAR_ONLY_KEYS = {"login", "users", "display", "help", "logout"}
 HIDDEN_NAV_KEYS = {"monitor"}
 
 
