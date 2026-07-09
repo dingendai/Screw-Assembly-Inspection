@@ -1,8 +1,21 @@
 from datetime import datetime
 
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QSize, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QWidget
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from valve_gui import qc_db
 from valve_gui.config_store import load_app_config
@@ -50,6 +63,9 @@ from valve_gui.storage import (
 
 SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
 INFO_ACTION_KEYS = {"history", "qc_system", "qc_stats", "qc_products", "users"}
+RIGHT_SIDEBAR_ONLY_KEYS = SETUP_ACTION_KEYS | {"qc_system", "qc_stats", "qc_products"}
+TOPBAR_ONLY_KEYS = {"users", "display", "help", "logout"}
+HIDDEN_NAV_KEYS = {"monitor"}
 
 
 class MainWindow(QMainWindow):
@@ -112,7 +128,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stack)
 
         self.actions = {}
+        self.right_nav_buttons = {}
+        self.right_sidebar_collapsed = False
+        self.right_sidebar_expanded_width = 220
         self.create_toolbar()
+        self.create_right_sidebar()
         self.stack.currentChanged.connect(self.update_active_action)
         self.update_navigation()
         self.start_all_cameras_on_boot()
@@ -163,7 +183,7 @@ class MainWindow(QMainWindow):
     def create_toolbar(self):
         toolbar = self.addToolBar("Navigation")
         toolbar.setMovable(False)
-        action_specs = [
+        self.navigation_specs = [
             ("login", "登入", self.show_login, True),
             ("models", "S1 模型清單", self.show_models, True),
             ("settings", "S2 相機設定", self.show_settings, True),
@@ -181,12 +201,14 @@ class MainWindow(QMainWindow):
             ("help", "說明", self.show_help, True),
             ("logout", "登出", self.logout, False),
         ]
-        for key, text, callback, checkable in action_specs:
+        for key, text, callback, checkable in self.navigation_specs:
             action = QAction(text, self)
             action.setCheckable(checkable)
             action.triggered.connect(callback)
-            toolbar.addAction(action)
-            tool_button = toolbar.widgetForAction(action)
+            tool_button = None
+            if key not in RIGHT_SIDEBAR_ONLY_KEYS and key not in HIDDEN_NAV_KEYS:
+                toolbar.addAction(action)
+                tool_button = toolbar.widgetForAction(action)
             if key in SETUP_ACTION_KEYS and tool_button:
                 tool_button.setObjectName("setupNavButton")
             if key in INFO_ACTION_KEYS and tool_button:
@@ -211,6 +233,83 @@ class MainWindow(QMainWindow):
         self.role_badge = QLabel()
         self.role_badge.setObjectName("roleBadge")
         toolbar.addWidget(self.role_badge)
+
+    def create_right_sidebar(self):
+        self.right_sidebar = QDockWidget("Quick Navigation", self)
+        self.right_sidebar.setObjectName("rightSidebar")
+        self.right_sidebar.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+        self.right_sidebar.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+
+        container = QWidget()
+        container.setObjectName("rightSidebarContainer")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        header = QWidget()
+        header.setObjectName("sidebarHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(4, 4, 4, 4)
+        header_layout.setSpacing(6)
+
+        self.right_sidebar_title = QLabel("Tools")
+        self.right_sidebar_title.setObjectName("sidebarTitle")
+        self.right_sidebar_toggle = QToolButton()
+        self.right_sidebar_toggle.setObjectName("sidebarToggleButton")
+        self.right_sidebar_toggle.setText("Collapse")
+        self.right_sidebar_toggle.clicked.connect(self.toggle_right_sidebar)
+
+        header_layout.addWidget(self.right_sidebar_title)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self.right_sidebar_toggle)
+        layout.addWidget(header)
+
+        self.right_sidebar_buttons_host = QWidget()
+        self.right_sidebar_buttons_host.setObjectName("sidebarButtonsHost")
+        buttons_layout = QVBoxLayout(self.right_sidebar_buttons_host)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(6)
+
+        for key, text, callback, checkable in self.navigation_specs:
+            if key in TOPBAR_ONLY_KEYS or key in HIDDEN_NAV_KEYS:
+                continue
+            button = QPushButton(text)
+            button.setObjectName("sidebarNavButton")
+            button.setCheckable(checkable)
+            button.clicked.connect(callback)
+            if key in SETUP_ACTION_KEYS:
+                button.setProperty("navRole", "setup")
+            elif key in INFO_ACTION_KEYS:
+                button.setProperty("navRole", "info")
+            elif key == "logout":
+                button.setProperty("navRole", "logout")
+            else:
+                button.setProperty("navRole", "default")
+            button.style().unpolish(button)
+            button.style().polish(button)
+            buttons_layout.addWidget(button)
+            self.right_nav_buttons[key] = button
+
+        buttons_layout.addStretch(1)
+        layout.addWidget(self.right_sidebar_buttons_host, 1)
+
+        self.right_sidebar.setWidget(container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_sidebar)
+        self.right_sidebar.setMinimumWidth(self.right_sidebar_expanded_width)
+        self.right_sidebar.setMaximumWidth(self.right_sidebar_expanded_width)
+
+    def toggle_right_sidebar(self):
+        self.right_sidebar_collapsed = not self.right_sidebar_collapsed
+        self.right_sidebar_buttons_host.setVisible(not self.right_sidebar_collapsed)
+        self.right_sidebar_title.setVisible(not self.right_sidebar_collapsed)
+        if self.right_sidebar_collapsed:
+            self.right_sidebar_toggle.setText(">")
+            self.right_sidebar.setMinimumWidth(52)
+            self.right_sidebar.setMaximumWidth(52)
+        else:
+            self.right_sidebar_toggle.setText("Collapse")
+            self.right_sidebar.setMinimumWidth(self.right_sidebar_expanded_width)
+            self.right_sidebar.setMaximumWidth(self.right_sidebar_expanded_width)
 
     def update_navigation(self):
         logged_in = self.state.is_logged_in
@@ -288,6 +387,10 @@ class MainWindow(QMainWindow):
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
             self.role_badge.setText("目前權限：未登入")
+        for key, button in self.right_nav_buttons.items():
+            action = self.actions.get(key)
+            if action:
+                button.setVisible(action.isVisible())
         self.update_apply_settings_button()
         self.update_active_action()
 
@@ -315,6 +418,9 @@ class MainWindow(QMainWindow):
         for key, action in self.actions.items():
             if action.isCheckable():
                 action.setChecked(key == active_key and action.isVisible())
+        for key, button in self.right_nav_buttons.items():
+            if button.isCheckable():
+                button.setChecked(key == active_key and button.isVisible())
         self.update_apply_settings_button()
 
     def update_apply_settings_button(self):
