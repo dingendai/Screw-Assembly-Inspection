@@ -104,7 +104,7 @@ class MonitorPage(QWidget):
         self.yolo_overlay_box.stateChanged.connect(self.toggle_yolo_overlay)
         self.geometry_overlay_box = QCheckBox("顯示幾何框選")
         self.geometry_overlay_box.stateChanged.connect(self.toggle_geometry_overlay)
-        self.continuous_button = QPushButton("連續檢測")
+        self.continuous_button = QPushButton("開始檢測")
         self.continuous_button.setCheckable(True)
         self.continuous_button.setObjectName("continuousButton")
         self.continuous_button.toggled.connect(self.toggle_continuous_detection)
@@ -535,7 +535,7 @@ class MonitorPage(QWidget):
 
     def update_detection_controls(self):
         self.continuous_button.setEnabled(True)
-        self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "連續檢測")
+        self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "開始檢測")
 
     def detect_current_frames(self):
         if not self.state.is_logged_in:
