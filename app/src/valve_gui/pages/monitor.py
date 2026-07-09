@@ -25,7 +25,7 @@ from valve_gui.inference_router import InferenceRouter
 from valve_gui.lock_geometry import draw_lock_geometry_config_overlay
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import AppState, InspectionRecord, InspectionTransaction
-from valve_gui.utils import hex_to_bgr
+from valve_gui.utils import hex_to_bgr, process_barcode_text
 from valve_gui.widgets import CameraView
 
 
@@ -413,13 +413,14 @@ class MonitorPage(QWidget):
 
     def _create_single_transaction(self):
         manual_part_id = self.part_id.text().strip()
+        processed_part_id = process_barcode_text(manual_part_id, self.state.barcode_processing) or manual_part_id
         return InspectionTransaction(
             transaction_id=f"TX-{datetime.now():%Y%m%d%H%M%S%f}",
             state="idle",
             operator_name=self.state.operator_name,
             operator_role=self.state.operator_role,
             session_id=self.state.current_work_session_id,
-            primary_barcode=manual_part_id,
+            primary_barcode=processed_part_id,
             barcode_source="manual" if manual_part_id else "",
             active_cameras=self._active_camera_summary(),
         )
@@ -608,7 +609,8 @@ class MonitorPage(QWidget):
         active = self._active_camera_summary()
         # 序號來源優先序：手動輸入 ▸ 自動編號。
         if self.part_id.text().strip():
-            part_id = self.part_id.text().strip()
+            raw_part_id = self.part_id.text().strip()
+            part_id = process_barcode_text(raw_part_id, self.state.barcode_processing) or raw_part_id
             source = "manual"
         else:
             part_id = f"PART-{datetime.now():%H%M%S}"

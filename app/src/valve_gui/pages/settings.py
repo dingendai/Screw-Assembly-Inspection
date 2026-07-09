@@ -942,6 +942,103 @@ class DisplaySettingsPage(QWidget):
             self.on_logout()
 
 
+class BarcodeSettingsPage(QWidget):
+    def __init__(self, state: AppState, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_logout = on_logout
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        layout.addWidget(self.build_barcode_group())
+        layout.addStretch()
+
+    def build_barcode_group(self):
+        group = QGroupBox("S7 條碼後處理設定")
+        group.setObjectName("displaySettingsGroup")
+        form = QGridLayout(group)
+
+        self.barcode_enabled = QCheckBox("啟用條碼後處理")
+        self.trim_leading_chars = QSpinBox()
+        self.trim_leading_chars.setRange(0, 128)
+        self.trim_leading_chars.setSuffix(" 碼")
+
+        self.prefix_input = QLineEdit()
+        self.prefix_input.setPlaceholderText("前綴，例如: GM-")
+        self.suffix_input = QLineEdit()
+        self.suffix_input.setPlaceholderText("後綴，例如: -A01")
+
+        self.sample_input = QLineEdit()
+        self.sample_input.setPlaceholderText("輸入範例條碼")
+        self.preview_label = QLabel("")
+        self.preview_label.setObjectName("mutedText")
+        self.preview_label.setWordWrap(True)
+
+        self.barcode_enabled.toggled.connect(self.update_preview)
+        self.trim_leading_chars.valueChanged.connect(self.update_preview)
+        self.prefix_input.textChanged.connect(self.update_preview)
+        self.suffix_input.textChanged.connect(self.update_preview)
+        self.sample_input.textChanged.connect(self.update_preview)
+
+        hint = QLabel("可設定掃碼後先刪除前幾碼，再在前面或後面加上固定字串。")
+        hint.setObjectName("mutedText")
+
+        form.addWidget(self.barcode_enabled, 0, 0, 1, 4)
+        form.addWidget(QLabel("刪除前幾碼"), 1, 0)
+        form.addWidget(self.trim_leading_chars, 1, 1)
+        form.addWidget(QLabel("前綴"), 2, 0)
+        form.addWidget(self.prefix_input, 2, 1, 1, 3)
+        form.addWidget(QLabel("後綴"), 3, 0)
+        form.addWidget(self.suffix_input, 3, 1, 1, 3)
+        form.addWidget(QLabel("範例條碼"), 4, 0)
+        form.addWidget(self.sample_input, 4, 1, 1, 3)
+        form.addWidget(QLabel("處理結果"), 5, 0)
+        form.addWidget(self.preview_label, 5, 1, 1, 3)
+        form.addWidget(hint, 6, 0, 1, 4)
+        self.refresh()
+        return group
+
+    def refresh(self):
+        config = self.state.barcode_processing
+        self.barcode_enabled.setChecked(getattr(config, "enabled", False))
+        self.trim_leading_chars.setValue(max(0, int(getattr(config, "trim_leading_chars", 0))))
+        self.prefix_input.setText(str(getattr(config, "prefix", "")))
+        self.suffix_input.setText(str(getattr(config, "suffix", "")))
+        self.update_preview()
+
+    def update_preview(self):
+        from valve_gui.utils import process_barcode_text
+
+        sample = self.sample_input.text().strip()
+        preview_config = type(
+            "BarcodePreviewConfig",
+            (),
+            {
+                "enabled": self.barcode_enabled.isChecked(),
+                "trim_leading_chars": self.trim_leading_chars.value(),
+                "prefix": self.prefix_input.text(),
+                "suffix": self.suffix_input.text(),
+            },
+        )()
+        result = process_barcode_text(sample, preview_config)
+        self.preview_label.setText(result or "尚未輸入範例條碼")
+
+    def save_barcode_settings(self):
+        self.state.barcode_processing.enabled = self.barcode_enabled.isChecked()
+        self.state.barcode_processing.trim_leading_chars = self.trim_leading_chars.value()
+        self.state.barcode_processing.prefix = self.prefix_input.text()
+        self.state.barcode_processing.suffix = self.suffix_input.text()
+        save_app_config(self.state)
+        QMessageBox.information(self, "設定已儲存", "條碼後處理設定已更新。")
+        return True
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
 class DecisionSettingsPage(QWidget):
     RULE_ROW_HEIGHT = 45
 

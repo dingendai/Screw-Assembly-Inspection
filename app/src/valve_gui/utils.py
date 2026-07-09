@@ -50,3 +50,17 @@ def verify_password(input_password: str, stored: str) -> bool:
     if stored.startswith("sha256:"):
         return hash_password(input_password) == stored
     return input_password == stored
+
+
+def process_barcode_text(value, config) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not getattr(config, "enabled", False):
+        return text
+    trim_count = max(0, int(getattr(config, "trim_leading_chars", 0)))
+    if trim_count:
+        text = text[trim_count:]
+    prefix = str(getattr(config, "prefix", ""))
+    suffix = str(getattr(config, "suffix", ""))
+    return f"{prefix}{text}{suffix}"

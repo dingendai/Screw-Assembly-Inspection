@@ -3,6 +3,7 @@ from dataclasses import asdict
 
 from valve_gui import paths
 from valve_gui.models import (
+    BarcodeProcessingConfig,
     DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
     DEFAULT_INSPECTION_CAMERA_COUNT,
     CameraConfig,
@@ -139,6 +140,18 @@ def load_app_config(state):
             yolo_model_colors=normalise_color_map(region_overlay.get("yolo_model_colors", {})),
         )
 
+    barcode_processing = data.get("barcode_processing", {})
+    if isinstance(barcode_processing, dict):
+        state.barcode_processing = BarcodeProcessingConfig(
+            enabled=bool(barcode_processing.get("enabled", state.barcode_processing.enabled)),
+            trim_leading_chars=max(
+                0,
+                int(barcode_processing.get("trim_leading_chars", state.barcode_processing.trim_leading_chars)),
+            ),
+            prefix=str(barcode_processing.get("prefix", state.barcode_processing.prefix)),
+            suffix=str(barcode_processing.get("suffix", state.barcode_processing.suffix)),
+        )
+
     cameras = data.get("inspection_cameras", [])
     if cameras:
         state.inspection_cameras = [
@@ -209,6 +222,7 @@ def save_app_config(state):
         "display": asdict(state.display),
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),
+        "barcode_processing": asdict(state.barcode_processing),
         "role_labels": state.role_labels,
         "role_passwords": _hashed_passwords(state.role_passwords),
         "role_permissions": {
