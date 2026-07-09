@@ -63,6 +63,7 @@ def process_barcode_text(value, config) -> str:
     if rules:
         rebuilt_parts = []
         cursor = 0
+        join_text = str(getattr(config, "join_text", ""))
         for rule in rules[:barcode_count]:
             if not getattr(rule, "enabled", True):
                 continue
@@ -77,12 +78,21 @@ def process_barcode_text(value, config) -> str:
             if end_index > len(text):
                 continue
             segment = text[start_index:end_index]
+            trim_leading = max(0, int(getattr(rule, "trim_leading_chars", 0)))
+            trim_trailing = max(0, int(getattr(rule, "trim_trailing_chars", 0)))
+            if trim_leading:
+                segment = segment[trim_leading:]
+            if trim_trailing:
+                segment = segment[:-trim_trailing] if trim_trailing < len(segment) else ""
+            if not segment:
+                cursor = end_index
+                continue
             rebuilt_parts.append(
                 f"{getattr(rule, 'prefix', '')}{segment}{getattr(rule, 'suffix', '')}"
             )
             cursor = end_index
         if rebuilt_parts:
-            return "".join(rebuilt_parts)
+            return join_text.join(rebuilt_parts)
     trim_count = max(0, int(getattr(config, "trim_leading_chars", 0)))
     if trim_count:
         text = text[trim_count:]

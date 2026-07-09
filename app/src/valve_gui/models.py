@@ -65,6 +65,8 @@ class RegionOverlayConfig:
 class BarcodeRuleConfig:
     start_token: str = ""
     length: int = 0
+    trim_leading_chars: int = 0
+    trim_trailing_chars: int = 0
     prefix: str = ""
     suffix: str = ""
     enabled: bool = True
@@ -74,6 +76,7 @@ class BarcodeRuleConfig:
 class BarcodeProcessingConfig:
     enabled: bool = False
     barcode_count: int = 1
+    join_text: str = ""
     rules: list[BarcodeRuleConfig] = field(default_factory=list)
     trim_leading_chars: int = 0
     prefix: str = ""

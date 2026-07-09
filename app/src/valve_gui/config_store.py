@@ -146,6 +146,7 @@ def load_app_config(state):
         state.barcode_processing = BarcodeProcessingConfig(
             enabled=bool(barcode_processing.get("enabled", state.barcode_processing.enabled)),
             barcode_count=max(1, int(barcode_processing.get("barcode_count", state.barcode_processing.barcode_count))),
+            join_text=str(barcode_processing.get("join_text", state.barcode_processing.join_text)),
             rules=normalise_barcode_rules(barcode_processing.get("rules", [])),
             trim_leading_chars=max(
                 0,
@@ -334,6 +335,8 @@ def normalise_barcode_rules(value):
             BarcodeRuleConfig(
                 start_token=str(item.get("start_token", "")).strip(),
                 length=max(0, int(item.get("length", 0))),
+                trim_leading_chars=max(0, int(item.get("trim_leading_chars", 0))),
+                trim_trailing_chars=max(0, int(item.get("trim_trailing_chars", 0))),
                 prefix=str(item.get("prefix", "")),
                 suffix=str(item.get("suffix", "")),
                 enabled=bool(item.get("enabled", True)),
