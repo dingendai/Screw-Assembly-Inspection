@@ -53,6 +53,8 @@ class DecisionConfig:
 @dataclass
 class RegionOverlayConfig:
     show_on_monitor: bool = True
+    show_yolo_on_monitor: bool = True
+    show_geometry_on_monitor: bool = True
     detection_color: str = "#22c55e"
     exclusion_color: str = "#ef4444"
     yolo_color: str = "#22c55e"

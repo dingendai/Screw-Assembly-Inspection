@@ -24,6 +24,8 @@ class InferenceResult:
     confidence: float
     note: str
     annotated_frames: dict[int, object] = field(default_factory=dict)
+    yolo_annotated_frames: dict[int, object] = field(default_factory=dict)
+    geometry_annotated_frames: dict[int, object] = field(default_factory=dict)
     camera_results: dict[int, dict] = field(default_factory=dict)
     roi_confirmations: dict[int, dict] = field(default_factory=dict)
     # Compatibility fields kept for older callers; automatic barcode decoding is disabled.
@@ -51,6 +53,8 @@ class InferenceRouter:
             if frame is not None
         }
         annotated_frames = {}
+        yolo_annotated_frames = {}
+        geometry_annotated_frames = {}
         camera_results = {}
         confidences = []
         notes = []
@@ -73,7 +77,7 @@ class InferenceRouter:
                 continue
 
             display_frame = frames_by_slot[camera.slot]
-            annotated = display_frame.copy()
+            yolo_annotated = display_frame.copy()
             camera_confidences = []
             camera_reasons = []
             camera_roi_detected: dict[int, bool] = {}
@@ -93,11 +97,11 @@ class InferenceRouter:
                         model_detection_regions,
                         regions_for_model(camera.exclusion_regions, model.name),
                     )
-                annotated, confidence, object_count, note, yolo_boxes_xyxy, _ = self.run_single_model(
+                yolo_annotated, confidence, object_count, note, yolo_boxes_xyxy, _ = self.run_single_model(
                     inference_frame,
                     camera.slot,
                     model,
-                    display_frame=annotated,
+                    display_frame=yolo_annotated,
                 )
                 if getattr(camera, "region_detection_enabled", False) and model_detection_regions:
                     h, w = display_frame.shape[:2]
@@ -131,6 +135,7 @@ class InferenceRouter:
                 if detected:
                     all_roi_votes[rid]["votes"] += 1
 
+            geometry_annotated = display_frame.copy()
             geometry_regions = [
                 region
                 for region in getattr(camera, "lock_geometry_regions", [])
@@ -139,7 +144,9 @@ class InferenceRouter:
             if getattr(camera, "lock_geometry_enabled", False):
                 if geometry_regions:
                     geometry_analyses = analyze_lock_geometry_regions(display_frame, geometry_regions)
-                    annotated = draw_lock_geometry_overlay(annotated, geometry_analyses, show_result=True)
+                    geometry_annotated = draw_lock_geometry_overlay(
+                        geometry_annotated, geometry_analyses, show_result=True
+                    )
                     geometry_failed = False
                     for analysis in geometry_analyses:
                         result = analysis.result
@@ -151,7 +158,13 @@ class InferenceRouter:
                 else:
                     camera_reasons.append("幾何檢測已啟用，但尚未設定啟用中的幾何 ROI")
 
+            annotated = yolo_annotated.copy()
+            if getattr(camera, "lock_geometry_enabled", False) and geometry_regions:
+                geometry_analyses = analyze_lock_geometry_regions(display_frame, geometry_regions)
+                annotated = draw_lock_geometry_overlay(annotated, geometry_analyses, show_result=True)
             annotated_frames[camera.slot] = annotated
+            yolo_annotated_frames[camera.slot] = yolo_annotated
+            geometry_annotated_frames[camera.slot] = geometry_annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
                 "result": "NG" if camera.slot in failed_slots else "PASS",
@@ -175,6 +188,8 @@ class InferenceRouter:
                 0.0,
                 "Missing model assignment: " + ", ".join(missing),
                 annotated_frames,
+                yolo_annotated_frames,
+                geometry_annotated_frames,
                 camera_results,
                 roi_confirmations,
                 raw_frames=raw_frames,
@@ -187,6 +202,8 @@ class InferenceRouter:
             confidence,
             "；".join(notes),
             annotated_frames,
+            yolo_annotated_frames,
+            geometry_annotated_frames,
             camera_results,
             roi_confirmations,
             raw_frames=raw_frames,

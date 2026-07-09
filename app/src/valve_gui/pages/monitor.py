@@ -62,6 +62,8 @@ class MonitorPage(QWidget):
         self.single_views = {}
         self.last_frames = {}
         self.latest_annotated_frames = {}
+        self.latest_yolo_annotated_frames = {}
+        self.latest_geometry_annotated_frames = {}
         self.continuous_detection = False
         self.detection_executor = ThreadPoolExecutor(max_workers=1)
         self.pending_detection_future = None
@@ -98,6 +100,10 @@ class MonitorPage(QWidget):
         self.roi_section.setVisible(False)
         self.region_overlay_box = QCheckBox("顯示指定範圍")
         self.region_overlay_box.stateChanged.connect(self.toggle_region_overlay)
+        self.yolo_overlay_box = QCheckBox("顯示影像辨識框選")
+        self.yolo_overlay_box.stateChanged.connect(self.toggle_yolo_overlay)
+        self.geometry_overlay_box = QCheckBox("顯示幾何框選")
+        self.geometry_overlay_box.stateChanged.connect(self.toggle_geometry_overlay)
         self.continuous_button = QPushButton("連續檢測")
         self.continuous_button.setCheckable(True)
         self.continuous_button.setObjectName("continuousButton")
@@ -119,36 +125,26 @@ class MonitorPage(QWidget):
         self.inspect_button = QPushButton("單次檢測")
         self._inspect_button_default_text = self.inspect_button.text()
         self.inspect_button.clicked.connect(self.inspect_once)
+        self.inspect_button.setVisible(False)
 
         side = QGroupBox("檢測狀態")
         side_layout = QVBoxLayout(side)
+        side_layout.addWidget(self.result_label)
+        action_row = QHBoxLayout()
+        action_row.setSpacing(8)
+        action_row.addWidget(self.continuous_button)
+        action_row.addWidget(start_button)
+        action_row.addWidget(stop_button)
+        side_layout.addLayout(action_row)
         side_layout.addWidget(self.region_overlay_box)
+        side_layout.addWidget(self.yolo_overlay_box)
+        side_layout.addWidget(self.geometry_overlay_box)
         side_layout.addWidget(QLabel("目前受測物件"))
         side_layout.addWidget(self.part_id)
-        side_layout.addWidget(self.result_label)
         side_layout.addWidget(QLabel("相機檢測狀態"))
         side_layout.addWidget(self.reason_list)
         side_layout.addWidget(self.roi_section)
         side_layout.addStretch()
-
-        bottom_controls = QVBoxLayout()
-        bottom_controls.setSpacing(8)
-
-        detection_actions = QHBoxLayout()
-        detection_actions.setSpacing(8)
-        detection_actions.addWidget(self.inspect_button)
-        detection_actions.addWidget(self.continuous_button)
-
-        camera_actions = QHBoxLayout()
-        camera_actions.setSpacing(8)
-        camera_actions.addWidget(start_button)
-        camera_actions.addWidget(stop_button)
-
-        bottom_controls.addLayout(detection_actions)
-        side_layout.addSpacing(8)
-        bottom_controls.addLayout(camera_actions)
-
-        side_layout.addLayout(bottom_controls)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addWidget(self.monitor_tabs, 6)
@@ -158,6 +154,12 @@ class MonitorPage(QWidget):
         self.region_overlay_box.blockSignals(True)
         self.region_overlay_box.setChecked(self.state.region_overlay.show_on_monitor)
         self.region_overlay_box.blockSignals(False)
+        self.yolo_overlay_box.blockSignals(True)
+        self.yolo_overlay_box.setChecked(getattr(self.state.region_overlay, "show_yolo_on_monitor", True))
+        self.yolo_overlay_box.blockSignals(False)
+        self.geometry_overlay_box.blockSignals(True)
+        self.geometry_overlay_box.setChecked(getattr(self.state.region_overlay, "show_geometry_on_monitor", True))
+        self.geometry_overlay_box.blockSignals(False)
         while self.grid.count():
             item = self.grid.takeAt(0)
             widget = item.widget()
@@ -223,6 +225,8 @@ class MonitorPage(QWidget):
             self._restore_inspect_button()
         self.detection_executor.shutdown(wait=False)
         self.latest_annotated_frames = {}
+        self.latest_yolo_annotated_frames = {}
+        self.latest_geometry_annotated_frames = {}
         self._last_record_time = 0.0
         if reset_continuous:
             self.continuous_button.blockSignals(True)
@@ -258,7 +262,7 @@ class MonitorPage(QWidget):
             # Model input keeps the camera-provided resolution. GUI compression
             # happens only after inference/overlay rendering.
             self.last_frames[config.slot] = model_frame
-            display_frame = self.latest_annotated_frames.get(config.slot) if self.continuous_detection else None
+            display_frame = self.compose_detection_display_frame(config.slot, model_frame) if self.continuous_detection else None
             self.set_monitor_frame(
                 config,
                 self.display_frame_for(config, display_frame if display_frame is not None else model_frame),
@@ -289,9 +293,31 @@ class MonitorPage(QWidget):
         self.state.region_overlay.show_on_monitor = self.region_overlay_box.isChecked()
         save_app_config(self.state)
 
+    def toggle_yolo_overlay(self):
+        self.state.region_overlay.show_yolo_on_monitor = self.yolo_overlay_box.isChecked()
+        save_app_config(self.state)
+
+    def toggle_geometry_overlay(self):
+        self.state.region_overlay.show_geometry_on_monitor = self.geometry_overlay_box.isChecked()
+        save_app_config(self.state)
+
+    def compose_detection_display_frame(self, slot, fallback_frame):
+        show_yolo = getattr(self.state.region_overlay, "show_yolo_on_monitor", True)
+        show_geometry = getattr(self.state.region_overlay, "show_geometry_on_monitor", True)
+        if show_yolo and show_geometry:
+            return self.latest_annotated_frames.get(slot, fallback_frame)
+        if show_yolo:
+            return self.latest_yolo_annotated_frames.get(slot, fallback_frame)
+        if show_geometry:
+            return self.latest_geometry_annotated_frames.get(slot, fallback_frame)
+        return fallback_frame
+
     def frame_with_region_overlay(self, config, frame):
         annotated = frame
         if (
+            not self.continuous_detection
+            and getattr(self.state.region_overlay, "show_geometry_on_monitor", True)
+            and
             getattr(config, "lock_geometry_enabled", False)
             and getattr(config, "lock_geometry_regions", None)
         ):
@@ -496,15 +522,18 @@ class MonitorPage(QWidget):
             if not self.sources:
                 self.start()
             self.latest_annotated_frames = {}
+            self.latest_yolo_annotated_frames = {}
+            self.latest_geometry_annotated_frames = {}
             self.detection_timer.start(500)
         else:
             self.detection_timer.stop()
             self.result_timer.stop()
             self.pending_detection_future = None
             self.latest_annotated_frames = {}
+            self.latest_yolo_annotated_frames = {}
+            self.latest_geometry_annotated_frames = {}
 
     def update_detection_controls(self):
-        self.inspect_button.setVisible(not self.continuous_detection)
         self.continuous_button.setEnabled(True)
         self.continuous_button.setText("停止連續檢測" if self.continuous_detection else "連續檢測")
 
@@ -551,17 +580,21 @@ class MonitorPage(QWidget):
         self.set_result(inference.result, inference.confidence)
         self.set_ng_reason(inference)
         self.set_roi_confirmations(inference.roi_confirmations)
-        self.show_annotated_frames(inference.annotated_frames)
+        self.show_annotated_frames(inference)
         if record or self.continuous_detection:
             self.record_detection(inference)
 
-    def show_annotated_frames(self, annotated_frames):
+    def show_annotated_frames(self, inference):
+        annotated_frames = getattr(inference, "annotated_frames", {})
         if self.continuous_detection:
             self.latest_annotated_frames = dict(annotated_frames)
+            self.latest_yolo_annotated_frames = dict(getattr(inference, "yolo_annotated_frames", {}))
+            self.latest_geometry_annotated_frames = dict(getattr(inference, "geometry_annotated_frames", {}))
         for slot, frame in annotated_frames.items():
             config = self._config_by_slot.get(slot)
             if config:
-                self.set_monitor_frame(config, self.display_frame_for(config, frame))
+                display_frame = self.compose_detection_display_frame(slot, frame) if self.continuous_detection else frame
+                self.set_monitor_frame(config, self.display_frame_for(config, display_frame))
 
     def record_detection(self, inference):
         if self.continuous_detection:

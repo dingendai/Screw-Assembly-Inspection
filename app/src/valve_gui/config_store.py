@@ -118,6 +118,12 @@ def load_app_config(state):
     if isinstance(region_overlay, dict):
         state.region_overlay = RegionOverlayConfig(
             show_on_monitor=bool(region_overlay.get("show_on_monitor", state.region_overlay.show_on_monitor)),
+            show_yolo_on_monitor=bool(
+                region_overlay.get("show_yolo_on_monitor", state.region_overlay.show_yolo_on_monitor)
+            ),
+            show_geometry_on_monitor=bool(
+                region_overlay.get("show_geometry_on_monitor", state.region_overlay.show_geometry_on_monitor)
+            ),
             detection_color=normalise_color(
                 region_overlay.get("detection_color", state.region_overlay.detection_color),
                 state.region_overlay.detection_color,
