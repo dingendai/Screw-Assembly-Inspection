@@ -375,12 +375,11 @@ class LockGeometryCameraEditor(QWidget):
         self.top_spin = self.region_value_spin()
         self.right_spin = self.region_value_spin()
         self.bottom_spin = self.region_value_spin()
-        self.rotation_spin = QDoubleSpinBox()
-        self.rotation_spin.setRange(-180.0, 180.0)
-        self.rotation_spin.setSingleStep(1.0)
-        self.rotation_spin.setDecimals(1)
+        self.rotation_spin = QComboBox()
         self.rotation_spin.setMinimumWidth(90)
-        self.rotation_spin.valueChanged.connect(self.save_form_to_region)
+        for angle in ("0", "90", "180", "270"):
+            self.rotation_spin.addItem(angle, float(angle))
+        self.rotation_spin.currentIndexChanged.connect(self.save_form_to_region)
         form.addRow("名稱", self.name_edit)
         form.addRow("啟動監視計算", self.region_enabled)
         form.addRow("左 / 上邊界", self.two_spin_row(self.left_spin, self.top_spin))
@@ -614,7 +613,12 @@ class LockGeometryCameraEditor(QWidget):
             self.top_spin.setValue(y)
             self.right_spin.setValue(min(1.0, x + w))
             self.bottom_spin.setValue(min(1.0, y + h))
-            self.rotation_spin.setValue(float(region.get("rotation_degrees", 0.0)))
+            rotation_value = float(region.get("rotation_degrees", 0.0))
+            rotation_index = self.rotation_spin.findData(rotation_value)
+            if rotation_index < 0:
+                self.rotation_spin.addItem(str(int(rotation_value)), rotation_value)
+                rotation_index = self.rotation_spin.findData(rotation_value)
+            self.rotation_spin.setCurrentIndex(max(0, rotation_index))
             self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(region.get("mode", "both"))))
             self.gap_spin.setValue(float(region.get("gap_threshold_px", 6)))
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
@@ -682,7 +686,7 @@ class LockGeometryCameraEditor(QWidget):
         region["y"] = top
         region["w"] = right - left
         region["h"] = bottom - top
-        region["rotation_degrees"] = self.rotation_spin.value()
+        region["rotation_degrees"] = float(self.rotation_spin.currentData() or 0.0)
         region["mode"] = self.mode_combo.currentData() or "both"
         region["gap_threshold_px"] = int(self.gap_spin.value())
         region["dark_threshold_ratio"] = self.dark_ratio_spin.value()
