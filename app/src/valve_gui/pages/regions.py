@@ -227,14 +227,14 @@ class CameraRegionEditor(QWidget):
         side_layout.addLayout(mode_buttons)
 
         self.region_table = QTableWidget(0, 7)
-        self.region_table.setHorizontalHeaderLabels(["類型", "ROI 編號", "模型", "X", "Y", "W", "H"])
+        self.region_table.setHorizontalHeaderLabels(["類型", "群組編號", "模型", "X", "Y", "W", "H"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
         side_layout.addWidget(self.region_table, 1)
 
         roi_id_row = QHBoxLayout()
-        roi_id_row.addWidget(QLabel("ROI 編號（0=不共用）"))
+        roi_id_row.addWidget(QLabel("群組編號（0=不共用）"))
         self.roi_id_spin = QDoubleSpinBox()
         self.roi_id_spin.setRange(0.0, 99.0)
         self.roi_id_spin.setSingleStep(1.0)
