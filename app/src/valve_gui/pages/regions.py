@@ -204,7 +204,7 @@ class CameraRegionEditor(QWidget):
         side = QGroupBox("已標示區域")
         side.setObjectName("regionSidePanel")
         side_layout = QVBoxLayout(side)
-        self.enable_box = QCheckBox("啟用本相機範圍辨識")
+        self.enable_box = QCheckBox("啟動監視計算")
         self.enable_box.setChecked(getattr(self.camera_config, "region_detection_enabled", False))
         self.enable_box.stateChanged.connect(self.toggle_region_detection)
         side_layout.addWidget(self.enable_box)
