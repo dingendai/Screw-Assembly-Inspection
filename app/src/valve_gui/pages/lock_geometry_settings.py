@@ -197,9 +197,18 @@ class LockGeometryCanvas(QLabel):
         local = QRect(-rect.width() // 2, -rect.height() // 2, rect.width(), rect.height())
         painter.setPen(QPen(color, 2))
         painter.drawRect(local)
-        self.draw_line(painter, local, region.get("split_line_y"), QColor("#999999"))
+        analysis = self.region_analysis_by_id.get(id(region))
+        split_ratio = region.get("split_line_y")
+        base_ratio = region.get("base_line_y")
+        if analysis:
+            roi_height = max(1, analysis.region.h)
+            if split_ratio is None and analysis.result.split_line_y is not None:
+                split_ratio = analysis.result.split_line_y / roi_height
+            if base_ratio is None and analysis.result.base_line_y is not None:
+                base_ratio = analysis.result.base_line_y / roi_height
+        self.draw_line(painter, local, split_ratio, QColor("#999999"))
         self.draw_line(painter, local, region.get("red_line_y"), QColor("#ef4444"))
-        self.draw_line(painter, local, region.get("base_line_y"), QColor("#eab308"))
+        self.draw_line(painter, local, base_ratio, QColor("#eab308"))
         self.draw_detected_edge_lines(painter, local, region)
         painter.restore()
 
