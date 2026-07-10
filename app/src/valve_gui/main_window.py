@@ -40,7 +40,7 @@ from valve_gui.pages.settings import (
     SettingsPage,
 )
 from valve_gui.pages.users import UserManagementPage
-from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, RECORD_EVENTS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_HISTORY,
@@ -55,6 +55,7 @@ from valve_gui.permissions import (
 )
 from valve_gui.styles import apply_styles
 from valve_gui.storage import (
+    append_record_event_csv,
     append_record_csv,
     read_sessions_csv,
     save_qc_object_snapshot,
@@ -906,6 +907,7 @@ class MainWindow(QMainWindow):
         upsert_record_list(self.state.records, record)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
+        append_record_event_csv(RECORD_EVENTS_LOG_PATH, record)
         # SQLite 為歷史/品管查詢/統計的單一真相；CSV 暫時保留作過渡。
         inspection_id = None
         if record.result in ("PASS", "NG") and record.part_id.strip():

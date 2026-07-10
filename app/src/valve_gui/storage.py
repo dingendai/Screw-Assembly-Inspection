@@ -111,6 +111,28 @@ def append_record_csv(path, record):
         writer.writerows(rows)
 
 
+def append_record_event_csv(path, record):
+    path = Path(path)
+    record_row = {
+        "timestamp": record.timestamp,
+        "operator_name": record.operator_name,
+        "operator_role": record.operator_role,
+        "result": record.result,
+        "part_id": record.part_id,
+        "active_cameras": record.active_cameras,
+        "confidence": record.confidence,
+        "note": record.note,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not path.exists() or path.stat().st_size == 0
+    encoding = "utf-8-sig" if write_header else "utf-8"
+    with open(path, "a", newline="", encoding=encoding) as file:
+        writer = csv.DictWriter(file, fieldnames=_RECORD_HEADER, extrasaction="ignore")
+        if write_header:
+            writer.writeheader()
+        writer.writerow(record_row)
+
+
 def upsert_record_list(records, record):
     record_date = (record.timestamp or "")[:10]
     part_id = (record.part_id or "").strip()

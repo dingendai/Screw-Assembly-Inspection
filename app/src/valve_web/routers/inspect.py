@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends
 from valve_gui import qc_db
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import InspectionRecord
-from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, RECORD_EVENTS_LOG_PATH
 from valve_gui.permissions import PERMISSION_OPEN_MONITOR
-from valve_gui.storage import append_record_csv, save_qc_object_snapshot, upsert_record_list
+from valve_gui.storage import append_record_csv, append_record_event_csv, save_qc_object_snapshot, upsert_record_list
 
 from valve_web.deps import require_permission
 from valve_web.overlay import encode_jpeg
@@ -34,6 +34,7 @@ def _add_record(ctx: WebContext, record: InspectionRecord, *, raw_frames=None, a
     upsert_record_list(ctx.state.records, record)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     append_record_csv(RECORDS_LOG_PATH, record)
+    append_record_event_csv(RECORD_EVENTS_LOG_PATH, record)
     # SQLite 為品管查詢/統計的單一真相；CSV 暫時保留作過渡。
     inspection_id = None
     if record.result in ("PASS", "NG") and record.part_id.strip():
