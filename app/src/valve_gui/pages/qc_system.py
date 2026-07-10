@@ -54,6 +54,13 @@ class QcSystemPage(QWidget):
         self.record_mode_combo.addItem("每次判定記錄一次", "per_result")
         form.addRow("記錄方式", self.record_mode_combo)
 
+        self.qc_record_filter_combo = QComboBox()
+        self.qc_record_filter_combo.addItem("PASS / NG 都記錄", "all")
+        self.qc_record_filter_combo.addItem("只記錄 NG", "ng_only")
+        self.qc_record_filter_combo.addItem("只記錄 PASS", "pass_only")
+        self.qc_record_filter_combo.addItem("都不記錄", "none")
+        form.addRow("檢測結果記錄", self.qc_record_filter_combo)
+
         record_hint = QLabel("連續記錄會在連續檢測期間持續寫入；每次判定記錄一次會在同一工件號碼與同一結果下只記一次，但檢測不會自動停止。")
         record_hint.setObjectName("mutedText")
         record_hint.setWordWrap(True)
@@ -70,6 +77,9 @@ class QcSystemPage(QWidget):
         record_mode = getattr(self.state.inspection_workflow, "record_mode", "continuous")
         match = self.record_mode_combo.findData(record_mode)
         self.record_mode_combo.setCurrentIndex(match if match >= 0 else 0)
+        qc_record_filter = getattr(self.state.inspection_workflow, "qc_record_filter", "all")
+        match = self.qc_record_filter_combo.findData(qc_record_filter)
+        self.qc_record_filter_combo.setCurrentIndex(match if match >= 0 else 0)
 
     def browse_qc_output_dir(self):
         current = self.qc_output_dir_input.text().strip()
@@ -88,6 +98,7 @@ class QcSystemPage(QWidget):
 
         self.state.qc_output_dir = str(output_dir)
         self.state.inspection_workflow.record_mode = str(self.record_mode_combo.currentData())
+        self.state.inspection_workflow.qc_record_filter = str(self.qc_record_filter_combo.currentData())
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()

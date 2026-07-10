@@ -175,10 +175,18 @@ def load_app_config_from_path(state, config_path):
         ).strip().lower()
         if record_mode not in {"continuous", "per_result"}:
             record_mode = "continuous"
+        qc_record_filter = str(
+            inspection_workflow.get(
+                "qc_record_filter", getattr(state.inspection_workflow, "qc_record_filter", "all")
+            )
+        ).strip().lower()
+        if qc_record_filter not in {"all", "pass_only", "ng_only", "none"}:
+            qc_record_filter = "all"
         state.inspection_workflow = InspectionWorkflowConfig(
             mode=mode,
             delay_seconds=max(1, int(inspection_workflow.get("delay_seconds", state.inspection_workflow.delay_seconds))),
             record_mode=record_mode,
+            qc_record_filter=qc_record_filter,
         )
 
     cameras = data.get("inspection_cameras", [])

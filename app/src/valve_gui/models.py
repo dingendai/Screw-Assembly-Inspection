@@ -89,6 +89,7 @@ class InspectionWorkflowConfig:
     mode: str = "delay"
     delay_seconds: int = 3
     record_mode: str = "continuous"
+    qc_record_filter: str = "all"
 
 
 @dataclass

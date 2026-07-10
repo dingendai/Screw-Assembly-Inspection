@@ -896,6 +896,13 @@ class MainWindow(QMainWindow):
         camera_results=None,
         roi_confirmations=None,
     ):
+        qc_record_filter = getattr(self.state.inspection_workflow, "qc_record_filter", "all")
+        if qc_record_filter == "none":
+            return
+        if qc_record_filter == "pass_only" and record.result != "PASS":
+            return
+        if qc_record_filter == "ng_only" and record.result != "NG":
+            return
         upsert_record_list(self.state.records, record)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
