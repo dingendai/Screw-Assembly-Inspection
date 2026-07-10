@@ -190,15 +190,11 @@ class InferenceRouter:
         configured_group_ids = {
             rid
             for camera in self.state.inspection_cameras
+            if getattr(camera, "enabled", False) and getattr(camera, "region_detection_enabled", False)
             for region in getattr(camera, "detection_regions", [])
             for rid in [region.get("roi_id")]
             if isinstance(rid, int) and rid > 0
         }
-        configured_group_ids.update(
-            int(key)
-            for key in getattr(self.state.decision, "group_rules", {}).keys()
-            if str(key).isdigit()
-        )
         for rid in sorted(configured_group_ids):
             info = all_roi_votes.get(rid, {"votes": 0, "total": 0, "camera_slots": []})
             rule = self.group_rule_for(rid)

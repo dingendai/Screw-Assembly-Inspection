@@ -1480,6 +1480,8 @@ class DecisionSettingsPage(QWidget):
     def collect_group_definitions(self):
         groups = {}
         for camera in enabled_inspection_cameras(self.state):
+            if not getattr(camera, "region_detection_enabled", False):
+                continue
             for region in getattr(camera, "detection_regions", []):
                 rid = region.get("roi_id")
                 if not isinstance(rid, int) or rid <= 0:
