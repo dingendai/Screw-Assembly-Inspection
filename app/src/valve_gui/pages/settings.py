@@ -327,7 +327,7 @@ class SettingsPage(QWidget):
             return
         self.persist_camera_settings()
         controls = self.rows[slot - 1]
-        _, _, _, _, _, _, _, auto_focus, manual_focus_mode, manual_focus, _ = controls
+        _, _, _, _, _, auto_focus, manual_focus_mode, manual_focus, _ = controls
         focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
         manual_focus_value = manual_focus.value()
         for source_slot, source in self.preview_sources:
