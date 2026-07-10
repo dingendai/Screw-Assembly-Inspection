@@ -157,7 +157,7 @@ def save_qc_object_snapshot(
             raw_files[str(slot)] = file_name
 
     for slot, frame in sorted((annotated_frames or {}).items()):
-        file_name = f"camera_{slot}_annotated.jpg"
+        file_name = f"c{slot}_{barcode_dir_name}_annotated.jpg"
         path = object_dir / file_name
         if cv2.imwrite(str(path), frame):
             annotated_files[str(slot)] = file_name
