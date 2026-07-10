@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QCheckBox,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -106,6 +107,10 @@ class MonitorPage(QWidget):
         self.reason_layout = QVBoxLayout(self.reason_list)
         self.reason_layout.setContentsMargins(0, 0, 0, 0)
         self.reason_layout.setSpacing(8)
+        self.reason_scroll = QScrollArea()
+        self.reason_scroll.setWidgetResizable(True)
+        self.reason_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.reason_scroll.setWidget(self.reason_list)
         self.roi_section = QGroupBox("ROI 物件確認狀態")
         self.roi_section_layout = QVBoxLayout(self.roi_section)
         self.roi_section_layout.setContentsMargins(8, 8, 8, 8)
@@ -166,7 +171,7 @@ class MonitorPage(QWidget):
         barcode_row.addWidget(self.processed_part_id, 1)
         side_layout.addLayout(barcode_row)
         side_layout.addWidget(QLabel("相機檢測狀態"))
-        side_layout.addWidget(self.reason_list)
+        side_layout.addWidget(self.reason_scroll, 1)
         side_layout.addWidget(self.roi_section)
         side_layout.addStretch()
         layout = QHBoxLayout(self)
