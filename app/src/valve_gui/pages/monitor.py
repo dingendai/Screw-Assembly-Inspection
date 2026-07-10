@@ -611,6 +611,9 @@ class MonitorPage(QWidget):
             for config, _ in self.views
         )
 
+    def _record_mode(self):
+        return getattr(self.state.inspection_workflow, "record_mode", "continuous")
+
     def _on_single_detection_done(self, inference):
         if self.current_transaction:
             self.current_transaction.state = "reviewing"
@@ -730,10 +733,13 @@ class MonitorPage(QWidget):
 
     def record_detection(self, inference):
         if self.continuous_detection:
-            now = time.time()
-            if inference.result != "NG" and now - self._last_record_time < 5.0:
-                return
-            self._last_record_time = now
+            if self._record_mode() == "per_result":
+                self._last_record_time = time.time()
+            else:
+                now = time.time()
+                if inference.result != "NG" and now - self._last_record_time < 5.0:
+                    return
+                self._last_record_time = now
         active = self._active_camera_summary()
         # 序號來源優先序：手動輸入 ▸ 自動編號。
         if self.part_id.text().strip():
@@ -761,6 +767,8 @@ class MonitorPage(QWidget):
             camera_results=getattr(inference, "camera_results", {}),
             roi_confirmations=getattr(inference, "roi_confirmations", {}),
         )
+        if self.continuous_detection and self._record_mode() == "per_result":
+            self.continuous_button.setChecked(False)
 
     def set_result(self, result, confidence):
         self.result_label.setText(result)

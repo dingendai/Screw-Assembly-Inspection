@@ -170,9 +170,15 @@ def load_app_config_from_path(state, config_path):
         mode = str(inspection_workflow.get("mode", state.inspection_workflow.mode)).strip().lower()
         if mode not in {"delay", "confirm", "instant"}:
             mode = "delay"
+        record_mode = str(
+            inspection_workflow.get("record_mode", getattr(state.inspection_workflow, "record_mode", "continuous"))
+        ).strip().lower()
+        if record_mode not in {"continuous", "per_result"}:
+            record_mode = "continuous"
         state.inspection_workflow = InspectionWorkflowConfig(
             mode=mode,
             delay_seconds=max(1, int(inspection_workflow.get("delay_seconds", state.inspection_workflow.delay_seconds))),
+            record_mode=record_mode,
         )
 
     cameras = data.get("inspection_cameras", [])

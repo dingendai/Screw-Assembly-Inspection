@@ -109,6 +109,7 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
     ctx.cameras.ensure_started(ctx.state)
     frames = ctx.cameras.frames_by_slot()
     inference = ctx.router.run(frames)
+    record_mode = getattr(ctx.state.inspection_workflow, "record_mode", "continuous")
     if part_id.strip():
         effective_part_id = part_id
         source = "manual"
@@ -117,13 +118,15 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
         source = "auto"
     if record:
         do_record = True
-        if throttle and inference.result != "NG":
+        if throttle and record_mode == "continuous" and inference.result != "NG":
             now = time.time()
             last = getattr(ctx, "_last_record_time", 0.0)
             if now - last < 5.0:
                 do_record = False
             else:
                 ctx._last_record_time = now
+        elif throttle and record_mode == "per_result":
+            ctx._last_record_time = time.time()
         if do_record:
             _add_record(
                 ctx,
@@ -132,6 +135,9 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
                 annotated_frames=getattr(inference, "annotated_frames", {}),
                 inference=inference,
             )
+            if throttle and record_mode == "per_result":
+                ctx.continuous = False
+                _continuous_stop.set()
     payload = _result_payload(inference, include_images=include_images)
     with ctx.lock:
         ctx.latest_result = payload

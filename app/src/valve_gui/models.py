@@ -88,6 +88,7 @@ class BarcodeProcessingConfig:
 class InspectionWorkflowConfig:
     mode: str = "delay"
     delay_seconds: int = 3
+    record_mode: str = "continuous"
 
 
 @dataclass
