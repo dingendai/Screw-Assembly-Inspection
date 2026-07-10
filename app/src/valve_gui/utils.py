@@ -50,3 +50,52 @@ def verify_password(input_password: str, stored: str) -> bool:
     if stored.startswith("sha256:"):
         return hash_password(input_password) == stored
     return input_password == stored
+
+
+def process_barcode_text(value, config) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not getattr(config, "enabled", False):
+        return text
+    rules = list(getattr(config, "rules", []) or [])
+    barcode_count = max(1, int(getattr(config, "barcode_count", len(rules) or 1)))
+    if rules:
+        rebuilt_parts = []
+        cursor = 0
+        join_text = str(getattr(config, "join_text", ""))
+        for rule in rules[:barcode_count]:
+            if not getattr(rule, "enabled", True):
+                continue
+            start_token = str(getattr(rule, "start_token", "")).strip()
+            length = max(0, int(getattr(rule, "length", 0)))
+            if not start_token or length <= 0:
+                continue
+            start_index = text.find(start_token, cursor)
+            if start_index < 0:
+                continue
+            end_index = start_index + length
+            if end_index > len(text):
+                continue
+            segment = text[start_index:end_index]
+            trim_leading = max(0, int(getattr(rule, "trim_leading_chars", 0)))
+            trim_trailing = max(0, int(getattr(rule, "trim_trailing_chars", 0)))
+            if trim_leading:
+                segment = segment[trim_leading:]
+            if trim_trailing:
+                segment = segment[:-trim_trailing] if trim_trailing < len(segment) else ""
+            if not segment:
+                cursor = end_index
+                continue
+            rebuilt_parts.append(
+                f"{getattr(rule, 'prefix', '')}{segment}{getattr(rule, 'suffix', '')}"
+            )
+            cursor = end_index
+        if rebuilt_parts:
+            return join_text.join(rebuilt_parts)
+    trim_count = max(0, int(getattr(config, "trim_leading_chars", 0)))
+    if trim_count:
+        text = text[trim_count:]
+    prefix = str(getattr(config, "prefix", ""))
+    suffix = str(getattr(config, "suffix", ""))
+    return f"{prefix}{text}{suffix}"

@@ -1,5 +1,6 @@
-import sys
+import json
 import os
+import sys
 from pathlib import Path
 
 
@@ -24,7 +25,8 @@ else:
     DEFAULT_DATA_DIR = APP_DIR / "inspection_data"
     MODEL_DIR = _THIS_FILE.parent.parent.parent.parent / "models"
 
-_qc_output_dir = DEFAULT_DATA_DIR
+QC_OUTPUT_BOOTSTRAP_PATH = DEFAULT_DATA_DIR / "qc_output_bootstrap.json"
+LEGACY_APP_CONFIG_PATH = DEFAULT_DATA_DIR / "app_config.json"
 
 
 def resolve_qc_output_dir(value: str | Path | None = None) -> Path:
@@ -34,9 +36,32 @@ def resolve_qc_output_dir(value: str | Path | None = None) -> Path:
     return Path(text).expanduser().resolve()
 
 
-def set_qc_output_dir(value: str | Path | None) -> Path:
+def _load_bootstrap_qc_output_dir() -> Path:
+    if QC_OUTPUT_BOOTSTRAP_PATH.exists():
+        try:
+            data = json.loads(QC_OUTPUT_BOOTSTRAP_PATH.read_text(encoding="utf-8"))
+            value = data.get("qc_output_dir")
+            if str(value or "").strip():
+                return resolve_qc_output_dir(value)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return DEFAULT_DATA_DIR
+
+
+def _save_bootstrap_qc_output_dir(value: str | Path | None) -> None:
+    QC_OUTPUT_BOOTSTRAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(QC_OUTPUT_BOOTSTRAP_PATH, "w", encoding="utf-8") as file:
+        json.dump({"qc_output_dir": str(resolve_qc_output_dir(value))}, file, ensure_ascii=False, indent=2)
+
+
+_qc_output_dir = _load_bootstrap_qc_output_dir()
+
+
+def set_qc_output_dir(value: str | Path | None, *, persist: bool = True) -> Path:
     global _qc_output_dir
     _qc_output_dir = resolve_qc_output_dir(value)
+    if persist:
+        _save_bootstrap_qc_output_dir(_qc_output_dir)
     return _qc_output_dir
 
 
@@ -76,10 +101,9 @@ DATA_DIR = RuntimePath(get_qc_output_dir)
 PHOTOS_DIR = RuntimePath(lambda: get_qc_output_dir() / "operator_photos")
 SESSION_LOG_PATH = RuntimePath(lambda: get_qc_output_dir() / "operator_sessions.csv")
 RECORDS_LOG_PATH = RuntimePath(lambda: get_qc_output_dir() / "inspection_records.csv")
+RECORD_EVENTS_LOG_PATH = RuntimePath(lambda: get_qc_output_dir() / "inspection_events.csv")
 USER_RECORDS_DIR = RuntimePath(lambda: get_qc_output_dir() / "user_records")
 QC_OBJECTS_DIR = RuntimePath(lambda: get_qc_output_dir() / "qc_objects")
 QC_DB_PATH = RuntimePath(lambda: get_qc_output_dir() / "qc.db")
 
-# Keep the bootstrap config fixed. It stores the selected QC output folder, so
-# moving this file with the output data would make the next startup ambiguous.
-APP_CONFIG_PATH = DEFAULT_DATA_DIR / "app_config.json"
+APP_CONFIG_PATH = RuntimePath(lambda: get_qc_output_dir() / "app_config.json")

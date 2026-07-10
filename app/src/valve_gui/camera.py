@@ -96,6 +96,49 @@ def roi_id_detections(detection_regions, yolo_boxes_xyxy, frame_w, frame_h) -> d
     return result
 
 
+def summarise_region_detections(detection_regions, yolo_boxes_xyxy, frame_w, frame_h) -> tuple[int, dict[int, bool]]:
+    """
+    Split detections into:
+    - independent_count: boxes that fall only inside non-grouped regions
+    - group_hits: whether a grouped region (roi_id > 0) was seen on this camera
+    """
+    independent_count = 0
+    group_hits: dict[int, bool] = {}
+    for region in detection_regions:
+        rid = region.get("roi_id")
+        if rid is None:
+            continue
+        try:
+            rid_int = int(rid)
+        except (TypeError, ValueError):
+            continue
+        if rid_int > 0 and rid_int not in group_hits:
+            group_hits[rid_int] = False
+
+    for box in yolo_boxes_xyxy:
+        matched_group_ids: set[int] = set()
+        matched_independent = False
+        for region in detection_regions:
+            if not bbox_center_in_region(box, region, frame_w, frame_h):
+                continue
+            rid = region.get("roi_id")
+            try:
+                rid_int = int(rid) if rid is not None else 0
+            except (TypeError, ValueError):
+                rid_int = 0
+            if rid_int > 0:
+                matched_group_ids.add(rid_int)
+            else:
+                matched_independent = True
+        if matched_group_ids:
+            for rid_int in matched_group_ids:
+                group_hits[rid_int] = True
+        elif matched_independent:
+            independent_count += 1
+
+    return independent_count, group_hits
+
+
 class VideoSource:
     def __init__(self, label: str, index: int, simulate: bool, focus_mode="auto", manual_focus_value=120):
         self.label = label

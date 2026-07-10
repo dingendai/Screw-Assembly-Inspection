@@ -12,9 +12,9 @@ from datetime import datetime
 
 from valve_gui import qc_db
 from valve_gui.models import OperatorSession
-from valve_gui.paths import DATA_DIR, SESSION_LOG_PATH, USER_RECORDS_DIR
+from valve_gui.paths import DATA_DIR, RECORD_EVENTS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import ROLE_OPERATOR
-from valve_gui.storage import write_sessions_csv, write_user_records_csv
+from valve_gui.storage import read_record_events_csv, write_sessions_csv, write_user_records_csv
 
 COOKIE_NAME = "valve_web_session"
 
@@ -59,7 +59,14 @@ def _save_user_records(state, when):
     name = state.operator_name.strip()
     if not name:
         return
-    user_records = [r for r in state.records if r.operator_name == name]
+    user_records = read_record_events_csv(
+        RECORD_EVENTS_LOG_PATH,
+        operator_name=name,
+        start_time=state.login_time,
+        end_time=f"{when:%Y-%m-%d %H:%M:%S}",
+    )
+    if not user_records:
+        user_records = [r for r in state.records if r.operator_name == name]
     if not user_records:
         return
     USER_RECORDS_DIR.mkdir(parents=True, exist_ok=True)

@@ -31,11 +31,12 @@ export function createDecisionSettingsCard(cfg, options = {}) {
     );
   }
 
-  const cameras = cameraSlot == null
+  const cameras = (cameraSlot == null
     ? (cfg.cameras || [])
-    : (cfg.cameras || []).filter((c) => String(c.slot) === String(cameraSlot));
+    : (cfg.cameras || []).filter((c) => String(c.slot) === String(cameraSlot)))
+    .filter((c) => c.enabled);
+  const visibleCameraSlots = new Set(cameras.map((c) => String(c.slot)));
   for (const c of cameras) {
-    if (!c.enabled) continue;
     for (const name of (c.assigned_model_names || [])) {
       const key = `${c.slot}::${name}`;
       const rule = dec.model_rules[key] || {};
@@ -76,11 +77,16 @@ export function createDecisionSettingsCard(cfg, options = {}) {
   }
 
   async function save() {
-    const model_rules = cameraSlot == null ? {} : { ...(dec.model_rules || {}) };
-    if (cameraSlot != null) {
+    const model_rules = { ...(dec.model_rules || {}) };
+    if (cameraSlot != null && visibleCameraSlots.has(String(cameraSlot))) {
       const prefix = `${cameraSlot}::`;
       for (const key of Object.keys(model_rules)) {
         if (key.startsWith(prefix)) delete model_rules[key];
+      }
+    } else {
+      for (const key of Object.keys(model_rules)) {
+        const slot = String(key).split("::", 1)[0];
+        if (visibleCameraSlots.has(slot)) delete model_rules[key];
       }
     }
     for (const r of rows) {

@@ -130,6 +130,85 @@ def apply_styles(app: QApplication, font_size: int = 14):
             padding: 8px 12px;
             font-weight: 800;
         }
+        QDockWidget#rightSidebar {
+            background: #f6f2eb;
+            border-left: 1px solid #d9e0e3;
+        }
+        QDockWidget#rightSidebar::title {
+            background: #f6f2eb;
+            color: #41515c;
+            text-align: left;
+            padding: 6px 10px;
+        }
+        #rightSidebarContainer,
+        #sidebarHeader,
+        #sidebarButtonsHost {
+            background: #f6f2eb;
+        }
+        #sidebarHeader {
+            border: 1px solid #d7dee2;
+            border-radius: 8px;
+            padding: 4px;
+        }
+        #sidebarTitle {
+            color: #25323a;
+            font-weight: 800;
+        }
+        QToolButton#sidebarToggleButton {
+            background: #ffffff;
+            color: #172026;
+            border: 1px solid #c9d4d9;
+            border-radius: 6px;
+            padding: 6px 10px;
+            min-width: 0;
+        }
+        QToolButton#sidebarToggleButton:hover {
+            background: #eef3f5;
+        }
+        QPushButton#sidebarNavButton {
+            text-align: left;
+            padding: 10px 12px;
+            min-width: 0;
+        }
+        QPushButton#sidebarNavButton[navRole="setup"] {
+            background: #eef2f4;
+            color: #172026;
+            border: 1px solid #d6dde1;
+        }
+        QPushButton#sidebarNavButton[navRole="setup"]:hover {
+            background: #e2e8ec;
+            border: 1px solid #c8d1d6;
+        }
+        QPushButton#sidebarNavButton[navRole="info"] {
+            background: #e0f2fe;
+            color: #0f3554;
+            border: 1px solid #bae6fd;
+        }
+        QPushButton#sidebarNavButton[navRole="info"]:hover {
+            background: #bae6fd;
+            border: 1px solid #7dd3fc;
+            color: #082f49;
+        }
+        QPushButton#sidebarNavButton[navRole="logout"] {
+            background: #ffe2df;
+            color: #9f1f16;
+            border: 1px solid #f4aaa4;
+            font-weight: 700;
+        }
+        QPushButton#sidebarNavButton[navRole="logout"]:hover {
+            background: #ffd2cc;
+            border: 1px solid #e98f86;
+        }
+        QPushButton#sidebarNavButton:checked {
+            background: #ffffff;
+            color: #172026;
+            border: 2px solid #dc2626;
+            font-weight: 800;
+        }
+        QPushButton#sidebarNavButton[navRole="info"]:checked {
+            background: #dff4ff;
+            color: #082f49;
+        }
         QTabWidget::pane {
             border: 1px solid #d7dee2;
             background: #ffffff;

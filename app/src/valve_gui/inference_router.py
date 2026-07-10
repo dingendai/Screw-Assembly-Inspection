@@ -3,8 +3,7 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from valve_gui import barcode_reader
-from valve_gui.camera import apply_region_mask, regions_for_model, roi_id_detections
+from valve_gui.camera import apply_region_mask, regions_for_model, summarise_region_detections
 from valve_gui.lock_geometry import (
     analyze_lock_geometry_regions,
     draw_lock_geometry_overlay,
@@ -25,9 +24,12 @@ class InferenceResult:
     confidence: float
     note: str
     annotated_frames: dict[int, object] = field(default_factory=dict)
+    yolo_annotated_frames: dict[int, object] = field(default_factory=dict)
+    geometry_annotated_frames: dict[int, object] = field(default_factory=dict)
     camera_results: dict[int, dict] = field(default_factory=dict)
     roi_confirmations: dict[int, dict] = field(default_factory=dict)
-    # 由偵測到的「標籤」類別框內解碼出的條碼；barcode 取第一個有效值。
+    group_results: dict[int, dict] = field(default_factory=dict)
+    # Compatibility fields kept for older callers; automatic barcode decoding is disabled.
     barcode: str | None = None
     barcode_sources: list[dict] = field(default_factory=list)
     raw_frames: dict[int, object] = field(default_factory=dict)
@@ -52,13 +54,15 @@ class InferenceRouter:
             if frame is not None
         }
         annotated_frames = {}
+        yolo_annotated_frames = {}
+        geometry_annotated_frames = {}
         camera_results = {}
         confidences = []
         notes = []
         missing = []
         failed_slots: set[int] = set()
         all_roi_votes: dict[int, dict] = {}
-        barcode_sources: list[dict] = []
+        group_results: dict[int, dict] = {}
         models_by_name = {model.name: model for model in self.state.model_configs}
 
         for camera in self.state.inspection_cameras:
@@ -75,11 +79,10 @@ class InferenceRouter:
                 continue
 
             display_frame = frames_by_slot[camera.slot]
-            annotated = display_frame.copy()
+            yolo_annotated = display_frame.copy()
             camera_confidences = []
             camera_reasons = []
             camera_roi_detected: dict[int, bool] = {}
-            camera_label_boxes: list[tuple] = []  # (xyxy, class_name, model_name) 供條碼解碼
             for model_name in model_names:
                 model = models_by_name.get(model_name)
                 if not model or not model.enabled:
@@ -96,18 +99,19 @@ class InferenceRouter:
                         model_detection_regions,
                         regions_for_model(camera.exclusion_regions, model.name),
                     )
-                annotated, confidence, object_count, note, yolo_boxes_xyxy, yolo_box_classes = self.run_single_model(
+                yolo_annotated, confidence, object_count, note, yolo_boxes_xyxy, _ = self.run_single_model(
                     inference_frame,
                     camera.slot,
                     model,
-                    display_frame=annotated,
+                    display_frame=yolo_annotated,
                 )
-                for box_xyxy, box_class in zip(yolo_boxes_xyxy, yolo_box_classes):
-                    camera_label_boxes.append((box_xyxy, box_class, model.name))
+                counted_object_count = object_count
                 if getattr(camera, "region_detection_enabled", False) and model_detection_regions:
                     h, w = display_frame.shape[:2]
-                    per_roi = roi_id_detections(model_detection_regions, yolo_boxes_xyxy, w, h)
-                    for rid, detected in per_roi.items():
+                    counted_object_count, per_group = summarise_region_detections(
+                        model_detection_regions, yolo_boxes_xyxy, w, h
+                    )
+                    for rid, detected in per_group.items():
                         camera_roi_detected[rid] = camera_roi_detected.get(rid, False) or detected
                 rule = self.decision_rule_for(camera.slot, model.name)
                 confidence_operator = normalise_decision_operator(rule.get("confidence_operator", ">="), ">=")
@@ -115,7 +119,7 @@ class InferenceRouter:
                 count_operator = normalise_decision_operator(rule.get("required_object_count_operator", "="), "=")
                 required_count = int(rule.get("required_object_count", 1))
                 confidence_pass = compare_decision_value(confidence, confidence_operator, threshold)
-                count_pass = compare_decision_value(object_count, count_operator, required_count)
+                count_pass = compare_decision_value(counted_object_count, count_operator, required_count)
                 model_pass = confidence_pass and count_pass
                 confidences.append(confidence)
                 notes.append(note)
@@ -136,11 +140,7 @@ class InferenceRouter:
                 if detected:
                     all_roi_votes[rid]["votes"] += 1
 
-            if getattr(camera, "barcode_read_enabled", False):
-                barcode_sources.extend(
-                    self.decode_label_barcodes(camera.slot, display_frame, camera_label_boxes)
-                )
-
+            geometry_annotated = display_frame.copy()
             geometry_regions = [
                 region
                 for region in getattr(camera, "lock_geometry_regions", [])
@@ -149,7 +149,9 @@ class InferenceRouter:
             if getattr(camera, "lock_geometry_enabled", False):
                 if geometry_regions:
                     geometry_analyses = analyze_lock_geometry_regions(display_frame, geometry_regions)
-                    annotated = draw_lock_geometry_overlay(annotated, geometry_analyses, show_result=True)
+                    geometry_annotated = draw_lock_geometry_overlay(
+                        geometry_annotated, geometry_analyses, show_result=True
+                    )
                     geometry_failed = False
                     for analysis in geometry_analyses:
                         result = analysis.result
@@ -161,7 +163,13 @@ class InferenceRouter:
                 else:
                     camera_reasons.append("幾何檢測已啟用，但尚未設定啟用中的幾何 ROI")
 
+            annotated = yolo_annotated.copy()
+            if getattr(camera, "lock_geometry_enabled", False) and geometry_regions:
+                geometry_analyses = analyze_lock_geometry_regions(display_frame, geometry_regions)
+                annotated = draw_lock_geometry_overlay(annotated, geometry_analyses, show_result=True)
             annotated_frames[camera.slot] = annotated
+            yolo_annotated_frames[camera.slot] = yolo_annotated
+            geometry_annotated_frames[camera.slot] = geometry_annotated
             camera_confidence = min(camera_confidences) if camera_confidences else 0.0
             camera_results[camera.slot] = {
                 "result": "NG" if camera.slot in failed_slots else "PASS",
@@ -179,71 +187,61 @@ class InferenceRouter:
             for rid, info in all_roi_votes.items()
         }
 
+        configured_group_ids = {
+            rid
+            for camera in self.state.inspection_cameras
+            if getattr(camera, "enabled", False) and getattr(camera, "region_detection_enabled", False)
+            for region in getattr(camera, "detection_regions", [])
+            for rid in [region.get("roi_id")]
+            if isinstance(rid, int) and rid > 0
+        }
+        for rid in sorted(configured_group_ids):
+            info = all_roi_votes.get(rid, {"votes": 0, "total": 0, "camera_slots": []})
+            rule = self.group_rule_for(rid)
+            detected = info["votes"] > 0
+            passed = detected if rule.get("required", True) else True
+            group_results[rid] = {
+                "confirmed": passed,
+                "detected": detected,
+                "votes": info["votes"],
+                "total": info["total"],
+                "camera_slots": info["camera_slots"],
+                "required": bool(rule.get("required", True)),
+                "mode": "any",
+            }
+
         if missing:
             return InferenceResult(
                 "NG",
                 0.0,
                 "Missing model assignment: " + ", ".join(missing),
                 annotated_frames,
+                yolo_annotated_frames,
+                geometry_annotated_frames,
                 camera_results,
                 roi_confirmations,
+                group_results,
                 raw_frames=raw_frames,
             )
 
         confidence = min(confidences) if confidences else 0.0
-        result = "NG" if failed_slots or not confidences else "PASS"
+        group_failed = any(
+            result_info.get("required", True) and not result_info.get("detected", False)
+            for result_info in group_results.values()
+        )
+        result = "NG" if failed_slots or group_failed or not confidences else "PASS"
         return InferenceResult(
             result,
             confidence,
             "；".join(notes),
             annotated_frames,
+            yolo_annotated_frames,
+            geometry_annotated_frames,
             camera_results,
             roi_confirmations,
-            barcode=barcode_sources[0]["text"] if barcode_sources else None,
-            barcode_sources=barcode_sources,
+            group_results,
             raw_frames=raw_frames,
         )
-
-    def decode_label_barcodes(self, slot, frame, label_boxes):
-        """偵測驅動的條碼解碼。
-
-        設定了「需要條碼辨識的標籤類別」時，只裁切命中那些類別的偵測框來解碼
-        （加少許 padding，避免切到條碼邊緣）；未設定類別時，退回整張畫面解碼，
-        維持舊版 per-camera 行為。回傳 [{text, class, model, slot}, ...]。
-        """
-        label_classes = {
-            name.strip()
-            for name in getattr(self.state, "barcode_label_classes", [])
-            if str(name).strip()
-        }
-        hits: list[dict] = []
-        if label_classes:
-            for box_xyxy, box_class, model_name in label_boxes:
-                if box_class not in label_classes:
-                    continue
-                crop = self._crop_box(frame, box_xyxy, pad=0.12)
-                text = barcode_reader.decode_best(crop)
-                if text:
-                    hits.append({"text": text, "class": box_class, "model": model_name, "slot": slot})
-        else:
-            text = barcode_reader.decode_best(frame)
-            if text:
-                hits.append({"text": text, "class": "", "model": "", "slot": slot})
-        return hits
-
-    @staticmethod
-    def _crop_box(frame, xyxy, pad=0.1):
-        height, width = frame.shape[:2]
-        x1, y1, x2, y2 = xyxy
-        box_w = max(0.0, x2 - x1)
-        box_h = max(0.0, y2 - y1)
-        x1 = max(0, int(x1 - box_w * pad))
-        y1 = max(0, int(y1 - box_h * pad))
-        x2 = min(width, int(x2 + box_w * pad))
-        y2 = min(height, int(y2 + box_h * pad))
-        if x2 <= x1 or y2 <= y1:
-            return frame
-        return frame[y1:y2, x1:x2]
 
     def run_single_model(self, frame, slot, model_config, display_frame=None):
         display_frame = frame if display_frame is None else display_frame
@@ -345,6 +343,14 @@ class InferenceRouter:
             "confidence_threshold": rule.get("confidence_threshold", default_threshold),
             "required_object_count_operator": rule.get("required_object_count_operator", "="),
             "required_object_count": rule.get("required_object_count", 1),
+        }
+
+    def group_rule_for(self, group_id):
+        rules = getattr(self.state.decision, "group_rules", {})
+        rule = rules.get(str(group_id), {})
+        return {
+            "required": bool(rule.get("required", True)),
+            "mode": "any",
         }
 
     def clear_model_cache(self):

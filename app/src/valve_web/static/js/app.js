@@ -8,6 +8,7 @@ import { renderDisplay } from "./pages/display.js";
 import { renderUsers } from "./pages/users.js";
 import { renderQcStats } from "./pages/qc_stats.js";
 import { renderQcProducts } from "./pages/qc_products.js";
+import { renderQcSystem } from "./pages/qc_system.js";
 
 export const app = { me: null, current: null };
 
@@ -93,6 +94,7 @@ const PAGES = {
   regions: { label: "指定範圍監視", perm: "open_settings", render: renderRegions },
   display: { label: "顯示設定", perm: "open_settings", render: renderDisplay },
   history: { label: "歷史紀錄", perm: "open_history", render: renderHistory },
+  qc_system: { label: "品管系統", perm: "__developer__", render: renderQcSystem },
   qc_stats: { label: "品管統計", perm: "qc_view", render: renderQcStats },
   qc_products: { label: "品項主檔", perm: "qc_product_manage", render: renderQcProducts },
   users: { label: "用戶管理", perm: "__developer__", render: renderUsers },

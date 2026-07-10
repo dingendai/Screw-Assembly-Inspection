@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import camera_model_names, ensure_model_configs
+from valve_gui.model_registry import camera_model_names, enabled_inspection_cameras, ensure_model_configs
 
 
 class RegionCanvas(QLabel):
@@ -113,7 +113,8 @@ class RegionCanvas(QLabel):
     def format_region_label(self, label, index, region):
         roi_id = region.get("roi_id")
         model_names = region.get("model_names", [])
-        base = f"#{roi_id}" if roi_id is not None else f"{label} {index}"
+        display_roi_id = roi_id if roi_id is not None else 0
+        base = f"{label} {display_roi_id}"
         if model_names:
             return f"{base}: {', '.join(model_names)}"
         return base
@@ -226,20 +227,19 @@ class CameraRegionEditor(QWidget):
         side_layout.addLayout(mode_buttons)
 
         self.region_table = QTableWidget(0, 7)
-        self.region_table.setHorizontalHeaderLabels(["類型", "ROI 編號", "模型", "X", "Y", "W", "H"])
+        self.region_table.setHorizontalHeaderLabels(["類型", "群組編號", "模型", "X", "Y", "W", "H"])
         self.region_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.region_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.region_table.itemSelectionChanged.connect(self.load_selected_region_models)
         side_layout.addWidget(self.region_table, 1)
 
         roi_id_row = QHBoxLayout()
-        roi_id_row.addWidget(QLabel("ROI 編號（0=不共用）"))
+        roi_id_row.addWidget(QLabel("群組編號（0=不共用）"))
         self.roi_id_spin = QDoubleSpinBox()
         self.roi_id_spin.setRange(0.0, 99.0)
         self.roi_id_spin.setSingleStep(1.0)
         self.roi_id_spin.setDecimals(0)
         self.roi_id_spin.setMinimumWidth(90)
-        self.roi_id_spin.setSpecialValueText("—")
         self.roi_id_spin.setValue(0.0)
         self.roi_id_spin.valueChanged.connect(self.save_selected_region_models)
         roi_id_row.addWidget(self.roi_id_spin)
@@ -427,7 +427,7 @@ class CameraRegionEditor(QWidget):
             type_item.setData(Qt.ItemDataRole.UserRole, (kind, source_index))
             self.region_table.setItem(row_index, 0, type_item)
             roi_id = region.get("roi_id")
-            self.region_table.setItem(row_index, 1, QTableWidgetItem(f"#{roi_id}" if roi_id is not None else "—"))
+            self.region_table.setItem(row_index, 1, QTableWidgetItem(str(roi_id if roi_id is not None else 0)))
             self.region_table.setItem(row_index, 2, QTableWidgetItem(self.format_region_models(region)))
             self.region_table.setItem(row_index, 3, QTableWidgetItem(f"{region['x']:.3f}"))
             self.region_table.setItem(row_index, 4, QTableWidgetItem(f"{region['y']:.3f}"))
@@ -584,10 +584,18 @@ class RegionSettingsPage(QWidget):
         ensure_model_configs(self.state)
         self.tabs.clear()
         self.editors = []
-        for camera in self.state.inspection_cameras:
+        for camera in enabled_inspection_cameras(self.state):
             editor = CameraRegionEditor(camera, self.state)
             self.editors.append(editor)
             self.tabs.addTab(editor, f"相機 {camera.slot}")
+        if not self.editors:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            page_layout.addWidget(empty_label)
+            page_layout.addStretch()
+            self.tabs.addTab(page, "無啟用相機")
         self.tabs.addTab(RegionOverlaySettingsPage(self.state, self.repaint_editors), "監視顯示設定")
         self.start()
 

@@ -1,11 +1,24 @@
 from datetime import datetime
 
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QSize, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QMainWindow, QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QWidget
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from valve_gui import qc_db
-from valve_gui.config_store import load_app_config
+from valve_gui import paths, qc_db
+from valve_gui.config_store import load_app_config, migrate_qc_output_data
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs
 from valve_gui.models import AppState, InspectionRecord, OperatorSession
 from valve_gui.pages.help import HelpPage
@@ -18,6 +31,8 @@ from valve_gui.pages.qc_stats import StatisticsPage
 from valve_gui.pages.qc_system import QcSystemPage
 from valve_gui.pages.regions import RegionSettingsPage
 from valve_gui.pages.settings import (
+    BarcodeSettingsPage,
+    SystemSettingsPage,
     CameraModelSettingsPage,
     DecisionSettingsPage,
     DisplaySettingsPage,
@@ -25,7 +40,7 @@ from valve_gui.pages.settings import (
     SettingsPage,
 )
 from valve_gui.pages.users import UserManagementPage
-from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, RECORD_EVENTS_LOG_PATH, SESSION_LOG_PATH, USER_RECORDS_DIR
 from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
     PERMISSION_OPEN_HISTORY,
@@ -40,16 +55,22 @@ from valve_gui.permissions import (
 )
 from valve_gui.styles import apply_styles
 from valve_gui.storage import (
+    append_record_event_csv,
     append_record_csv,
+    read_record_events_csv,
     read_sessions_csv,
     save_qc_object_snapshot,
+    upsert_record_list,
     write_sessions_csv,
     write_user_records_csv,
 )
 
 
-SETUP_ACTION_KEYS = {"models", "settings", "camera_models", "regions", "decision", "lock_geometry"}
+SETUP_ACTION_KEYS = {"system_settings", "models", "settings", "camera_models", "regions", "decision", "lock_geometry", "barcode_settings"}
 INFO_ACTION_KEYS = {"history", "qc_system", "qc_stats", "qc_products", "users"}
+RIGHT_SIDEBAR_ONLY_KEYS = SETUP_ACTION_KEYS | {"qc_system", "qc_stats", "qc_products"}
+TOPBAR_ONLY_KEYS = {"login", "users", "display", "help", "logout"}
+HIDDEN_NAV_KEYS = {"monitor"}
 
 
 class MainWindow(QMainWindow):
@@ -75,6 +96,7 @@ class MainWindow(QMainWindow):
             on_release_cameras=self.release_all_hardware,
         )
         self.monitor_page = MonitorPage(self.state, self.add_record, self.logout)
+        self.system_settings_page = SystemSettingsPage(self.state, self.after_system_settings_imported, self.logout)
         self.settings_page = SettingsPage(
             self.state,
             self.after_settings,
@@ -92,9 +114,11 @@ class MainWindow(QMainWindow):
         self.display_page = DisplaySettingsPage(self.state, self.apply_display_config, self.logout)
         self.region_page = RegionSettingsPage(self.state, self.logout)
         self.lock_geometry_page = LockGeometrySettingsPage(self.state, self.logout)
+        self.barcode_settings_page = BarcodeSettingsPage(self.state, self.logout)
         self.user_page = UserManagementPage(self.state, self.after_user_management_saved, self.logout)
         self.help_page = HelpPage()
         self.stack.addWidget(self.login_page)
+        self.stack.addWidget(self.system_settings_page)
         self.stack.addWidget(self.settings_page)
         self.stack.addWidget(self.model_page)
         self.stack.addWidget(self.camera_model_page)
@@ -107,12 +131,17 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.display_page)
         self.stack.addWidget(self.region_page)
         self.stack.addWidget(self.lock_geometry_page)
+        self.stack.addWidget(self.barcode_settings_page)
         self.stack.addWidget(self.user_page)
         self.stack.addWidget(self.help_page)
         self.setCentralWidget(self.stack)
 
         self.actions = {}
+        self.right_nav_buttons = {}
+        self.right_sidebar_collapsed = False
+        self.right_sidebar_expanded_width = 220
         self.create_toolbar()
+        self.create_right_sidebar()
         self.stack.currentChanged.connect(self.update_active_action)
         self.update_navigation()
         self.start_all_cameras_on_boot()
@@ -163,30 +192,34 @@ class MainWindow(QMainWindow):
     def create_toolbar(self):
         toolbar = self.addToolBar("Navigation")
         toolbar.setMovable(False)
-        action_specs = [
-            ("login", "登入", self.show_login, True),
-            ("models", "S1 模型清單", self.show_models, True),
-            ("settings", "S2 相機設定", self.show_settings, True),
-            ("camera_models", "S3 相機模型設定", self.show_camera_models, True),
-            ("regions", "S4 範圍監視", self.show_region_settings, True),
-            ("decision", "S5 判定設定", self.show_decision_settings, True),
-            ("lock_geometry", "S6 鎖緊幾何檢測", self.show_lock_geometry_settings, True),
-            ("monitor", "監視", self.show_monitor, True),
-            ("history", "歷史紀錄", self.show_history, True),
-            ("qc_system", "品管系統", self.show_qc_system, True),
-            ("qc_stats", "品管統計", self.show_qc_stats, True),
-            ("qc_products", "品項主檔", self.show_qc_products, True),
-            ("users", "用戶管理", self.show_users, True),
-            ("display", "顯示設定", self.show_display_settings, True),
-            ("help", "說明", self.show_help, True),
-            ("logout", "登出", self.logout, False),
+        self.navigation_specs = [
+            ("login", "\u767b\u5165", self.show_login, True),
+            ("system_settings", "S\u8a2d\u5b9a\u7cfb\u7d71", self.show_system_settings, True),
+            ("models", "S1 \u6a21\u578b\u6e05\u55ae", self.show_models, True),
+            ("settings", "S2 \u76f8\u6a5f\u8a2d\u5b9a", self.show_settings, True),
+            ("camera_models", "S3 \u76f8\u6a5f\u6a21\u578b\u8a2d\u5b9a", self.show_camera_models, True),
+            ("regions", "S4 \u7bc4\u570d\u76e3\u8996", self.show_region_settings, True),
+            ("decision", "S5 \u5224\u5b9a\u8a2d\u5b9a", self.show_decision_settings, True),
+            ("lock_geometry", "S6 \u9396\u7dca\u5e7e\u4f55\u6aa2\u6e2c", self.show_lock_geometry_settings, True),
+            ("barcode_settings", "S7 \u689d\u78bc\u5f8c\u8655\u7406", self.show_barcode_settings, True),
+            ("monitor", "\u76e3\u8996", self.show_monitor, True),
+            ("history", "\u6b77\u53f2\u7d00\u9304", self.show_history, True),
+            ("qc_system", "\u54c1\u7ba1\u7cfb\u7d71", self.show_qc_system, True),
+            ("qc_stats", "\u54c1\u7ba1\u7d71\u8a08", self.show_qc_stats, True),
+            ("qc_products", "\u54c1\u9805\u4e3b\u6a94", self.show_qc_products, True),
+            ("users", "\u7528\u6236\u7ba1\u7406", self.show_users, True),
+            ("display", "\u986f\u793a\u8a2d\u5b9a", self.show_display_settings, True),
+            ("help", "\u8aaa\u660e", self.show_help, True),
+            ("logout", "\u767b\u51fa", self.logout, False),
         ]
-        for key, text, callback, checkable in action_specs:
+        for key, text, callback, checkable in self.navigation_specs:
             action = QAction(text, self)
             action.setCheckable(checkable)
             action.triggered.connect(callback)
-            toolbar.addAction(action)
-            tool_button = toolbar.widgetForAction(action)
+            tool_button = None
+            if key not in RIGHT_SIDEBAR_ONLY_KEYS and key not in HIDDEN_NAV_KEYS:
+                toolbar.addAction(action)
+                tool_button = toolbar.widgetForAction(action)
             if key in SETUP_ACTION_KEYS and tool_button:
                 tool_button.setObjectName("setupNavButton")
             if key in INFO_ACTION_KEYS and tool_button:
@@ -212,10 +245,94 @@ class MainWindow(QMainWindow):
         self.role_badge.setObjectName("roleBadge")
         toolbar.addWidget(self.role_badge)
 
+    def create_right_sidebar(self):
+        self.right_sidebar = QDockWidget("Quick Navigation", self)
+        self.right_sidebar.setObjectName("rightSidebar")
+        self.right_sidebar.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+        self.right_sidebar.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+
+        container = QWidget()
+        container.setObjectName("rightSidebarContainer")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        header = QWidget()
+        header.setObjectName("sidebarHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(4, 4, 4, 4)
+        header_layout.setSpacing(6)
+
+        self.right_sidebar_title = QLabel("Tools")
+        self.right_sidebar_title.setObjectName("sidebarTitle")
+        self.right_sidebar_toggle = QToolButton()
+        self.right_sidebar_toggle.setObjectName("sidebarToggleButton")
+        self.right_sidebar_toggle.setText("Collapse")
+        self.right_sidebar_toggle.clicked.connect(self.toggle_right_sidebar)
+
+        header_layout.addWidget(self.right_sidebar_title)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self.right_sidebar_toggle)
+        layout.addWidget(header)
+
+        self.right_sidebar_buttons_host = QWidget()
+        self.right_sidebar_buttons_host.setObjectName("sidebarButtonsHost")
+        buttons_layout = QVBoxLayout(self.right_sidebar_buttons_host)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(6)
+
+        for key, text, callback, checkable in self.navigation_specs:
+            if key in TOPBAR_ONLY_KEYS or key in HIDDEN_NAV_KEYS:
+                continue
+            button = QPushButton(text)
+            button.setObjectName("sidebarNavButton")
+            button.setCheckable(checkable)
+            button.clicked.connect(callback)
+            if key in SETUP_ACTION_KEYS:
+                button.setProperty("navRole", "setup")
+            elif key in INFO_ACTION_KEYS:
+                button.setProperty("navRole", "info")
+            elif key == "logout":
+                button.setProperty("navRole", "logout")
+            else:
+                button.setProperty("navRole", "default")
+            button.style().unpolish(button)
+            button.style().polish(button)
+            buttons_layout.addWidget(button)
+            self.right_nav_buttons[key] = button
+
+        buttons_layout.addStretch(1)
+        layout.addWidget(self.right_sidebar_buttons_host, 1)
+
+        self.right_sidebar.setWidget(container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.right_sidebar)
+        self.right_sidebar.setMinimumWidth(self.right_sidebar_expanded_width)
+        self.right_sidebar.setMaximumWidth(self.right_sidebar_expanded_width)
+
+    def toggle_right_sidebar(self):
+        self.right_sidebar_collapsed = not self.right_sidebar_collapsed
+        self.right_sidebar_buttons_host.setVisible(not self.right_sidebar_collapsed)
+        self.right_sidebar_title.setVisible(not self.right_sidebar_collapsed)
+        if self.right_sidebar_collapsed:
+            self.right_sidebar_toggle.setText(">")
+            self.right_sidebar.setMinimumWidth(52)
+            self.right_sidebar.setMaximumWidth(52)
+        else:
+            self.right_sidebar_toggle.setText("Collapse")
+            self.right_sidebar.setMinimumWidth(self.right_sidebar_expanded_width)
+            self.right_sidebar.setMaximumWidth(self.right_sidebar_expanded_width)
+
     def update_navigation(self):
         logged_in = self.state.is_logged_in
         settings_ready = self.state.settings_applied
         self.actions["login"].setVisible(not logged_in)
+        self.actions["system_settings"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["settings"].setVisible(
             logged_in and has_permission(
                 self.state.operator_role,
@@ -258,6 +375,13 @@ class MainWindow(QMainWindow):
                 self.state.role_permissions,
             )
         )
+        self.actions["barcode_settings"].setVisible(
+            logged_in and has_permission(
+                self.state.operator_role,
+                PERMISSION_OPEN_SETTINGS,
+                self.state.role_permissions,
+            )
+        )
         self.actions["display"].setVisible(True)
         self.actions["monitor"].setVisible(
             logged_in
@@ -288,6 +412,10 @@ class MainWindow(QMainWindow):
             self.role_badge.setText(f"目前權限：{role_label(self.state.operator_role, self.state.role_labels)}")
         else:
             self.role_badge.setText("目前權限：未登入")
+        for key, button in self.right_nav_buttons.items():
+            action = self.actions.get(key)
+            if action:
+                button.setVisible(action.isVisible())
         self.update_apply_settings_button()
         self.update_active_action()
 
@@ -296,12 +424,14 @@ class MainWindow(QMainWindow):
             return
         page_actions = {
             self.login_page: "login",
+            self.system_settings_page: "system_settings",
             self.settings_page: "settings",
             self.model_page: "models",
             self.camera_model_page: "camera_models",
             self.region_page: "regions",
             self.decision_page: "decision",
             self.lock_geometry_page: "lock_geometry",
+            self.barcode_settings_page: "barcode_settings",
             self.monitor_page: "monitor",
             self.history_page: "history",
             self.qc_system_page: "qc_system",
@@ -315,6 +445,9 @@ class MainWindow(QMainWindow):
         for key, action in self.actions.items():
             if action.isCheckable():
                 action.setChecked(key == active_key and action.isVisible())
+        for key, button in self.right_nav_buttons.items():
+            if button.isCheckable():
+                button.setChecked(key == active_key and button.isVisible())
         self.update_apply_settings_button()
 
     def update_apply_settings_button(self):
@@ -408,6 +541,12 @@ class MainWindow(QMainWindow):
             and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
         ):
             return self.apply_lock_geometry_settings_without_navigation
+        if (
+            current == self.barcode_settings_page
+            and self.state.is_logged_in
+            and has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions)
+        ):
+            return self.apply_barcode_settings_without_navigation
         if current == self.display_page:
             return self.display_page.save_display_settings
         if current == self.qc_system_page and self.state.is_logged_in and self.state.operator_role == ROLE_DEVELOPER:
@@ -443,6 +582,10 @@ class MainWindow(QMainWindow):
 
     def apply_lock_geometry_settings_without_navigation(self):
         if self.lock_geometry_page.save_lock_geometry_settings():
+            self.mark_settings_applied()
+
+    def apply_barcode_settings_without_navigation(self):
+        if self.barcode_settings_page.save_barcode_settings():
             self.mark_settings_applied()
 
     def mark_settings_applied(self):
@@ -494,6 +637,19 @@ class MainWindow(QMainWindow):
         self.login_page.refresh_role_options()
         self.login_page.populate_camera_indexes(self.state.operator_camera_index)
         self.login_page.start_preview()
+
+    def show_system_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(
+                self,
+                "\u6b0a\u9650\u4e0d\u8db3",
+                "\u76ee\u524d\u89d2\u8272\u4e0d\u80fd\u9032\u5165 S\u8a2d\u5b9a\u7cfb\u7d71\u3002",
+            )
+            self.show_monitor()
+            return
+        self.switch_to_page(self.system_settings_page, self.system_settings_page.refresh)
 
     def show_settings(self):
         if not self.require_login():
@@ -560,6 +716,15 @@ class MainWindow(QMainWindow):
             return
         self.switch_to_page(self.lock_geometry_page, self.lock_geometry_page.refresh)
 
+    def show_barcode_settings(self):
+        if not self.require_login():
+            return
+        if not has_permission(self.state.operator_role, PERMISSION_OPEN_SETTINGS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色沒有權限進入 S7 條碼後處理設定。")
+            self.show_monitor()
+            return
+        self.switch_to_page(self.barcode_settings_page, self.barcode_settings_page.refresh)
+
     def after_login(self):
         if self.state.operator_role == ROLE_OPERATOR:
             self.state.settings_applied = True
@@ -584,6 +749,21 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.information(self, "權限不足", "目前角色沒有可進入的 GUI 介面。")
 
+    def after_system_settings_imported(self):
+        ensure_model_configs(self.state)
+        self.apply_display_config()
+        self.monitor_page.router.clear_model_cache()
+        self.system_settings_page.refresh()
+        self.settings_page.refresh()
+        self.model_page.refresh()
+        self.camera_model_page.refresh()
+        self.region_page.refresh()
+        self.decision_page.refresh()
+        self.lock_geometry_page.refresh()
+        self.barcode_settings_page.refresh()
+        self.monitor_page.refresh()
+        self.update_navigation()
+
     def after_settings(self):
         self.release_all_hardware()
         self.monitor_page.router.clear_model_cache()
@@ -607,7 +787,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入監視頁面。")
             return
         if not self.state.settings_applied:
-            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S6 設定頁按下「套用設定」。")
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S7 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.monitor_page.refresh()
@@ -621,7 +801,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "權限不足", "目前角色不能進入歷史紀錄。")
             return
         if not self.state.settings_applied:
-            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S6 設定頁按下「套用設定」。")
+            QMessageBox.information(self, "尚未套用設定", "請先在 S1~S7 設定頁按下「套用設定」。")
             return
         self.release_all_hardware()
         self.history_page.refresh()
@@ -686,6 +866,13 @@ class MainWindow(QMainWindow):
 
     def after_qc_output_dir_saved(self):
         if self._active_qc_output_dir != self.state.qc_output_dir:
+            old_output_dir = self._active_qc_output_dir
+            new_output_dir = self.state.qc_output_dir
+            migrate_qc_output_data(old_output_dir, new_output_dir)
+            old_photos_dir = str((paths.resolve_qc_output_dir(old_output_dir) / "operator_photos").resolve())
+            new_photos_dir = str((paths.resolve_qc_output_dir(new_output_dir) / "operator_photos").resolve())
+            if str(self.state.operator_photo_path or "").startswith(old_photos_dir):
+                self.state.operator_photo_path = new_photos_dir + self.state.operator_photo_path[len(old_photos_dir):]
             self._active_qc_output_dir = self.state.qc_output_dir
             qc_db.init_db()
             self.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
@@ -718,9 +905,17 @@ class MainWindow(QMainWindow):
         camera_results=None,
         roi_confirmations=None,
     ):
-        self.state.records.insert(0, record)
+        qc_record_filter = getattr(self.state.inspection_workflow, "qc_record_filter", "all")
+        if qc_record_filter == "none":
+            return
+        if qc_record_filter == "pass_only" and record.result != "PASS":
+            return
+        if qc_record_filter == "ng_only" and record.result != "NG":
+            return
+        upsert_record_list(self.state.records, record)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
+        append_record_event_csv(RECORD_EVENTS_LOG_PATH, record)
         # SQLite 為歷史/品管查詢/統計的單一真相；CSV 暫時保留作過渡。
         inspection_id = None
         if record.result in ("PASS", "NG") and record.part_id.strip():
@@ -758,9 +953,16 @@ class MainWindow(QMainWindow):
         name = self.state.operator_name.strip()
         if not name:
             return
-        user_records = [
-            record for record in self.state.records if record.operator_name == name
-        ]
+        user_records = read_record_events_csv(
+            RECORD_EVENTS_LOG_PATH,
+            operator_name=name,
+            start_time=self.state.login_time,
+            end_time=f"{when:%Y-%m-%d %H:%M:%S}",
+        )
+        if not user_records:
+            user_records = [
+                record for record in self.state.records if record.operator_name == name
+            ]
         if not user_records:
             return
         USER_RECORDS_DIR.mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QTableWidget,
@@ -26,9 +27,15 @@ from PyQt6.QtWidgets import (
 )
 
 from valve_gui.camera import VideoSource, apply_frame_transform, normalised_region_to_pixels
-from valve_gui.config_store import save_app_config
-from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs, set_camera_model_names
-from valve_gui.models import AppState, ModelConfig
+from valve_gui.config_store import export_app_config_to_path, import_app_config_from_path, save_app_config
+from valve_gui.model_registry import (
+    camera_model_names,
+    enabled_inspection_cameras,
+    enabled_model_names,
+    ensure_model_configs,
+    set_camera_model_names,
+)
+from valve_gui.models import AppState, BarcodeRuleConfig, ModelConfig
 from valve_gui.paths import APP_DIR
 from valve_gui.permissions import (
     PERMISSION_MANAGE_MODELS,
@@ -130,11 +137,6 @@ class SettingsPage(QWidget):
             rotation.addItems(ROTATION_OPTIONS)
             rotation.setCurrentText(str(config.rotation_degrees))
 
-            barcode_enabled = QCheckBox("啟動")
-            barcode_disabled = QCheckBox("停用")
-            barcode_enabled.setChecked(config.barcode_read_enabled)
-            barcode_disabled.setChecked(not config.barcode_read_enabled)
-
             auto_focus = QCheckBox("自動焦距")
             manual_focus_mode = QCheckBox("手動焦距")
             is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
@@ -196,28 +198,6 @@ class SettingsPage(QWidget):
                 focus_updater()
                 self._apply_focus_change_immediately(slot)
 
-            def set_barcode_enabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
-                if checked:
-                    disable_check.blockSignals(True)
-                    disable_check.setChecked(False)
-                    disable_check.blockSignals(False)
-                elif not disable_check.isChecked():
-                    enable_check.blockSignals(True)
-                    enable_check.setChecked(True)
-                    enable_check.blockSignals(False)
-                self._queue_preview_restart()
-
-            def set_barcode_disabled(checked, enable_check=barcode_enabled, disable_check=barcode_disabled):
-                if checked:
-                    enable_check.blockSignals(True)
-                    enable_check.setChecked(False)
-                    enable_check.blockSignals(False)
-                elif not enable_check.isChecked():
-                    disable_check.blockSignals(True)
-                    disable_check.setChecked(True)
-                    disable_check.blockSignals(False)
-                self._queue_preview_restart()
-
             update_focus_controls()
 
             index.currentIndexChanged.connect(self._queue_preview_restart)
@@ -225,8 +205,6 @@ class SettingsPage(QWidget):
             flip_h.stateChanged.connect(self._queue_preview_restart)
             flip_v.stateChanged.connect(self._queue_preview_restart)
             rotation.currentTextChanged.connect(self._queue_preview_restart)
-            barcode_enabled.toggled.connect(set_barcode_enabled)
-            barcode_disabled.toggled.connect(set_barcode_disabled)
             auto_focus.toggled.connect(set_auto_focus)
             manual_focus_mode.toggled.connect(set_manual_focus)
             manual_focus.valueChanged.connect(update_focus_controls)
@@ -249,23 +227,19 @@ class SettingsPage(QWidget):
             card.addWidget(QLabel("影像旋轉"), 3, 0)
             card.addWidget(rotation, 3, 1, 1, 2)
 
-            card.addWidget(QLabel("條碼辨識"), 4, 0)
-            card.addWidget(barcode_enabled, 4, 1)
-            card.addWidget(barcode_disabled, 4, 2)
-
-            card.addWidget(QLabel("焦距方法"), 5, 0)
-            card.addWidget(auto_focus, 5, 1)
-            card.addWidget(manual_focus_mode, 5, 2)
-            card.addWidget(QLabel("固定焦距"), 6, 0)
-            card.addLayout(focus_value_row, 6, 1, 1, 2)
+            card.addWidget(QLabel("焦距方法"), 4, 0)
+            card.addWidget(auto_focus, 4, 1)
+            card.addWidget(manual_focus_mode, 4, 2)
+            card.addWidget(QLabel("固定焦距"), 5, 0)
+            card.addLayout(focus_value_row, 5, 1, 1, 2)
 
             card.setColumnStretch(2, 1)
-            card.setRowStretch(7, 1)
+            card.setRowStretch(6, 1)
 
             self.camera_tabs.addTab(camera_box, f"相機 {config.slot}")
             self.rows.append((
                 enabled, index, flip_h, flip_v, rotation,
-                barcode_enabled, barcode_disabled, auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
+                auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
             ))
 
         layout.addWidget(self.camera_tabs, 1)
@@ -317,7 +291,7 @@ class SettingsPage(QWidget):
         try:
             for config, controls in zip(self.state.inspection_cameras, self.rows):
                 (
-                    enabled, index, flip_h, flip_v, rotation, barcode_enabled, barcode_disabled,
+                    enabled, index, flip_h, flip_v, rotation,
                     auto_focus, manual_focus_mode, manual_focus, manual_focus_value,
                 ) = controls
                 enabled.setChecked(config.enabled)
@@ -325,8 +299,6 @@ class SettingsPage(QWidget):
                 flip_h.setChecked(config.flip_horizontal)
                 flip_v.setChecked(config.flip_vertical)
                 rotation.setCurrentText(str(config.rotation_degrees))
-                barcode_enabled.setChecked(config.barcode_read_enabled)
-                barcode_disabled.setChecked(not config.barcode_read_enabled)
                 is_manual_focus = getattr(config, "focus_mode", "auto") == "manual"
                 auto_focus.setChecked(not is_manual_focus)
                 manual_focus_mode.setChecked(is_manual_focus)
@@ -355,7 +327,7 @@ class SettingsPage(QWidget):
             return
         self.persist_camera_settings()
         controls = self.rows[slot - 1]
-        _, _, _, _, _, _, _, auto_focus, manual_focus_mode, manual_focus, _ = controls
+        _, _, _, _, _, auto_focus, manual_focus_mode, manual_focus, _ = controls
         focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
         manual_focus_value = manual_focus.value()
         for source_slot, source in self.preview_sources:
@@ -437,7 +409,7 @@ class SettingsPage(QWidget):
         enabled_rows = []
         for slot, controls in enumerate(self.rows, start=1):
             (
-                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                enabled, index, flip_h, flip_v, rotation,
                 _, manual_focus_mode, manual_focus, _,
             ) = controls
             if enabled.isChecked():
@@ -451,7 +423,6 @@ class SettingsPage(QWidget):
                         "flip_horizontal": flip_h.isChecked(),
                         "flip_vertical": flip_v.isChecked(),
                         "rotation_degrees": int(rotation.currentText()),
-                        "barcode_read_enabled": barcode_enabled.isChecked(),
                         "focus_mode": "manual" if manual_focus_mode.isChecked() else "auto",
                         "manual_focus_value": manual_focus.value(),
                     }
@@ -473,7 +444,7 @@ class SettingsPage(QWidget):
         missing_model_slots = []
         for config, controls in zip(self.state.inspection_cameras, self.rows):
             (
-                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                enabled, index, flip_h, flip_v, rotation,
                 _, manual_focus_mode, manual_focus, _,
             ) = controls
             config.enabled = enabled.isChecked()
@@ -481,7 +452,6 @@ class SettingsPage(QWidget):
             config.flip_horizontal = flip_h.isChecked()
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
-            config.barcode_read_enabled = barcode_enabled.isChecked()
             config.focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
             config.manual_focus_value = manual_focus.value()
             enabled_count += int(config.enabled)
@@ -517,7 +487,7 @@ class SettingsPage(QWidget):
     def write_camera_controls_to_state(self):
         for config, controls in zip(self.state.inspection_cameras, self.rows):
             (
-                enabled, index, flip_h, flip_v, rotation, barcode_enabled, _,
+                enabled, index, flip_h, flip_v, rotation,
                 _, manual_focus_mode, manual_focus, _,
             ) = controls
             config.enabled = enabled.isChecked()
@@ -525,7 +495,6 @@ class SettingsPage(QWidget):
             config.flip_horizontal = flip_h.isChecked()
             config.flip_vertical = flip_v.isChecked()
             config.rotation_degrees = int(rotation.currentText())
-            config.barcode_read_enabled = barcode_enabled.isChecked()
             config.focus_mode = "manual" if manual_focus_mode.isChecked() else "auto"
             config.manual_focus_value = manual_focus.value()
 
@@ -561,6 +530,9 @@ class ModelSettingsPage(QWidget):
         self.model_table.setColumnWidth(1, 180)
         self.model_table.setColumnWidth(2, 120)
         self.model_table.setColumnWidth(3, 520)
+        self.model_scan_dir_input = QLineEdit()
+        self.browse_model_scan_dir_button = QPushButton("選擇掃描資料夾")
+        self.browse_model_scan_dir_button.clicked.connect(self.browse_model_scan_dir)
 
         self.add_model_button = QPushButton("新增模型")
         self.add_model_button.clicked.connect(self.add_model_row)
@@ -578,12 +550,20 @@ class ModelSettingsPage(QWidget):
         actions.addWidget(self.rescan_models_button)
         actions.addStretch()
 
+        scan_row = QHBoxLayout()
+        scan_row.addWidget(QLabel("模型掃描路徑"))
+        scan_row.addWidget(self.model_scan_dir_input, 1)
+        scan_row.addWidget(self.browse_model_scan_dir_button)
+
         layout.addWidget(self.model_table)
+        layout.addLayout(scan_row)
         layout.addLayout(actions)
         return group
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.model_scan_dir_input.setPlaceholderText(str(APP_DIR.parent.parent / "models"))
+        self.model_scan_dir_input.setText(self.state.model_scan_dir)
         self.load_model_table()
         self.apply_role_permissions()
 
@@ -599,6 +579,8 @@ class ModelSettingsPage(QWidget):
         self.remove_model_button.setVisible(can_manage_models)
         self.browse_model_button.setVisible(can_manage_models)
         self.rescan_models_button.setVisible(can_manage_models)
+        self.model_scan_dir_input.setEnabled(can_manage_models)
+        self.browse_model_scan_dir_button.setVisible(can_manage_models)
 
     def load_model_table(self):
         self.model_table.setRowCount(0)
@@ -653,12 +635,25 @@ class ModelSettingsPage(QWidget):
         if path:
             self.model_table.setItem(row, 3, QTableWidgetItem(path))
 
+    def browse_model_scan_dir(self):
+        if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
+            QMessageBox.warning(self, "權限不足", "目前角色不能選擇模型掃描資料夾。")
+            return
+        current = self.model_scan_dir_input.text().strip() or str(APP_DIR.parent.parent / "models")
+        selected = QFileDialog.getExistingDirectory(self, "選擇模型掃描資料夾", current)
+        if selected:
+            self.model_scan_dir_input.setText(selected)
+
     def rescan_models(self):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能重新掃描模型。")
             return
+        self.state.model_scan_dir = self.model_scan_dir_input.text().strip()
         ensure_model_configs(self.state)
+        save_app_config(self.state)
         self.load_model_table()
+        if self.on_saved:
+            self.on_saved()
 
     def collect_model_configs(self):
         configs = []
@@ -683,6 +678,7 @@ class ModelSettingsPage(QWidget):
         if not has_permission(self.state.operator_role, PERMISSION_MANAGE_MODELS, self.state.role_permissions):
             QMessageBox.warning(self, "權限不足", "目前角色不能修改模型清單。")
             return False
+        self.state.model_scan_dir = self.model_scan_dir_input.text().strip()
         self.state.model_configs = self.collect_model_configs()
         ensure_model_configs(self.state)
         save_app_config(self.state)
@@ -702,6 +698,7 @@ class CameraModelSettingsPage(QWidget):
         self.on_saved = on_saved
         self.on_logout = on_logout
         self.camera_model_tables = []
+        self.camera_model_tab_cameras = []
         self.camera_photo_views = {}
         self.camera_photo_source = None
         self.camera_photo_timer = QTimer(self)
@@ -712,10 +709,39 @@ class CameraModelSettingsPage(QWidget):
         layout.setSpacing(12)
 
         self.camera_model_tabs = QTabWidget()
-        for camera in self.state.inspection_cameras:
-            self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"相機 {camera.slot}")
         self.camera_model_tabs.currentChanged.connect(self.update_model_tab_preview)
         layout.addWidget(self.camera_model_tabs, 1)
+        self.rebuild_camera_model_tabs()
+
+    def rebuild_camera_model_tabs(self):
+        current_slot = None
+        current_index = self.camera_model_tabs.currentIndex()
+        if 0 <= current_index < len(self.camera_model_tab_cameras):
+            current_slot = self.camera_model_tab_cameras[current_index].slot
+
+        self.stop_camera_photo_preview()
+        self.camera_model_tabs.blockSignals(True)
+        self.camera_model_tabs.clear()
+        self.camera_model_tables = []
+        self.camera_model_tab_cameras = enabled_inspection_cameras(self.state)
+        self.camera_photo_views = {}
+
+        if not self.camera_model_tab_cameras:
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            layout.addWidget(empty_label)
+            layout.addStretch()
+            self.camera_model_tabs.addTab(page, "無啟用相機")
+        else:
+            selected_index = 0
+            for index, camera in enumerate(self.camera_model_tab_cameras):
+                if camera.slot == current_slot:
+                    selected_index = index
+                self.camera_model_tabs.addTab(self.build_camera_model_page(camera), f"相機 {camera.slot}")
+            self.camera_model_tabs.setCurrentIndex(selected_index)
+        self.camera_model_tabs.blockSignals(False)
 
     def build_camera_model_page(self, camera):
         page = QWidget()
@@ -751,6 +777,7 @@ class CameraModelSettingsPage(QWidget):
 
     def refresh(self):
         ensure_model_configs(self.state)
+        self.rebuild_camera_model_tabs()
         self.load_camera_model_tabs()
         self.apply_role_permissions()
         self.update_model_tab_preview(self.camera_model_tabs.currentIndex())
@@ -790,9 +817,9 @@ class CameraModelSettingsPage(QWidget):
 
     def update_model_tab_preview(self, index):
         self.stop_camera_photo_preview()
-        if index < 0 or index >= len(self.state.inspection_cameras):
+        if index < 0 or index >= len(self.camera_model_tab_cameras):
             return
-        camera = self.state.inspection_cameras[index]
+        camera = self.camera_model_tab_cameras[index]
         view = self.camera_photo_views.get(camera.slot)
         if not view:
             return
@@ -943,6 +970,353 @@ class DisplaySettingsPage(QWidget):
             self.on_logout()
 
 
+class SystemSettingsPage(QWidget):
+    def __init__(self, state: AppState, on_imported=None, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_imported = on_imported
+        self.on_logout = on_logout
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(300)
+        self.autosave_timer.timeout.connect(self.persist_system_settings)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        layout.addWidget(self.build_system_group())
+        layout.addWidget(self.build_workflow_group())
+        layout.addStretch()
+
+    def build_system_group(self):
+        group = QGroupBox("S設定系統")
+        group.setObjectName("displaySettingsGroup")
+        body = QVBoxLayout(group)
+        body.setSpacing(12)
+
+        hint = QLabel("匯出或導入 S1~S7 的完整設定內容。導入後會立即覆蓋目前設定並重新載入。")
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+
+        button_row = QHBoxLayout()
+        self.export_button = QPushButton("匯出 S1~S7 設定")
+        self.import_button = QPushButton("導入 S1~S7 設定")
+        self.export_button.clicked.connect(self.export_settings)
+        self.import_button.clicked.connect(self.import_settings)
+        button_row.addWidget(self.export_button)
+        button_row.addWidget(self.import_button)
+        button_row.addStretch()
+
+        body.addWidget(hint)
+        body.addLayout(button_row)
+        return group
+
+    def build_workflow_group(self):
+        group = QGroupBox("操作員檢測流程")
+        group.setObjectName("displaySettingsGroup")
+        form = QGridLayout(group)
+
+        self.workflow_mode = QComboBox()
+        self.workflow_mode.addItem("延遲檢測", "delay")
+        self.workflow_mode.addItem("確認後辨識", "confirm")
+        self.workflow_mode.addItem("即時檢測", "instant")
+        self.workflow_mode.currentIndexChanged.connect(self.update_workflow_controls)
+        self.workflow_mode.currentIndexChanged.connect(self.queue_auto_save)
+
+        self.delay_seconds = QSpinBox()
+        self.delay_seconds.setRange(1, 60)
+        self.delay_seconds.setSuffix(" 秒")
+        self.delay_seconds.valueChanged.connect(self.queue_auto_save)
+
+        hint = QLabel("延遲檢測：掃碼後開始倒數，倒數結束立即檢測。確認後辨識：掃碼後由操作員按下確認檢測。即時檢測：按下開始檢測後立即連續檢測。")
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+
+        form.addWidget(QLabel("工作方式"), 0, 0)
+        form.addWidget(self.workflow_mode, 0, 1)
+        form.addWidget(QLabel("延遲秒數"), 1, 0)
+        form.addWidget(self.delay_seconds, 1, 1)
+        form.addWidget(hint, 2, 0, 1, 2)
+        return group
+
+    def refresh(self):
+        mode = getattr(self.state.inspection_workflow, "mode", "delay")
+        match = self.workflow_mode.findData(mode)
+        self.workflow_mode.setCurrentIndex(match if match >= 0 else 0)
+        self.delay_seconds.setValue(max(1, int(getattr(self.state.inspection_workflow, "delay_seconds", 3))))
+        self.update_workflow_controls()
+
+    def export_settings(self):
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "匯出設定",
+            "s1_s7_settings.json",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not target_path:
+            return
+        export_app_config_to_path(target_path)
+        QMessageBox.information(self, "匯出完成", "S1~S7 設定已匯出。")
+
+    def import_settings(self):
+        source_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "導入設定",
+            "",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not source_path:
+            return
+        import_app_config_from_path(self.state, source_path)
+        if self.on_imported:
+            self.on_imported()
+        QMessageBox.information(self, "導入完成", "S1~S7 設定已導入並重新載入。")
+
+    def queue_auto_save(self):
+        self.autosave_timer.start()
+
+    def update_workflow_controls(self):
+        self.delay_seconds.setEnabled(self.workflow_mode.currentData() == "delay")
+
+    def persist_system_settings(self):
+        self.state.inspection_workflow.mode = str(self.workflow_mode.currentData())
+        self.state.inspection_workflow.delay_seconds = self.delay_seconds.value()
+        save_app_config(self.state)
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
+class BarcodeSettingsPage(QWidget):
+    def __init__(self, state: AppState, on_logout=None):
+        super().__init__()
+        self.state = state
+        self.on_logout = on_logout
+        self.rule_rows = []
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(300)
+        self.autosave_timer.timeout.connect(self.persist_barcode_settings)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        layout.addWidget(self.build_barcode_group(), 1)
+
+    def build_barcode_group(self):
+        group = QGroupBox("S7 條碼後處理設定")
+        group.setObjectName("displaySettingsGroup")
+        layout = QVBoxLayout(group)
+        layout.setSpacing(12)
+
+        top_form = QGridLayout()
+        self.barcode_enabled = QCheckBox("啟用條碼後處理")
+        self.rule_count = QComboBox()
+        for count in range(1, 11):
+            self.rule_count.addItem(f"{count} 組", count)
+        self.rule_count.currentIndexChanged.connect(self.rebuild_rule_forms)
+        self.rule_count.currentIndexChanged.connect(self.update_preview)
+        self.join_text_input = QLineEdit()
+        self.join_text_input.setPlaceholderText("規則之間插入字串")
+
+        self.sample_input = QLineEdit()
+        self.sample_input.setPlaceholderText("輸入掃碼後的長字串")
+        self.preview_label = QLabel("")
+        self.preview_label.setObjectName("mutedText")
+        self.preview_label.setWordWrap(True)
+
+        self.barcode_enabled.toggled.connect(self.update_preview)
+        self.barcode_enabled.toggled.connect(self.queue_auto_save)
+        self.join_text_input.textChanged.connect(self.update_preview)
+        self.join_text_input.textChanged.connect(self.queue_auto_save)
+        self.sample_input.textChanged.connect(self.update_preview)
+
+        hint = QLabel("每組規則會先找開頭，再從開頭位置往後截取指定字數，最後依序加上前綴與後綴後重新組合。")
+        hint.setObjectName("mutedText")
+
+        top_form.addWidget(self.barcode_enabled, 0, 0, 1, 2)
+        top_form.addWidget(QLabel("辨識幾組條碼"), 1, 0)
+        top_form.addWidget(self.rule_count, 1, 1)
+        top_form.addWidget(QLabel("規則之間"), 2, 0)
+        top_form.addWidget(self.join_text_input, 2, 1)
+        top_form.addWidget(QLabel("範例長字串"), 3, 0)
+        top_form.addWidget(self.sample_input, 3, 1)
+        top_form.addWidget(QLabel("處理結果"), 4, 0)
+        top_form.addWidget(self.preview_label, 4, 1)
+        top_form.addWidget(hint, 5, 0, 1, 2)
+        layout.addLayout(top_form)
+
+        self.rules_host = QWidget()
+        self.rules_layout = QVBoxLayout(self.rules_host)
+        self.rules_layout.setContentsMargins(0, 0, 0, 0)
+        self.rules_layout.setSpacing(10)
+        self.rules_scroll = QScrollArea()
+        self.rules_scroll.setWidgetResizable(True)
+        self.rules_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.rules_scroll.setWidget(self.rules_host)
+        layout.addWidget(self.rules_scroll, 1)
+        self.refresh()
+        return group
+
+    def refresh(self):
+        config = self.state.barcode_processing
+        self.barcode_enabled.setChecked(getattr(config, "enabled", False))
+        self.rule_count.blockSignals(True)
+        count = max(1, int(getattr(config, "barcode_count", 1)))
+        match = self.rule_count.findData(count)
+        self.rule_count.setCurrentIndex(match if match >= 0 else 0)
+        self.rule_count.blockSignals(False)
+        self.join_text_input.setText(str(getattr(config, "join_text", "")))
+        self.rebuild_rule_forms()
+        self.update_preview()
+
+    def rebuild_rule_forms(self):
+        existing_rules = self.collect_rule_values()
+        config_rules = list(getattr(self.state.barcode_processing, "rules", []) or [])
+        source_rules = existing_rules or config_rules
+        while self.rules_layout.count():
+            item = self.rules_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.rule_rows = []
+        for index in range(int(self.rule_count.currentData())):
+            rule = source_rules[index] if index < len(source_rules) else None
+            row_group = QGroupBox(f"條碼規則 {index + 1}")
+            row_group.setObjectName("cameraSettingsCard")
+            row_layout = QGridLayout(row_group)
+
+            enabled = QCheckBox("啟用此規則")
+            start_token = QLineEdit()
+            start_token.setPlaceholderText("例如: SN 或 21")
+            length = QSpinBox()
+            length.setRange(1, 128)
+            length.setSuffix(" 碼")
+            trim_leading = QSpinBox()
+            trim_leading.setRange(0, 128)
+            trim_leading.setSuffix(" 碼")
+            trim_trailing = QSpinBox()
+            trim_trailing.setRange(0, 128)
+            trim_trailing.setSuffix(" 碼")
+            prefix = QLineEdit()
+            prefix.setPlaceholderText("前綴")
+            suffix = QLineEdit()
+            suffix.setPlaceholderText("後綴")
+
+            if rule is not None:
+                enabled.setChecked(bool(getattr(rule, "enabled", True)))
+                start_token.setText(str(getattr(rule, "start_token", "")))
+                length.setValue(max(1, int(getattr(rule, "length", 1))))
+                trim_leading.setValue(max(0, int(getattr(rule, "trim_leading_chars", 0))))
+                trim_trailing.setValue(max(0, int(getattr(rule, "trim_trailing_chars", 0))))
+                prefix.setText(str(getattr(rule, "prefix", "")))
+                suffix.setText(str(getattr(rule, "suffix", "")))
+            else:
+                enabled.setChecked(True)
+                length.setValue(1)
+                trim_leading.setValue(0)
+                trim_trailing.setValue(0)
+
+            enabled.toggled.connect(self.update_preview)
+            enabled.toggled.connect(self.queue_auto_save)
+            start_token.textChanged.connect(self.update_preview)
+            start_token.textChanged.connect(self.queue_auto_save)
+            length.valueChanged.connect(self.update_preview)
+            length.valueChanged.connect(self.queue_auto_save)
+            trim_leading.valueChanged.connect(self.update_preview)
+            trim_leading.valueChanged.connect(self.queue_auto_save)
+            trim_trailing.valueChanged.connect(self.update_preview)
+            trim_trailing.valueChanged.connect(self.queue_auto_save)
+            prefix.textChanged.connect(self.update_preview)
+            prefix.textChanged.connect(self.queue_auto_save)
+            suffix.textChanged.connect(self.update_preview)
+            suffix.textChanged.connect(self.queue_auto_save)
+
+            row_layout.addWidget(enabled, 0, 0, 1, 4)
+            row_layout.addWidget(QLabel("找開頭"), 1, 0)
+            row_layout.addWidget(start_token, 1, 1)
+            row_layout.addWidget(QLabel("條碼長度"), 1, 2)
+            row_layout.addWidget(length, 1, 3)
+            row_layout.addWidget(QLabel("刪前幾碼"), 2, 0)
+            row_layout.addWidget(trim_leading, 2, 1)
+            row_layout.addWidget(QLabel("刪後幾碼"), 2, 2)
+            row_layout.addWidget(trim_trailing, 2, 3)
+            row_layout.addWidget(QLabel("前綴"), 3, 0)
+            row_layout.addWidget(prefix, 3, 1)
+            row_layout.addWidget(QLabel("後綴"), 3, 2)
+            row_layout.addWidget(suffix, 3, 3)
+
+            self.rules_layout.addWidget(row_group)
+            self.rule_rows.append(
+                {
+                    "enabled": enabled,
+                    "start_token": start_token,
+                    "length": length,
+                    "trim_leading_chars": trim_leading,
+                    "trim_trailing_chars": trim_trailing,
+                    "prefix": prefix,
+                    "suffix": suffix,
+                }
+            )
+        self.rules_layout.addStretch()
+        self.update_preview()
+
+    def collect_rule_values(self):
+        rules = []
+        for row in self.rule_rows:
+            rules.append(
+                BarcodeRuleConfig(
+                    enabled=row["enabled"].isChecked(),
+                    start_token=row["start_token"].text(),
+                    length=row["length"].value(),
+                    trim_leading_chars=row["trim_leading_chars"].value(),
+                    trim_trailing_chars=row["trim_trailing_chars"].value(),
+                    prefix=row["prefix"].text(),
+                    suffix=row["suffix"].text(),
+                )
+            )
+        return rules
+
+    def update_preview(self):
+        from valve_gui.utils import process_barcode_text
+
+        sample = self.sample_input.text().strip()
+        preview_config = type(
+            "BarcodePreviewConfig",
+            (),
+            {
+                "enabled": self.barcode_enabled.isChecked(),
+                "barcode_count": int(self.rule_count.currentData()),
+                "join_text": self.join_text_input.text(),
+                "rules": self.collect_rule_values(),
+            },
+        )()
+        result = process_barcode_text(sample, preview_config)
+        self.preview_label.setText(result or "尚未輸入範例條碼")
+
+    def queue_auto_save(self):
+        self.autosave_timer.start()
+
+    def persist_barcode_settings(self):
+        self.state.barcode_processing.enabled = self.barcode_enabled.isChecked()
+        self.state.barcode_processing.barcode_count = int(self.rule_count.currentData())
+        self.state.barcode_processing.join_text = self.join_text_input.text()
+        self.state.barcode_processing.rules = self.collect_rule_values()
+        save_app_config(self.state)
+
+    def save_barcode_settings(self):
+        self.persist_barcode_settings()
+        QMessageBox.information(self, "設定已儲存", "條碼後處理設定已更新。")
+        return True
+
+    def logout(self):
+        if self.on_logout:
+            self.on_logout()
+
+
 class DecisionSettingsPage(QWidget):
     RULE_ROW_HEIGHT = 45
 
@@ -952,6 +1326,7 @@ class DecisionSettingsPage(QWidget):
         self.state = state
         self.on_logout = on_logout
         self.rule_rows = []
+        self.group_rows = []
         self.rule_tab_slots = []
         self.loading_rules = False
         self.camera_preview_view = None
@@ -1007,9 +1382,12 @@ class DecisionSettingsPage(QWidget):
 
         self.model_tabs = QTabWidget()
         self.model_tabs.currentChanged.connect(self.sync_camera_preview_to_rule_tab)
+        self.group_table = self.create_group_rule_table()
 
         layout.addLayout(global_row)
         layout.addWidget(self.model_tabs, 1)
+        layout.addWidget(QLabel("群組物件補判"))
+        layout.addWidget(self.group_table)
         return group
 
     def build_camera_preview_group(self):
@@ -1034,12 +1412,13 @@ class DecisionSettingsPage(QWidget):
 
     def load_rule_table(self):
         self.rule_rows = []
+        self.group_rows = []
         self.rule_tab_slots = []
         self.model_tabs.clear()
-        for camera in self.state.inspection_cameras:
+        for camera in enabled_inspection_cameras(self.state):
             page = QWidget()
             page_layout = QVBoxLayout(page)
-            model_names = camera_model_names(camera) if camera.enabled else []
+            model_names = camera_model_names(camera)
             if model_names:
                 table = self.create_rule_table(show_model=True)
                 page_layout.addWidget(table)
@@ -1052,6 +1431,16 @@ class DecisionSettingsPage(QWidget):
                 page_layout.addStretch()
             self.model_tabs.addTab(page, f"相機 {camera.slot}")
             self.rule_tab_slots.append(camera.slot)
+        if not self.rule_tab_slots:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            page_layout.addWidget(empty_label)
+            page_layout.addStretch()
+            self.model_tabs.addTab(page, "無啟用相機")
+
+        self.load_group_rule_table()
 
     def create_rule_table(self, show_model=False):
         table = QTableWidget(0, 6 if show_model else 5)
@@ -1075,6 +1464,50 @@ class DecisionSettingsPage(QWidget):
             table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         table.setAlternatingRowColors(True)
         return table
+
+    def create_group_rule_table(self):
+        table = QTableWidget(0, 4)
+        table.setHorizontalHeaderLabels(["群組編號", "規則", "是否必要", "來源相機"])
+        table.verticalHeader().setDefaultSectionSize(self.RULE_ROW_HEIGHT)
+        table.verticalHeader().setMinimumSectionSize(self.RULE_ROW_HEIGHT)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.setAlternatingRowColors(True)
+        return table
+
+    def collect_group_definitions(self):
+        groups = {}
+        for camera in enabled_inspection_cameras(self.state):
+            if not getattr(camera, "region_detection_enabled", False):
+                continue
+            for region in getattr(camera, "detection_regions", []):
+                rid = region.get("roi_id")
+                if not isinstance(rid, int) or rid <= 0:
+                    continue
+                groups.setdefault(rid, set()).add(camera.slot)
+        return groups
+
+    def load_group_rule_table(self):
+        self.group_rows = []
+        self.group_table.setRowCount(0)
+        groups = self.collect_group_definitions()
+        existing_rules = getattr(self.state.decision, "group_rules", {})
+        for rid in sorted(groups):
+            row = self.group_table.rowCount()
+            self.group_table.insertRow(row)
+            self.group_table.setRowHeight(row, self.RULE_ROW_HEIGHT)
+            self.group_table.setItem(row, 0, QTableWidgetItem(str(rid)))
+            self.group_table.setItem(row, 1, QTableWidgetItem("任一相機看到"))
+            required = QCheckBox("必要")
+            required.setChecked(bool(existing_rules.get(str(rid), {}).get("required", True)))
+            required.stateChanged.connect(self.queue_auto_save)
+            self.group_table.setCellWidget(row, 2, required)
+            self.group_table.setItem(
+                row, 3, QTableWidgetItem(", ".join(f"C{slot}" for slot in sorted(groups[rid])))
+            )
+            self.group_rows.append({"group_id": rid, "required": required})
 
     def create_operator_combo(self, value, fallback):
         combo = QComboBox()
@@ -1166,7 +1599,16 @@ class DecisionSettingsPage(QWidget):
         self.state.decision.confidence_threshold_mode = (
             "global" if self.global_threshold_mode.isChecked() else "custom"
         )
+        visible_slots = set(self.rule_tab_slots)
         rules = {}
+        for key, value in self.state.decision.model_rules.items():
+            try:
+                slot = int(str(key).split("::", 1)[0])
+            except ValueError:
+                rules[key] = value
+                continue
+            if slot not in visible_slots:
+                rules[key] = value
         for row in self.rule_rows:
             confidence_operator = ">=" if self.global_threshold_mode.isChecked() else row["confidence_operator"].currentData()
             confidence_threshold = (
@@ -1181,6 +1623,22 @@ class DecisionSettingsPage(QWidget):
                 "required_object_count": int(row["count"].currentData()),
             }
         self.state.decision.model_rules = rules
+        group_rules = {}
+        visible_group_ids = {row["group_id"] for row in self.group_rows}
+        for key, value in getattr(self.state.decision, "group_rules", {}).items():
+            try:
+                group_id = int(str(key))
+            except ValueError:
+                group_rules[key] = value
+                continue
+            if group_id not in visible_group_ids:
+                group_rules[key] = value
+        for row in self.group_rows:
+            group_rules[str(row["group_id"])] = {
+                "required": row["required"].isChecked(),
+                "mode": "any",
+            }
+        self.state.decision.group_rules = group_rules
         save_app_config(self.state)
 
     def sync_camera_preview_to_rule_tab(self, index):
@@ -1188,11 +1646,14 @@ class DecisionSettingsPage(QWidget):
 
     def update_camera_preview_tab(self, index):
         self.stop_camera_preview()
+        view = self.camera_preview_view
         if index < 0 or index >= len(self.rule_tab_slots):
+            if view:
+                view.base_title = "相機"
+                view.set_message("目前沒有啟用的檢測相機。", is_error=True)
             return
         slot = self.rule_tab_slots[index]
         camera = next((config for config in self.state.inspection_cameras if config.slot == slot), None)
-        view = self.camera_preview_view
         if camera is None:
             if view:
                 view.set_message("沒有相機設定。", is_error=True)

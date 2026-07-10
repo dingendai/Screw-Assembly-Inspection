@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from valve_gui.camera import detect_camera_indexes
 from valve_gui.config_store import (
+    normalise_model_scan_dir,
     normalise_color,
     normalise_color_map,
     normalise_confidence_threshold_mode,
@@ -21,12 +22,12 @@ from valve_gui.config_store import (
     normalise_regions,
     save_app_config,
 )
-from valve_gui.model_registry import discover_model_configs, ensure_model_configs, set_camera_model_names
+from valve_gui.model_registry import discover_model_configs, ensure_model_configs, scan_model_dir, set_camera_model_names
 from valve_gui.models import CameraConfig, DecisionConfig, DisplayConfig, ModelConfig, RegionOverlayConfig
 from valve_gui.permissions import PERMISSION_OPEN_SETTINGS
 
 from valve_web.deps import require_login, require_permission
-from valve_web.schemas import CamerasUpdate, DecisionUpdate, DisplayUpdate, ModelsUpdate, RegionsUpdate
+from valve_web.schemas import CamerasUpdate, DecisionUpdate, DisplayUpdate, ModelsRescanRequest, ModelsUpdate, RegionsUpdate
 from valve_web.state import WebContext
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -41,6 +42,7 @@ def _serialize(ctx: WebContext) -> dict:
         "operator_camera_index": state.operator_camera_index,
         "cameras": [asdict(c) for c in state.inspection_cameras],
         "models": [asdict(m) for m in state.model_configs],
+        "model_scan_dir": state.model_scan_dir,
         "decision": asdict(state.decision),
         "display": asdict(state.display),
         "region_overlay": asdict(state.region_overlay),
@@ -71,7 +73,6 @@ def _apply_cameras(ctx: WebContext, items, *, regions_only: bool):
                 exclusion_regions=normalise_regions([dict(r) for r in item.exclusion_regions]),
                 lock_geometry_enabled=bool(item.lock_geometry_enabled),
                 lock_geometry_regions=normalise_lock_geometry_regions([dict(r) for r in item.lock_geometry_regions]),
-                barcode_read_enabled=bool(item.barcode_read_enabled),
                 focus_mode=normalise_focus_mode(item.focus_mode),
                 manual_focus_value=normalise_focus_value(item.manual_focus_value),
             )
@@ -95,6 +96,7 @@ def update_cameras(req: CamerasUpdate, ctx: WebContext = Depends(_settings_dep))
 
 @router.put("/models")
 def update_models(req: ModelsUpdate, ctx: WebContext = Depends(_settings_dep)):
+    ctx.state.model_scan_dir = normalise_model_scan_dir(req.model_scan_dir)
     ctx.state.model_configs = [
         ModelConfig(name=m.name, modality=m.modality, file_path=m.file_path, enabled=m.enabled)
         for m in req.models
@@ -107,12 +109,14 @@ def update_models(req: ModelsUpdate, ctx: WebContext = Depends(_settings_dep)):
 
 
 @router.post("/models/rescan")
-def rescan_models(ctx: WebContext = Depends(_settings_dep)):
-    discovered = discover_model_configs()
+def rescan_models(req: ModelsRescanRequest, ctx: WebContext = Depends(_settings_dep)):
+    ctx.state.model_scan_dir = normalise_model_scan_dir(req.model_scan_dir)
+    discovered = discover_model_configs(scan_model_dir(ctx.state))
     known = {m.file_path for m in ctx.state.model_configs}
     ctx.state.model_configs.extend(m for m in discovered if m.file_path not in known)
     ensure_model_configs(ctx.state)
     save_app_config(ctx.state)
+    ctx.router.clear_model_cache()
     return _serialize(ctx)
 
 

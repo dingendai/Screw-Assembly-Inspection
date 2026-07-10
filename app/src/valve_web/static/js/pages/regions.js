@@ -7,14 +7,23 @@ export async function renderRegions(view) {
   try { cfg = await api.get("/api/config"); } catch (e) { toast(e.message, "error"); return; }
 
   // Deep-ish working copy of region data per camera.
-  const cams = cfg.cameras.map((c) => ({
+  const allCams = (cfg.cameras || []).map((c) => ({
     ...c,
     detection_regions: (c.detection_regions || []).map((r) => ({ ...r })),
     exclusion_regions: (c.exclusion_regions || []).map((r) => ({ ...r })),
   }));
+  const cams = allCams.filter((c) => c.enabled);
   const ov = cfg.region_overlay || {};
   const modelNames = (cfg.models || []).map((m) => m.name);
   let decisionPanel = null;
+
+  if (!cams.length) {
+    view.append(h("div", { class: "card" },
+      h("h2", {}, "區域設定"),
+      h("p", { class: "muted" }, "目前沒有啟用的檢測相機。"),
+    ));
+    return;
+  }
 
   const slotSel = h("select", {}, ...cams.map((c) => h("option", { value: c.slot }, `相機 ${c.slot}`)));
   const enableBox = h("input", { type: "checkbox" });
@@ -160,7 +169,7 @@ export async function renderRegions(view) {
 
   async function save() {
     const payload = {
-      cameras: cams.map((c) => ({
+      cameras: allCams.map((c) => ({
         slot: c.slot, device_index: c.device_index, enabled: c.enabled,
         flip_horizontal: c.flip_horizontal, flip_vertical: c.flip_vertical, rotation_degrees: c.rotation_degrees,
         assigned_model_names: c.assigned_model_names || [],
@@ -168,7 +177,6 @@ export async function renderRegions(view) {
         detection_regions: c.detection_regions, exclusion_regions: c.exclusion_regions,
         lock_geometry_enabled: !!c.lock_geometry_enabled,
         lock_geometry_regions: c.lock_geometry_regions || [],
-        barcode_read_enabled: c.barcode_read_enabled,
         focus_mode: c.focus_mode || "auto",
         manual_focus_value: c.manual_focus_value ?? 120,
       })),

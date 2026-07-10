@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 from valve_gui.camera import VideoSource, apply_frame_transform
 from valve_gui.config_store import normalise_lock_geometry_regions, save_app_config
 from valve_gui.lock_geometry import analyze_lock_geometry_regions
+from valve_gui.model_registry import enabled_inspection_cameras
 
 
 BASE_LINE_MANUAL_DEFAULT = 0.8
@@ -184,21 +185,38 @@ class LockGeometryCanvas(QLabel):
 
     def draw_regions(self, painter):
         painter.setFont(QFont(painter.font().family(), 8))
-        for region in getattr(self.camera_config, "lock_geometry_regions", []):
+        for index, region in enumerate(getattr(self.camera_config, "lock_geometry_regions", []), start=1):
             rect = self.region_to_widget_rect(region)
             color = self.region_frame_color(region)
-            self.draw_rotated_region(painter, rect, float(region.get("rotation_degrees", 0.0)), color, region)
+            self.draw_rotated_region(
+                painter,
+                rect,
+                float(region.get("rotation_degrees", 0.0)),
+                color,
+                region,
+                index,
+            )
 
-    def draw_rotated_region(self, painter, rect, angle, color, region):
+    def draw_rotated_region(self, painter, rect, angle, color, region, index):
         painter.save()
         painter.translate(rect.center())
         painter.rotate(angle)
         local = QRect(-rect.width() // 2, -rect.height() // 2, rect.width(), rect.height())
         painter.setPen(QPen(color, 2))
         painter.drawRect(local)
-        self.draw_line(painter, local, region.get("split_line_y"), QColor("#999999"))
+        painter.drawText(local.adjusted(6, 6, -6, -6), Qt.AlignmentFlag.AlignTop, f"ROI {index}")
+        analysis = self.region_analysis_by_id.get(id(region))
+        split_ratio = region.get("split_line_y")
+        base_ratio = region.get("base_line_y")
+        if analysis:
+            roi_height = max(1, analysis.region.h)
+            if split_ratio is None and analysis.result.split_line_y is not None:
+                split_ratio = analysis.result.split_line_y / roi_height
+            if base_ratio is None and analysis.result.base_line_y is not None:
+                base_ratio = analysis.result.base_line_y / roi_height
+        self.draw_line(painter, local, split_ratio, QColor("#999999"))
         self.draw_line(painter, local, region.get("red_line_y"), QColor("#ef4444"))
-        self.draw_line(painter, local, region.get("base_line_y"), QColor("#eab308"))
+        self.draw_line(painter, local, base_ratio, QColor("#eab308"))
         self.draw_detected_edge_lines(painter, local, region)
         painter.restore()
 
@@ -365,14 +383,13 @@ class LockGeometryCameraEditor(QWidget):
         self.top_spin = self.region_value_spin()
         self.right_spin = self.region_value_spin()
         self.bottom_spin = self.region_value_spin()
-        self.rotation_spin = QDoubleSpinBox()
-        self.rotation_spin.setRange(-180.0, 180.0)
-        self.rotation_spin.setSingleStep(1.0)
-        self.rotation_spin.setDecimals(1)
+        self.rotation_spin = QComboBox()
         self.rotation_spin.setMinimumWidth(90)
-        self.rotation_spin.valueChanged.connect(self.save_form_to_region)
+        for angle in ("0", "90", "180", "270"):
+            self.rotation_spin.addItem(angle, float(angle))
+        self.rotation_spin.currentIndexChanged.connect(self.save_form_to_region)
         form.addRow("名稱", self.name_edit)
-        form.addRow("ROI 狀態", self.region_enabled)
+        form.addRow("啟動監視計算", self.region_enabled)
         form.addRow("左 / 上邊界", self.two_spin_row(self.left_spin, self.top_spin))
         form.addRow("右 / 下邊界", self.two_spin_row(self.right_spin, self.bottom_spin))
         form.addRow("翻轉角度", self.rotation_spin)
@@ -604,7 +621,12 @@ class LockGeometryCameraEditor(QWidget):
             self.top_spin.setValue(y)
             self.right_spin.setValue(min(1.0, x + w))
             self.bottom_spin.setValue(min(1.0, y + h))
-            self.rotation_spin.setValue(float(region.get("rotation_degrees", 0.0)))
+            rotation_value = float(region.get("rotation_degrees", 0.0))
+            rotation_index = self.rotation_spin.findData(rotation_value)
+            if rotation_index < 0:
+                self.rotation_spin.addItem(str(int(rotation_value)), rotation_value)
+                rotation_index = self.rotation_spin.findData(rotation_value)
+            self.rotation_spin.setCurrentIndex(max(0, rotation_index))
             self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(region.get("mode", "both"))))
             self.gap_spin.setValue(float(region.get("gap_threshold_px", 6)))
             self.dark_ratio_spin.setValue(float(region.get("dark_threshold_ratio", 0.25)))
@@ -672,7 +694,7 @@ class LockGeometryCameraEditor(QWidget):
         region["y"] = top
         region["w"] = right - left
         region["h"] = bottom - top
-        region["rotation_degrees"] = self.rotation_spin.value()
+        region["rotation_degrees"] = float(self.rotation_spin.currentData() or 0.0)
         region["mode"] = self.mode_combo.currentData() or "both"
         region["gap_threshold_px"] = int(self.gap_spin.value())
         region["dark_threshold_ratio"] = self.dark_ratio_spin.value()
@@ -735,10 +757,18 @@ class LockGeometrySettingsPage(QWidget):
         self.stop()
         self.tabs.clear()
         self.editors = []
-        for camera in self.state.inspection_cameras:
+        for camera in enabled_inspection_cameras(self.state):
             editor = LockGeometryCameraEditor(camera, self.state)
             self.editors.append(editor)
             self.tabs.addTab(editor, f"相機 {camera.slot}")
+        if not self.editors:
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            empty_label = QLabel("目前沒有啟用的檢測相機。")
+            empty_label.setObjectName("mutedText")
+            page_layout.addWidget(empty_label)
+            page_layout.addStretch()
+            self.tabs.addTab(page, "無啟用相機")
         self.start()
 
     def start(self):

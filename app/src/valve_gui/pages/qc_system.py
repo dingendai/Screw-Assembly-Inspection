@@ -1,4 +1,16 @@
-from PyQt6.QtWidgets import QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from valve_gui import paths
 from valve_gui.config_store import save_app_config
@@ -17,13 +29,14 @@ class QcSystemPage(QWidget):
 
         title = QLabel("品管系統")
         title.setObjectName("pageTitle")
-        subtitle = QLabel("設定品管資料存放位置。")
+        subtitle = QLabel("設定品管輸出資料夾與記錄方式。")
         subtitle.setObjectName("mutedText")
 
-        hint = QLabel("檢測 CSV、SQLite 品管資料庫、操作者照片與個人紀錄都會寫入此資料夾。")
+        hint = QLabel("檢測 CSV、SQLite 與品管輸出影像都會寫到這裡，也可以決定連續檢測時要持續記錄，或每次判定後只記錄一次。")
         hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
 
-        output_box = QGroupBox("品管資料位置")
+        output_box = QGroupBox("品管輸出設定")
         form = QFormLayout(output_box)
 
         self.qc_output_dir_input = QLineEdit()
@@ -34,7 +47,24 @@ class QcSystemPage(QWidget):
         row = QHBoxLayout()
         row.addWidget(self.qc_output_dir_input, 1)
         row.addWidget(browse_button)
-        form.addRow("資料夾", row)
+        form.addRow("輸出路徑", row)
+
+        self.record_mode_combo = QComboBox()
+        self.record_mode_combo.addItem("連續記錄", "continuous")
+        self.record_mode_combo.addItem("每次判定記錄一次", "per_result")
+        form.addRow("記錄方式", self.record_mode_combo)
+
+        self.qc_record_filter_combo = QComboBox()
+        self.qc_record_filter_combo.addItem("PASS / NG 都記錄", "all")
+        self.qc_record_filter_combo.addItem("只記錄 NG", "ng_only")
+        self.qc_record_filter_combo.addItem("只記錄 PASS", "pass_only")
+        self.qc_record_filter_combo.addItem("都不記錄", "none")
+        form.addRow("檢測結果記錄", self.qc_record_filter_combo)
+
+        record_hint = QLabel("連續記錄會在連續檢測期間持續寫入；每次判定記錄一次會在同一工件號碼與同一結果下只記一次，但檢測不會自動停止。")
+        record_hint.setObjectName("mutedText")
+        record_hint.setWordWrap(True)
+        form.addRow("", record_hint)
 
         layout.addWidget(title)
         layout.addWidget(subtitle)
@@ -44,11 +74,17 @@ class QcSystemPage(QWidget):
 
     def refresh(self):
         self.qc_output_dir_input.setText(self.state.qc_output_dir or str(paths.get_qc_output_dir()))
+        record_mode = getattr(self.state.inspection_workflow, "record_mode", "continuous")
+        match = self.record_mode_combo.findData(record_mode)
+        self.record_mode_combo.setCurrentIndex(match if match >= 0 else 0)
+        qc_record_filter = getattr(self.state.inspection_workflow, "qc_record_filter", "all")
+        match = self.qc_record_filter_combo.findData(qc_record_filter)
+        self.qc_record_filter_combo.setCurrentIndex(match if match >= 0 else 0)
 
     def browse_qc_output_dir(self):
         current = self.qc_output_dir_input.text().strip()
         current_path = str(paths.resolve_qc_output_dir(current or self.state.qc_output_dir))
-        selected = QFileDialog.getExistingDirectory(self, "選擇品管資料資料夾", current_path)
+        selected = QFileDialog.getExistingDirectory(self, "選擇品管輸出資料夾", current_path)
         if selected:
             self.qc_output_dir_input.setText(selected)
 
@@ -57,13 +93,15 @@ class QcSystemPage(QWidget):
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            QMessageBox.warning(self, "資料錯誤", f"無法建立品管資料資料夾：\n{output_dir}\n\n{exc}")
+            QMessageBox.warning(self, "輸出路徑錯誤", f"無法建立品管輸出資料夾：\n{output_dir}\n\n{exc}")
             return False
 
         self.state.qc_output_dir = str(output_dir)
+        self.state.inspection_workflow.record_mode = str(self.record_mode_combo.currentData())
+        self.state.inspection_workflow.qc_record_filter = str(self.qc_record_filter_combo.currentData())
         save_app_config(self.state)
         if self.on_saved:
             self.on_saved()
-        QMessageBox.information(self, "儲存完成", "品管資料位置已更新。")
+        QMessageBox.information(self, "儲存完成", "品管系統設定已更新。")
         self.refresh()
         return True

@@ -7,12 +7,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
-from valve_gui import barcode_reader, qc_db
+from valve_gui import qc_db
 from valve_gui.model_registry import format_camera_model_names
 from valve_gui.models import InspectionRecord
-from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH
+from valve_gui.paths import DATA_DIR, RECORDS_LOG_PATH, RECORD_EVENTS_LOG_PATH
 from valve_gui.permissions import PERMISSION_OPEN_MONITOR
-from valve_gui.storage import append_record_csv, save_qc_object_snapshot
+from valve_gui.storage import append_record_csv, append_record_event_csv, save_qc_object_snapshot, upsert_record_list
 
 from valve_web.deps import require_permission
 from valve_web.overlay import encode_jpeg
@@ -30,27 +30,11 @@ def _enabled_cameras(ctx: WebContext):
     return [c for c in ctx.state.inspection_cameras if c.enabled]
 
 
-def _barcode_slots(ctx: WebContext) -> list[int]:
-    """已啟用且開啟條碼辨識的相機 slot。"""
-    return [c.slot for c in _enabled_cameras(ctx) if getattr(c, "barcode_read_enabled", False)]
-
-
-def _decode_barcode(ctx: WebContext, frames: dict) -> str | None:
-    """從開啟條碼辨識的相機影像中，解出第一個可信的條碼文字。"""
-    for slot in _barcode_slots(ctx):
-        frame = frames.get(slot)
-        if frame is None:
-            continue
-        text = barcode_reader.decode_best(frame)
-        if text:
-            return text
-    return None
-
-
 def _add_record(ctx: WebContext, record: InspectionRecord, *, raw_frames=None, annotated_frames=None, inference=None):
-    ctx.state.records.insert(0, record)
+    upsert_record_list(ctx.state.records, record)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     append_record_csv(RECORDS_LOG_PATH, record)
+    append_record_event_csv(RECORD_EVENTS_LOG_PATH, record)
     # SQLite 為品管查詢/統計的單一真相；CSV 暫時保留作過渡。
     inspection_id = None
     if record.result in ("PASS", "NG") and record.part_id.strip():
@@ -126,27 +110,28 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
     ctx.cameras.ensure_started(ctx.state)
     frames = ctx.cameras.frames_by_slot()
     inference = ctx.router.run(frames)
-    # 偵測驅動的條碼（router 在標籤框內解碼）優先；否則退回整張畫面解碼。
-    decoded_barcode = getattr(inference, "barcode", None) or _decode_barcode(ctx, frames)
-    if decoded_barcode:
-        effective_part_id = decoded_barcode
-        sources = getattr(inference, "barcode_sources", None) or []
-        source = (sources[0].get("class") or sources[0].get("model") or "barcode") if sources else "barcode"
-    elif part_id.strip():
+    record_mode = getattr(ctx.state.inspection_workflow, "record_mode", "continuous")
+    if part_id.strip():
         effective_part_id = part_id
         source = "manual"
     else:
         effective_part_id = ""
         source = "auto"
+    record_signature = (effective_part_id.strip() or source, inference.result)
     if record:
         do_record = True
-        if throttle and inference.result != "NG":
+        if throttle and record_mode == "continuous" and inference.result != "NG":
             now = time.time()
             last = getattr(ctx, "_last_record_time", 0.0)
             if now - last < 5.0:
                 do_record = False
             else:
                 ctx._last_record_time = now
+        elif throttle and record_mode == "per_result":
+            if record_signature == getattr(ctx, "_last_record_signature", None):
+                do_record = False
+            else:
+                ctx._last_record_signature = record_signature
         if do_record:
             _add_record(
                 ctx,
@@ -156,7 +141,6 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
                 inference=inference,
             )
     payload = _result_payload(inference, include_images=include_images)
-    payload["barcode"] = decoded_barcode
     with ctx.lock:
         ctx.latest_result = payload
     return payload
@@ -199,6 +183,8 @@ def continuous_start(ctx: WebContext = Depends(_monitor_dep), part_id: str = "")
             _continuous_thread.join(timeout=1.0)
         _continuous_stop.clear()
         ctx.continuous = True
+        ctx._last_record_time = 0.0
+        ctx._last_record_signature = None
         _continuous_thread = threading.Thread(
             target=_continuous_loop, args=(ctx, part_id), name="continuous-inspect", daemon=True
         )
@@ -212,6 +198,8 @@ def continuous_stop(ctx: WebContext = Depends(_monitor_dep)):
     with _continuous_lock:
         _continuous_stop.set()
         ctx.continuous = False
+        ctx._last_record_time = 0.0
+        ctx._last_record_signature = None
         if _continuous_thread:
             _continuous_thread.join(timeout=1.0)
             _continuous_thread = None

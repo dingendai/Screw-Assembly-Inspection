@@ -1,17 +1,24 @@
+import csv
 import json
+import shutil
 from dataclasses import asdict
+from pathlib import Path
 
 from valve_gui import paths
 from valve_gui.models import (
+    BarcodeProcessingConfig,
+    BarcodeRuleConfig,
+    DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
     DEFAULT_INSPECTION_CAMERA_COUNT,
     CameraConfig,
     DecisionConfig,
     DisplayConfig,
+    InspectionWorkflowConfig,
     ModelConfig,
     RegionOverlayConfig,
     UserAccount,
 )
-from valve_gui.paths import APP_CONFIG_PATH
+from valve_gui.paths import APP_CONFIG_PATH, LEGACY_APP_CONFIG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
     DEFAULT_ROLE_PASSWORDS,
@@ -22,20 +29,137 @@ from valve_gui.permissions import (
 from valve_gui.utils import hash_password, normalise_decision_operator
 
 
+_RUNTIME_FILE_NAMES = (
+    "operator_sessions.csv",
+    "inspection_records.csv",
+    "inspection_events.csv",
+    "qc.db",
+    "qc.db-shm",
+    "qc.db-wal",
+)
+_RUNTIME_DIR_NAMES = (
+    "operator_photos",
+    "user_records",
+    "qc_objects",
+)
+_RUNTIME_EXPORT_PATTERNS = (
+    "work_history_*.csv",
+    "qc_inspections_*.csv",
+    "inspection_records_*.csv",
+    "operator_sessions_*.csv",
+)
+
+
+def _resolve_app_config_source():
+    active_path = Path(APP_CONFIG_PATH)
+    if active_path.exists():
+        return active_path
+    if LEGACY_APP_CONFIG_PATH.exists():
+        return LEGACY_APP_CONFIG_PATH
+    return active_path
+
+
+def _remap_session_photo_paths(csv_path: Path, old_output_dir: Path, new_output_dir: Path):
+    if not csv_path.exists():
+        return
+    old_prefix = str((old_output_dir / "operator_photos").resolve())
+    new_prefix = str((new_output_dir / "operator_photos").resolve())
+    rows = []
+    fieldnames = []
+    changed = False
+    with open(csv_path, "r", newline="", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+        fieldnames = list(reader.fieldnames or [])
+    if not fieldnames:
+        fieldnames = ["operator_name", "operator_role", "role_label", "login_time", "logout_time", "photo_path"]
+    for row in rows:
+        photo_path = str(row.get("photo_path") or "").strip()
+        if photo_path.startswith(old_prefix):
+            row["photo_path"] = new_prefix + photo_path[len(old_prefix):]
+            changed = True
+    if not changed:
+        return
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _move_path(source: Path, target: Path):
+    if source.is_dir():
+        target.mkdir(parents=True, exist_ok=True)
+        for child in list(source.iterdir()):
+            _move_path(child, target / child.name)
+        try:
+            source.rmdir()
+        except OSError:
+            pass
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
+    shutil.move(str(source), str(target))
+
+
+def migrate_qc_output_data(old_output_dir, new_output_dir):
+    old_dir = paths.resolve_qc_output_dir(old_output_dir)
+    new_dir = paths.resolve_qc_output_dir(new_output_dir)
+    if old_dir == new_dir or not old_dir.exists():
+        return
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    old_app_config = old_dir / "app_config.json"
+    if old_app_config.exists():
+        old_app_config.unlink(missing_ok=True)
+
+    for name in _RUNTIME_FILE_NAMES:
+        source = old_dir / name
+        if source.exists():
+            _move_path(source, new_dir / name)
+
+    for name in _RUNTIME_DIR_NAMES:
+        source = old_dir / name
+        if source.exists():
+            _move_path(source, new_dir / name)
+
+    for pattern in _RUNTIME_EXPORT_PATTERNS:
+        for source in old_dir.glob(pattern):
+            _move_path(source, new_dir / source.name)
+
+    _remap_session_photo_paths(new_dir / "operator_sessions.csv", old_dir, new_dir)
+
+
 def load_app_config(state):
+    source_path = _resolve_app_config_source()
+    load_app_config_from_path(state, source_path, persist_qc_output_dir=False)
+    paths.set_qc_output_dir(state.qc_output_dir, persist=True)
+    target_path = Path(APP_CONFIG_PATH)
+    if source_path.exists() and source_path.resolve() != target_path.resolve():
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, target_path)
+        if source_path == LEGACY_APP_CONFIG_PATH:
+            source_path.unlink(missing_ok=True)
+
+
+def load_app_config_from_path(state, config_path, *, persist_qc_output_dir: bool = True):
+    config_path = Path(config_path)
     data = {}
-    if APP_CONFIG_PATH.exists():
-        with open(APP_CONFIG_PATH, "r", encoding="utf-8") as file:
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as file:
             data = json.load(file)
 
     state.qc_output_dir = normalise_qc_output_dir(data.get("qc_output_dir", state.qc_output_dir))
-    paths.set_qc_output_dir(state.qc_output_dir)
+    paths.set_qc_output_dir(state.qc_output_dir, persist=persist_qc_output_dir)
+    state.model_scan_dir = normalise_model_scan_dir(data.get("model_scan_dir", state.model_scan_dir))
     if not data:
         return
 
     state.operator_camera_index = int(data.get("operator_camera_index", state.operator_camera_index))
     state.use_simulation = False
-    state.barcode_label_classes = normalise_model_names(data.get("barcode_label_classes", []))
     role_labels = data.get("role_labels", {})
     default_labels = default_role_labels()
     merged_labels = {ROLE_DEVELOPER: default_labels[ROLE_DEVELOPER]}
@@ -112,12 +236,19 @@ def load_app_config(state):
                 decision.get("confidence_threshold_mode", state.decision.confidence_threshold_mode)
             ),
             model_rules=normalise_decision_rules(decision.get("model_rules", {})),
+            group_rules=normalise_group_rules(decision.get("group_rules", {})),
         )
 
     region_overlay = data.get("region_overlay", {})
     if isinstance(region_overlay, dict):
         state.region_overlay = RegionOverlayConfig(
             show_on_monitor=bool(region_overlay.get("show_on_monitor", state.region_overlay.show_on_monitor)),
+            show_yolo_on_monitor=bool(
+                region_overlay.get("show_yolo_on_monitor", state.region_overlay.show_yolo_on_monitor)
+            ),
+            show_geometry_on_monitor=bool(
+                region_overlay.get("show_geometry_on_monitor", state.region_overlay.show_geometry_on_monitor)
+            ),
             detection_color=normalise_color(
                 region_overlay.get("detection_color", state.region_overlay.detection_color),
                 state.region_overlay.detection_color,
@@ -131,6 +262,45 @@ def load_app_config(state):
                 state.region_overlay.yolo_color,
             ),
             yolo_model_colors=normalise_color_map(region_overlay.get("yolo_model_colors", {})),
+        )
+
+    barcode_processing = data.get("barcode_processing", {})
+    if isinstance(barcode_processing, dict):
+        state.barcode_processing = BarcodeProcessingConfig(
+            enabled=bool(barcode_processing.get("enabled", state.barcode_processing.enabled)),
+            barcode_count=max(1, int(barcode_processing.get("barcode_count", state.barcode_processing.barcode_count))),
+            join_text=str(barcode_processing.get("join_text", state.barcode_processing.join_text)),
+            rules=normalise_barcode_rules(barcode_processing.get("rules", [])),
+            trim_leading_chars=max(
+                0,
+                int(barcode_processing.get("trim_leading_chars", state.barcode_processing.trim_leading_chars)),
+            ),
+            prefix=str(barcode_processing.get("prefix", state.barcode_processing.prefix)),
+            suffix=str(barcode_processing.get("suffix", state.barcode_processing.suffix)),
+        )
+
+    inspection_workflow = data.get("inspection_workflow", {})
+    if isinstance(inspection_workflow, dict):
+        mode = str(inspection_workflow.get("mode", state.inspection_workflow.mode)).strip().lower()
+        if mode not in {"delay", "confirm", "instant"}:
+            mode = "delay"
+        record_mode = str(
+            inspection_workflow.get("record_mode", getattr(state.inspection_workflow, "record_mode", "continuous"))
+        ).strip().lower()
+        if record_mode not in {"continuous", "per_result"}:
+            record_mode = "continuous"
+        qc_record_filter = str(
+            inspection_workflow.get(
+                "qc_record_filter", getattr(state.inspection_workflow, "qc_record_filter", "all")
+            )
+        ).strip().lower()
+        if qc_record_filter not in {"all", "pass_only", "ng_only", "none"}:
+            qc_record_filter = "all"
+        state.inspection_workflow = InspectionWorkflowConfig(
+            mode=mode,
+            delay_seconds=max(1, int(inspection_workflow.get("delay_seconds", state.inspection_workflow.delay_seconds))),
+            record_mode=record_mode,
+            qc_record_filter=qc_record_filter,
         )
 
     cameras = data.get("inspection_cameras", [])
@@ -150,7 +320,6 @@ def load_app_config(state):
                 exclusion_regions=normalise_regions(item.get("exclusion_regions", [])),
                 lock_geometry_enabled=bool(item.get("lock_geometry_enabled", False)),
                 lock_geometry_regions=normalise_lock_geometry_regions(item.get("lock_geometry_regions", [])),
-                barcode_read_enabled=bool(item.get("barcode_read_enabled", False)),
                 focus_mode=normalise_focus_mode(item.get("focus_mode", "auto")),
                 manual_focus_value=normalise_focus_value(item.get("manual_focus_value", 120)),
             )
@@ -183,22 +352,32 @@ def ensure_default_camera_count(cameras):
     existing_slots = {camera.slot for camera in cameras}
     for slot in range(1, DEFAULT_INSPECTION_CAMERA_COUNT + 1):
         if slot not in existing_slots:
-            cameras.append(CameraConfig(slot=slot, device_index=slot - 1, enabled=True))
+            cameras.append(
+                CameraConfig(
+                    slot=slot,
+                    device_index=slot - 1,
+                    enabled=slot <= DEFAULT_ENABLED_INSPECTION_CAMERA_COUNT,
+                )
+            )
     cameras.sort(key=lambda camera: camera.slot)
 
 
 def save_app_config(state):
-    APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     state.qc_output_dir = normalise_qc_output_dir(state.qc_output_dir)
+    state.model_scan_dir = normalise_model_scan_dir(state.model_scan_dir)
     paths.set_qc_output_dir(state.qc_output_dir)
+    app_config_path = Path(APP_CONFIG_PATH)
+    app_config_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": False,
         "qc_output_dir": state.qc_output_dir,
-        "barcode_label_classes": list(state.barcode_label_classes),
+        "model_scan_dir": state.model_scan_dir,
         "display": asdict(state.display),
         "decision": asdict(state.decision),
         "region_overlay": asdict(state.region_overlay),
+        "barcode_processing": asdict(state.barcode_processing),
+        "inspection_workflow": asdict(state.inspection_workflow),
         "role_labels": state.role_labels,
         "role_passwords": _hashed_passwords(state.role_passwords),
         "role_permissions": {
@@ -209,8 +388,24 @@ def save_app_config(state):
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }
-    with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
+    with open(app_config_path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+    if LEGACY_APP_CONFIG_PATH != app_config_path and LEGACY_APP_CONFIG_PATH.exists():
+        LEGACY_APP_CONFIG_PATH.unlink(missing_ok=True)
+
+
+def export_app_config_to_path(target_path):
+    app_config_path = Path(APP_CONFIG_PATH)
+    app_config_path.parent.mkdir(parents=True, exist_ok=True)
+    if not app_config_path.exists():
+        with open(app_config_path, "w", encoding="utf-8") as file:
+            json.dump({}, file, ensure_ascii=False, indent=2)
+    shutil.copyfile(app_config_path, target_path)
+
+
+def import_app_config_from_path(state, source_path):
+    load_app_config_from_path(state, source_path, persist_qc_output_dir=False)
+    save_app_config(state)
 
 
 def normalise_model_names(value):
@@ -223,6 +418,13 @@ def normalise_model_names(value):
 
 def normalise_qc_output_dir(value):
     return str(paths.resolve_qc_output_dir(value))
+
+
+def normalise_model_scan_dir(value):
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    return str(Path(text).expanduser().resolve())
 
 
 def normalise_focus_mode(value):
@@ -294,6 +496,44 @@ def normalise_color_map(value):
         if normalised:
             colors[model_name] = normalised
     return colors
+
+
+def normalise_barcode_rules(value):
+    if not isinstance(value, list):
+        return []
+    rules = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        rules.append(
+            BarcodeRuleConfig(
+                start_token=str(item.get("start_token", "")).strip(),
+                length=max(0, int(item.get("length", 0))),
+                trim_leading_chars=max(0, int(item.get("trim_leading_chars", 0))),
+                trim_trailing_chars=max(0, int(item.get("trim_trailing_chars", 0))),
+                prefix=str(item.get("prefix", "")),
+                suffix=str(item.get("suffix", "")),
+                enabled=bool(item.get("enabled", True)),
+            )
+        )
+    return rules
+
+
+def normalise_group_rules(value):
+    if not isinstance(value, dict):
+        return {}
+    rules = {}
+    for key, rule in value.items():
+        rule_key = str(key).strip()
+        if not rule_key:
+            continue
+        if not isinstance(rule, dict):
+            rule = {}
+        rules[rule_key] = {
+            "required": bool(rule.get("required", True)),
+            "mode": "any",
+        }
+    return rules
 
 
 def normalise_regions(value):

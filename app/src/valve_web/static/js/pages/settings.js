@@ -22,7 +22,7 @@ export async function renderSettings(view) {
 
   const camRows = cfg.cameras.map((c) => buildCameraRow(c, modelNames));
   const camTable = h("table", {},
-    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "條碼辨識", "焦距模式", "固定焦距", "模型"].map((t) => h("th", {}, t)))),
+    h("thead", {}, h("tr", {}, ...["啟用", "Slot", "裝置index", "水平翻轉", "垂直翻轉", "旋轉", "焦距模式", "固定焦距", "模型"].map((t) => h("th", {}, t)))),
     h("tbody", {}, ...camRows.map((r) => r.tr))
   );
 
@@ -71,6 +71,12 @@ export async function renderSettings(view) {
 
   // ---------- models section ----------
   const modelsContainer = h("div", {});
+  const modelScanDir = h("input", {
+    type: "text",
+    value: cfg.model_scan_dir || "",
+    placeholder: "留空時使用預設 models 資料夾",
+    style: "min-width:320px; width:100%",
+  });
   function renderModels() {
     modelsContainer.innerHTML = "";
     const rows = cfg.models.map((m) => {
@@ -90,12 +96,21 @@ export async function renderSettings(view) {
   renderModels();
 
   async function rescan() {
-    try { cfg = await api.post("/api/config/models/rescan"); renderModels(); toast("已重新搜尋模型", "ok"); }
+    try {
+      cfg = await api.post("/api/config/models/rescan", { model_scan_dir: modelScanDir.value.trim() });
+      modelScanDir.value = cfg.model_scan_dir || "";
+      renderModels();
+      toast("已重新搜尋模型", "ok");
+    }
     catch (e) { toast(e.message, "error"); }
   }
   async function saveModels() {
     try {
-      cfg = await api.put("/api/config/models", { models: modelsContainer._rows.map((r) => r.read()) });
+      cfg = await api.put("/api/config/models", {
+        model_scan_dir: modelScanDir.value.trim(),
+        models: modelsContainer._rows.map((r) => r.read()),
+      });
+      modelScanDir.value = cfg.model_scan_dir || "";
       renderModels();
       toast("模型設定已儲存", "ok");
     } catch (e) { toast(e.message, "error"); }
@@ -105,8 +120,13 @@ export async function renderSettings(view) {
     h("div", { class: "row" }, h("h2", { style: "flex:1" }, "模型設定"),
       h("button", { class: "btn", onclick: rescan }, "重新搜尋模型"),
       h("button", { class: "btn btn-success", onclick: saveModels }, "儲存模型")),
+    h("div", { class: "row", style: "margin:12px 0; align-items:flex-end" },
+      h("div", { class: "col", style: "flex:1" },
+        h("label", {}, "模型掃描路徑"),
+        modelScanDir,
+      )),
     modelsContainer,
-    h("p", { class: "muted" }, "模型權重會從 models/ 資料夾搜尋。相機可指定多個模型，於上方相機表格勾選。")
+    h("p", { class: "muted" }, "模型權重會從指定資料夾遞迴搜尋。相機可指定多個模型，於上方相機表格勾選。")
   ));
 }
 
@@ -117,7 +137,6 @@ function buildCameraRow(c, modelNames) {
   const fv = h("input", { type: "checkbox" }); fv.checked = c.flip_vertical;
   const rot = h("select", {}, ...[0, 90, 180, 270].map((d) => h("option", { value: d }, d + "°")));
   rot.value = c.rotation_degrees;
-  const barcode = h("input", { type: "checkbox" }); barcode.checked = !!c.barcode_read_enabled;
   const focusMode = h("select", {},
     h("option", { value: "auto" }, "原廠自動焦距"),
     h("option", { value: "manual" }, "手動固定焦距")
@@ -149,7 +168,7 @@ function buildCameraRow(c, modelNames) {
   return {
     tr: h("tr", {},
       h("td", {}, enabled), h("td", {}, "C" + c.slot), h("td", {}, dev),
-      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot), h("td", {}, barcode),
+      h("td", {}, fh), h("td", {}, fv), h("td", {}, rot),
       h("td", {}, focusMode), h("td", {}, manualFocus), h("td", {}, modelCell)),
     read: () => ({
       slot: c.slot,
@@ -158,7 +177,6 @@ function buildCameraRow(c, modelNames) {
       flip_horizontal: fh.checked,
       flip_vertical: fv.checked,
       rotation_degrees: parseInt(rot.value) || 0,
-      barcode_read_enabled: barcode.checked,
       focus_mode: focusMode.value === "manual" ? "manual" : "auto",
       manual_focus_value: readFocusValue(),
       assigned_model_names: modelChecks.map((l) => l.firstChild).filter((cb) => cb.checked).map((cb) => cb._name),
