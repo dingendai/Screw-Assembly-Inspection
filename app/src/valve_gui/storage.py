@@ -16,12 +16,11 @@ _RECORD_HEADER = [
     "result", "part_id", "active_cameras", "confidence", "note",
 ]
 
+_USER_RECORD_HEADER = ["時間", "操作者", "角色", "結果", "工件", "相機", "信心度", "備註"]
+_INVALID_PATH_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+
 
 def read_sessions_csv(path):
-    """把登入/登出紀錄從 CSV 載回 OperatorSession 清單（newest-first，與寫入順序一致）。
-
-    啟動時呼叫，避免登出時整檔覆寫把先前執行的登入紀錄洗掉。
-    """
     path = Path(path)
     if not path.exists():
         return []
@@ -58,24 +57,43 @@ def write_sessions_csv(path, sessions, role_labels=None):
             ])
 
 
+def _record_value(record, field_name):
+    if isinstance(record, dict):
+        return record.get(field_name, "")
+    return getattr(record, field_name, "")
+
+
 def write_user_records_csv(path, records, role_labels=None):
-    export_records = []
-    for record in reversed(list(records)):
-        upsert_record_list(export_records, record)
     with open(path, "w", newline="", encoding="utf-8-sig") as file:
         writer = csv.writer(file)
-        writer.writerow(["時間", "操作者", "角色", "結果", "工件", "相機", "信心度", "備註"])
-        for record in export_records:
+        writer.writerow(_USER_RECORD_HEADER)
+        for record in records:
             writer.writerow([
-                record.timestamp,
-                record.operator_name,
-                role_label(record.operator_role, role_labels),
-                record.result,
-                record.part_id,
-                record.active_cameras,
-                record.confidence,
-                record.note,
+                _record_value(record, "timestamp"),
+                _record_value(record, "operator_name"),
+                role_label(_record_value(record, "operator_role"), role_labels),
+                _record_value(record, "result"),
+                _record_value(record, "part_id"),
+                _record_value(record, "active_cameras"),
+                _record_value(record, "confidence"),
+                _record_value(record, "note"),
             ])
+
+
+def read_record_events_csv(path, *, operator_name="", start_time="", end_time=""):
+    path = Path(path)
+    if not path.exists():
+        return []
+    with open(path, "r", newline="", encoding="utf-8-sig") as file:
+        rows = list(csv.DictReader(file))
+    if operator_name:
+        operator_name = operator_name.strip()
+        rows = [row for row in rows if (row.get("operator_name") or "").strip() == operator_name]
+    if start_time:
+        rows = [row for row in rows if (row.get("timestamp") or "") >= start_time]
+    if end_time:
+        rows = [row for row in rows if (row.get("timestamp") or "") <= end_time]
+    return rows
 
 
 def append_record_csv(path, record):
@@ -152,9 +170,6 @@ def upsert_record_list(records, record):
     records.insert(0, record)
 
 
-_INVALID_PATH_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
-
-
 def safe_path_part(value, fallback="unknown"):
     text = _INVALID_PATH_CHARS.sub("_", str(value or "").strip())
     text = text.strip(" .")
@@ -177,7 +192,6 @@ def save_qc_object_snapshot(
     roi_confirmations=None,
     inspection_id=None,
 ):
-    """Save the latest raw/annotated images for one barcode object in this work session."""
     barcode = (record.part_id or "").strip()
     if not barcode or getattr(record, "barcode_source", "") == "auto":
         return None

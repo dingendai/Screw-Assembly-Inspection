@@ -57,6 +57,7 @@ from valve_gui.styles import apply_styles
 from valve_gui.storage import (
     append_record_event_csv,
     append_record_csv,
+    read_record_events_csv,
     read_sessions_csv,
     save_qc_object_snapshot,
     upsert_record_list,
@@ -945,9 +946,16 @@ class MainWindow(QMainWindow):
         name = self.state.operator_name.strip()
         if not name:
             return
-        user_records = [
-            record for record in self.state.records if record.operator_name == name
-        ]
+        user_records = read_record_events_csv(
+            RECORD_EVENTS_LOG_PATH,
+            operator_name=name,
+            start_time=self.state.login_time,
+            end_time=f"{when:%Y-%m-%d %H:%M:%S}",
+        )
+        if not user_records:
+            user_records = [
+                record for record in self.state.records if record.operator_name == name
+            ]
         if not user_records:
             return
         USER_RECORDS_DIR.mkdir(parents=True, exist_ok=True)
