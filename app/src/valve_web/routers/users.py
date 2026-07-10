@@ -5,7 +5,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, HTTPException
 
 from valve_gui import paths, qc_db
-from valve_gui.config_store import save_app_config
+from valve_gui.config_store import migrate_qc_output_data, save_app_config
 from valve_gui.models import OperatorSession, UserAccount
 from valve_gui.paths import SESSION_LOG_PATH
 from valve_gui.permissions import (
@@ -52,6 +52,11 @@ def _activate_qc_output_dir(ctx: WebContext, output_dir: str) -> None:
     if old_output_dir == ctx.state.qc_output_dir:
         return
 
+    migrate_qc_output_data(old_output_dir, ctx.state.qc_output_dir)
+    old_photos_dir = str((paths.resolve_qc_output_dir(old_output_dir) / "operator_photos").resolve())
+    new_photos_dir = str((target / "operator_photos").resolve())
+    if str(ctx.state.operator_photo_path or "").startswith(old_photos_dir):
+        ctx.state.operator_photo_path = new_photos_dir + ctx.state.operator_photo_path[len(old_photos_dir):]
     qc_db.init_db()
     ctx.state.sessions = read_sessions_csv(SESSION_LOG_PATH)
     if ctx.state.is_logged_in:

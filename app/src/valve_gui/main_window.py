@@ -17,8 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from valve_gui import qc_db
-from valve_gui.config_store import load_app_config
+from valve_gui import paths, qc_db
+from valve_gui.config_store import load_app_config, migrate_qc_output_data
 from valve_gui.model_registry import camera_model_names, enabled_model_names, ensure_model_configs
 from valve_gui.models import AppState, InspectionRecord, OperatorSession
 from valve_gui.pages.help import HelpPage
@@ -866,6 +866,13 @@ class MainWindow(QMainWindow):
 
     def after_qc_output_dir_saved(self):
         if self._active_qc_output_dir != self.state.qc_output_dir:
+            old_output_dir = self._active_qc_output_dir
+            new_output_dir = self.state.qc_output_dir
+            migrate_qc_output_data(old_output_dir, new_output_dir)
+            old_photos_dir = str((paths.resolve_qc_output_dir(old_output_dir) / "operator_photos").resolve())
+            new_photos_dir = str((paths.resolve_qc_output_dir(new_output_dir) / "operator_photos").resolve())
+            if str(self.state.operator_photo_path or "").startswith(old_photos_dir):
+                self.state.operator_photo_path = new_photos_dir + self.state.operator_photo_path[len(old_photos_dir):]
             self._active_qc_output_dir = self.state.qc_output_dir
             qc_db.init_db()
             self.state.sessions = read_sessions_csv(SESSION_LOG_PATH)

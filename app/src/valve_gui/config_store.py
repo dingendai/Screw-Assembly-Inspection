@@ -1,3 +1,4 @@
+import csv
 import json
 import shutil
 from dataclasses import asdict
@@ -17,7 +18,7 @@ from valve_gui.models import (
     RegionOverlayConfig,
     UserAccount,
 )
-from valve_gui.paths import APP_CONFIG_PATH
+from valve_gui.paths import APP_CONFIG_PATH, LEGACY_APP_CONFIG_PATH
 from valve_gui.permissions import (
     CONFIGURABLE_PERMISSIONS,
     DEFAULT_ROLE_PASSWORDS,
@@ -28,18 +29,131 @@ from valve_gui.permissions import (
 from valve_gui.utils import hash_password, normalise_decision_operator
 
 
+_RUNTIME_FILE_NAMES = (
+    "operator_sessions.csv",
+    "inspection_records.csv",
+    "inspection_events.csv",
+    "qc.db",
+    "qc.db-shm",
+    "qc.db-wal",
+)
+_RUNTIME_DIR_NAMES = (
+    "operator_photos",
+    "user_records",
+    "qc_objects",
+)
+_RUNTIME_EXPORT_PATTERNS = (
+    "work_history_*.csv",
+    "qc_inspections_*.csv",
+    "inspection_records_*.csv",
+    "operator_sessions_*.csv",
+)
+
+
+def _resolve_app_config_source():
+    active_path = Path(APP_CONFIG_PATH)
+    if active_path.exists():
+        return active_path
+    if LEGACY_APP_CONFIG_PATH.exists():
+        return LEGACY_APP_CONFIG_PATH
+    return active_path
+
+
+def _remap_session_photo_paths(csv_path: Path, old_output_dir: Path, new_output_dir: Path):
+    if not csv_path.exists():
+        return
+    old_prefix = str((old_output_dir / "operator_photos").resolve())
+    new_prefix = str((new_output_dir / "operator_photos").resolve())
+    rows = []
+    fieldnames = []
+    changed = False
+    with open(csv_path, "r", newline="", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+        fieldnames = list(reader.fieldnames or [])
+    if not fieldnames:
+        fieldnames = ["operator_name", "operator_role", "role_label", "login_time", "logout_time", "photo_path"]
+    for row in rows:
+        photo_path = str(row.get("photo_path") or "").strip()
+        if photo_path.startswith(old_prefix):
+            row["photo_path"] = new_prefix + photo_path[len(old_prefix):]
+            changed = True
+    if not changed:
+        return
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _move_path(source: Path, target: Path):
+    if source.is_dir():
+        target.mkdir(parents=True, exist_ok=True)
+        for child in list(source.iterdir()):
+            _move_path(child, target / child.name)
+        try:
+            source.rmdir()
+        except OSError:
+            pass
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            target.unlink(missing_ok=True)
+    shutil.move(str(source), str(target))
+
+
+def migrate_qc_output_data(old_output_dir, new_output_dir):
+    old_dir = paths.resolve_qc_output_dir(old_output_dir)
+    new_dir = paths.resolve_qc_output_dir(new_output_dir)
+    if old_dir == new_dir or not old_dir.exists():
+        return
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    old_app_config = old_dir / "app_config.json"
+    if old_app_config.exists():
+        old_app_config.unlink(missing_ok=True)
+
+    for name in _RUNTIME_FILE_NAMES:
+        source = old_dir / name
+        if source.exists():
+            _move_path(source, new_dir / name)
+
+    for name in _RUNTIME_DIR_NAMES:
+        source = old_dir / name
+        if source.exists():
+            _move_path(source, new_dir / name)
+
+    for pattern in _RUNTIME_EXPORT_PATTERNS:
+        for source in old_dir.glob(pattern):
+            _move_path(source, new_dir / source.name)
+
+    _remap_session_photo_paths(new_dir / "operator_sessions.csv", old_dir, new_dir)
+
+
 def load_app_config(state):
-    load_app_config_from_path(state, APP_CONFIG_PATH)
+    source_path = _resolve_app_config_source()
+    load_app_config_from_path(state, source_path, persist_qc_output_dir=False)
+    paths.set_qc_output_dir(state.qc_output_dir, persist=True)
+    target_path = Path(APP_CONFIG_PATH)
+    if source_path.exists() and source_path.resolve() != target_path.resolve():
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, target_path)
+        if source_path == LEGACY_APP_CONFIG_PATH:
+            source_path.unlink(missing_ok=True)
 
 
-def load_app_config_from_path(state, config_path):
+def load_app_config_from_path(state, config_path, *, persist_qc_output_dir: bool = True):
+    config_path = Path(config_path)
     data = {}
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as file:
             data = json.load(file)
 
     state.qc_output_dir = normalise_qc_output_dir(data.get("qc_output_dir", state.qc_output_dir))
-    paths.set_qc_output_dir(state.qc_output_dir)
+    paths.set_qc_output_dir(state.qc_output_dir, persist=persist_qc_output_dir)
     state.model_scan_dir = normalise_model_scan_dir(data.get("model_scan_dir", state.model_scan_dir))
     if not data:
         return
@@ -249,10 +363,11 @@ def ensure_default_camera_count(cameras):
 
 
 def save_app_config(state):
-    APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     state.qc_output_dir = normalise_qc_output_dir(state.qc_output_dir)
     state.model_scan_dir = normalise_model_scan_dir(state.model_scan_dir)
     paths.set_qc_output_dir(state.qc_output_dir)
+    app_config_path = Path(APP_CONFIG_PATH)
+    app_config_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "operator_camera_index": state.operator_camera_index,
         "use_simulation": False,
@@ -273,21 +388,24 @@ def save_app_config(state):
         "inspection_cameras": [asdict(config) for config in state.inspection_cameras],
         "model_configs": [asdict(config) for config in state.model_configs],
     }
-    with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
+    with open(app_config_path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+    if LEGACY_APP_CONFIG_PATH != app_config_path and LEGACY_APP_CONFIG_PATH.exists():
+        LEGACY_APP_CONFIG_PATH.unlink(missing_ok=True)
 
 
 def export_app_config_to_path(target_path):
-    APP_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not APP_CONFIG_PATH.exists():
-        with open(APP_CONFIG_PATH, "w", encoding="utf-8") as file:
+    app_config_path = Path(APP_CONFIG_PATH)
+    app_config_path.parent.mkdir(parents=True, exist_ok=True)
+    if not app_config_path.exists():
+        with open(app_config_path, "w", encoding="utf-8") as file:
             json.dump({}, file, ensure_ascii=False, indent=2)
-    shutil.copyfile(APP_CONFIG_PATH, target_path)
+    shutil.copyfile(app_config_path, target_path)
 
 
 def import_app_config_from_path(state, source_path):
-    shutil.copyfile(source_path, APP_CONFIG_PATH)
-    load_app_config_from_path(state, APP_CONFIG_PATH)
+    load_app_config_from_path(state, source_path, persist_qc_output_dir=False)
+    save_app_config(state)
 
 
 def normalise_model_names(value):
