@@ -54,7 +54,7 @@ class QcSystemPage(QWidget):
         self.record_mode_combo.addItem("每次判定記錄一次", "per_result")
         form.addRow("記錄方式", self.record_mode_combo)
 
-        record_hint = QLabel("連續記錄會在連續檢測期間持續寫入；每次判定記錄一次會在連續檢測下於第一個 PASS 或 NG 記錄後自動停止。")
+        record_hint = QLabel("連續記錄會在連續檢測期間持續寫入；每次判定記錄一次會在同一工件號碼與同一結果下只記一次，但檢測不會自動停止。")
         record_hint.setObjectName("mutedText")
         record_hint.setWordWrap(True)
         form.addRow("", record_hint)

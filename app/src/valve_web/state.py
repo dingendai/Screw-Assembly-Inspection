@@ -34,6 +34,7 @@ class WebContext:
         # Continuous inspection bookkeeping (driven by the inspect router).
         self.continuous = False
         self.latest_result: dict | None = None
+        self._last_record_signature: tuple[str, str] | None = None
         self.lock = threading.Lock()
 
     def reload_cameras(self):

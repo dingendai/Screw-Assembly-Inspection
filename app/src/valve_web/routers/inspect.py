@@ -116,6 +116,7 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
     else:
         effective_part_id = ""
         source = "auto"
+    record_signature = (effective_part_id.strip() or source, inference.result)
     if record:
         do_record = True
         if throttle and record_mode == "continuous" and inference.result != "NG":
@@ -126,7 +127,10 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
             else:
                 ctx._last_record_time = now
         elif throttle and record_mode == "per_result":
-            ctx._last_record_time = time.time()
+            if record_signature == getattr(ctx, "_last_record_signature", None):
+                do_record = False
+            else:
+                ctx._last_record_signature = record_signature
         if do_record:
             _add_record(
                 ctx,
@@ -135,9 +139,6 @@ def _run_once(ctx: WebContext, part_id: str, record: bool, throttle: bool, inclu
                 annotated_frames=getattr(inference, "annotated_frames", {}),
                 inference=inference,
             )
-            if throttle and record_mode == "per_result":
-                ctx.continuous = False
-                _continuous_stop.set()
     payload = _result_payload(inference, include_images=include_images)
     with ctx.lock:
         ctx.latest_result = payload
@@ -181,6 +182,8 @@ def continuous_start(ctx: WebContext = Depends(_monitor_dep), part_id: str = "")
             _continuous_thread.join(timeout=1.0)
         _continuous_stop.clear()
         ctx.continuous = True
+        ctx._last_record_time = 0.0
+        ctx._last_record_signature = None
         _continuous_thread = threading.Thread(
             target=_continuous_loop, args=(ctx, part_id), name="continuous-inspect", daemon=True
         )
@@ -194,6 +197,8 @@ def continuous_stop(ctx: WebContext = Depends(_monitor_dep)):
     with _continuous_lock:
         _continuous_stop.set()
         ctx.continuous = False
+        ctx._last_record_time = 0.0
+        ctx._last_record_signature = None
         if _continuous_thread:
             _continuous_thread.join(timeout=1.0)
             _continuous_thread = None
