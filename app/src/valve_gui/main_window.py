@@ -58,6 +58,7 @@ from valve_gui.storage import (
     append_record_csv,
     read_sessions_csv,
     save_qc_object_snapshot,
+    upsert_record_list,
     write_sessions_csv,
     write_user_records_csv,
 )
@@ -895,7 +896,7 @@ class MainWindow(QMainWindow):
         camera_results=None,
         roi_confirmations=None,
     ):
-        self.state.records.insert(0, record)
+        upsert_record_list(self.state.records, record)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         append_record_csv(RECORDS_LOG_PATH, record)
         # SQLite 為歷史/品管查詢/統計的單一真相；CSV 暫時保留作過渡。

@@ -59,10 +59,13 @@ def write_sessions_csv(path, sessions, role_labels=None):
 
 
 def write_user_records_csv(path, records, role_labels=None):
+    export_records = []
+    for record in reversed(list(records)):
+        upsert_record_list(export_records, record)
     with open(path, "w", newline="", encoding="utf-8-sig") as file:
         writer = csv.writer(file)
         writer.writerow(["時間", "操作者", "角色", "結果", "工件", "相機", "信心度", "備註"])
-        for record in records:
+        for record in export_records:
             writer.writerow([
                 record.timestamp,
                 record.operator_name,
@@ -106,6 +109,25 @@ def append_record_csv(path, record):
         writer = csv.DictWriter(file, fieldnames=_RECORD_HEADER, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def upsert_record_list(records, record):
+    record_date = (record.timestamp or "")[:10]
+    part_id = (record.part_id or "").strip()
+    if part_id and record_date:
+        remaining_records = []
+        matched = False
+        for existing in records:
+            existing_part_id = (getattr(existing, "part_id", "") or "").strip()
+            existing_date = (getattr(existing, "timestamp", "") or "")[:10]
+            if existing_part_id == part_id and existing_date == record_date:
+                matched = True
+                continue
+            remaining_records.append(existing)
+        if matched:
+            records[:] = [record] + remaining_records
+            return
+    records.insert(0, record)
 
 
 _INVALID_PATH_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
